@@ -645,7 +645,6 @@ export class PRBabysitter {
       return result;
     };
 
-    let commentTasks: FeedbackItem[] = [];
     let followUpTasks: FeedbackItem[] = [];
 
     try {
@@ -820,7 +819,7 @@ export class PRBabysitter {
         }
       }
 
-      commentTasks = pr.feedbackItems.filter(
+      const commentTasks = pr.feedbackItems.filter(
         (item) => item.status === "queued" && item.decision === "accept",
       );
       followUpTasks = collectGitHubFollowUpTasks(pr);

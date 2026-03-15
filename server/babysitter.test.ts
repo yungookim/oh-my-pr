@@ -481,7 +481,6 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
 
   const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
   process.env.CODEFACTORY_HOME = worktreeRoot;
-  let feedbackFetchCount = 0;
   const pullSummary = makePullSummary(pr);
   let applyCalled = false;
 
@@ -489,14 +488,7 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
     storage,
     {
       buildOctokit: async () => ({}) as never,
-      fetchFeedbackItemsForPR: async () => {
-        feedbackFetchCount += 1;
-        if (feedbackFetchCount === 1) {
-          return [existingItem];
-        }
-
-        return [existingItem];
-      },
+      fetchFeedbackItemsForPR: async () => [existingItem],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],
@@ -653,11 +645,7 @@ test("babysitPR marks claimed items as failed when audit trail verification fail
     storage,
     {
       buildOctokit: async () => ({}) as never,
-      fetchFeedbackItemsForPR: async () => {
-        feedbackFetchCount += 1;
-        // Always return existing item without audit trail follow-up
-        return [existingItem];
-      },
+      fetchFeedbackItemsForPR: async () => [existingItem],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],

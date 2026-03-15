@@ -55,24 +55,6 @@ function StatusDot({ status }: { status: PR["status"] }) {
   return <span className={`inline-block h-1.5 w-1.5 shrink-0 ${cls}`} />;
 }
 
-function DecisionTag({ decision }: { decision: string | null }) {
-  if (!decision) return <span className="text-muted-foreground">---</span>;
-  const map: Record<string, string> = {
-    accept: "ACCEPT",
-    reject: "REJECT",
-    flag: "FLAG",
-  };
-  const style =
-    decision === "accept" ? "border-foreground text-foreground" :
-    decision === "flag" ? "border-foreground/40 text-foreground/60" :
-    "border-foreground/20 text-muted-foreground line-through";
-  return (
-    <span className={`inline-block border px-1.5 py-0 text-[11px] uppercase tracking-wide ${style}`}>
-      {map[decision] || decision}
-    </span>
-  );
-}
-
 function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
   const cls = getFeedbackStatusBadgeClass(status);
   return (
