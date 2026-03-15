@@ -81,6 +81,12 @@ test("applyEvaluationDecision needsFix=false maps to rejected", () => {
   assert.equal(result.statusReason, "Non-actionable comment");
 });
 
+test("markInProgress maps to in_progress", () => {
+  const item = makeItem({ status: "queued" });
+  const result = markInProgress(item);
+  assert.equal(result.status, "in_progress");
+});
+
 test("markResolved maps to resolved", () => {
   const item = makeItem({ status: "in_progress" });
   const result = markResolved(item);
