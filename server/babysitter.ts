@@ -158,6 +158,43 @@ function buildStatusEvaluationPrompt(params: {
   ].join("\n");
 }
 
+function buildConflictResolutionPrompt(params: {
+  pr: PR;
+  pullSummary: GitHubPullSummary;
+  remoteName: string;
+  conflictFiles: string[];
+}): string {
+  const { pr, pullSummary, remoteName, conflictFiles } = params;
+
+  return [
+    `You are acting as an autonomous PR babysitter for ${pr.repo} PR #${pr.number}.`,
+    `PR URL: ${pr.url}`,
+    `Base repository: ${pullSummary.repoFullName}`,
+    `Head repository: ${pullSummary.headRepoFullName}`,
+    `Head branch: ${pullSummary.headRef}`,
+    `Base branch: ${pullSummary.baseRef}`,
+    `Head remote: ${remoteName}`,
+    "You are running inside an isolated app-owned worktree under ~/.codefactory.",
+    "",
+    "A merge from the base branch into the head branch has been started but has conflicts.",
+    "The following files have merge conflicts:",
+    ...conflictFiles.map((f) => `  - ${f}`),
+    "",
+    "Your task:",
+    "1) Resolve ALL merge conflicts in the listed files.",
+    "2) Preserve the intent of both the base branch and head branch changes.",
+    "3) When in doubt, prefer the head branch (PR) changes, since that is the author's work.",
+    "4) After resolving conflicts, stage the resolved files with `git add`.",
+    "5) Complete the merge with `git commit --no-edit`.",
+    `6) Push the result to ${remoteName} HEAD:${pullSummary.headRef}.`,
+    "7) Summarize what you resolved in your final response.",
+    "",
+    "Do not wait for user input, confirmation, or approval at any point.",
+    "Do not rewrite unrelated files.",
+    "Use the available git tooling in this environment.",
+  ].join("\n");
+}
+
 function buildAgentFixPrompt(params: {
   pr: PR;
   pullSummary: GitHubPullSummary;
@@ -715,9 +752,10 @@ export class PRBabysitter {
         }
       }
 
+      const hasConflicts = pullSummary.mergeable === false;
       const followUpTasks = collectGitHubFollowUpTasks(pr);
 
-      if (commentTasks.length === 0 && statusTasks.length === 0 && followUpTasks.length === 0) {
+      if (commentTasks.length === 0 && statusTasks.length === 0 && followUpTasks.length === 0 && !hasConflicts) {
         await queueLog(pr.id, "info", `Babysitter checked PR #${pr.number}; no necessary fixes identified`, {
           phase: "run",
         });
@@ -732,17 +770,25 @@ export class PRBabysitter {
       let branchMoved = false;
       let remoteNameForLogs: string | null = null;
 
-      if (commentTasks.length > 0 || statusTasks.length > 0) {
+      if (hasConflicts) {
+        await queueLog(pr.id, "info", `PR #${pr.number} has merge conflicts with base branch ${pullSummary.baseRef}`, {
+          phase: "conflict",
+          metadata: { baseRef: pullSummary.baseRef, mergeable: pullSummary.mergeable },
+        });
+      }
+
+      if (commentTasks.length > 0 || statusTasks.length > 0 || hasConflicts) {
         await queueLog(
           pr.id,
           "info",
-          `Babysitter preparing fix run with ${commentTasks.length} comment task(s), ${statusTasks.length} status task(s), and ${followUpTasks.length} GitHub follow-up task(s) using ${agent}`,
+          `Babysitter preparing fix run with ${commentTasks.length} comment task(s), ${statusTasks.length} status task(s), ${followUpTasks.length} GitHub follow-up task(s)${hasConflicts ? ", and merge conflict resolution" : ""} using ${agent}`,
           {
             phase: "run",
             metadata: {
               commentTasks: commentTasks.length,
               statusTasks: statusTasks.length,
               followUpTasks: followUpTasks.length,
+              hasConflicts,
               agent,
             },
           },
@@ -789,45 +835,153 @@ export class PRBabysitter {
             phase: "git.identity",
           });
 
-          const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
-          const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
-          const githubToken = await this.github.resolveGitHubAuthToken(config);
-          const agentEnv = githubToken
-            ? {
-                ...process.env,
-                GITHUB_TOKEN: githubToken,
-                GH_TOKEN: githubToken,
+          if (hasConflicts) {
+            await queueLog(pr.id, "info", `Fetching base branch origin/${pullSummary.baseRef} for merge`, {
+              phase: "conflict",
+            });
+            const baseFetch = await runLoggedCommand({
+              currentPrId: pr.id,
+              command: "git",
+              args: ["fetch", "origin", pullSummary.baseRef],
+              cwd: worktreePath,
+              timeoutMs: 120000,
+              phase: "conflict",
+              successMessage: `Fetched origin/${pullSummary.baseRef}`,
+            });
+            if (baseFetch.code !== 0) {
+              throw new Error(`Failed to fetch base branch origin/${pullSummary.baseRef}: ${summarizeCommandFailure(baseFetch)}`);
+            }
+
+            await queueLog(pr.id, "info", `Attempting merge of origin/${pullSummary.baseRef} into ${pullSummary.headRef}`, {
+              phase: "conflict",
+            });
+            const mergeResult = await this.runtime.runCommand("git", ["merge", "FETCH_HEAD", "--no-edit"], {
+              cwd: worktreePath,
+              timeoutMs: 60000,
+            });
+
+            if (mergeResult.code !== 0) {
+              await queueLog(pr.id, "info", "Merge produced conflicts; invoking agent to resolve them", {
+                phase: "conflict",
+              });
+
+              const conflictListResult = await this.runtime.runCommand("git", ["diff", "--name-only", "--diff-filter=U"], {
+                cwd: worktreePath,
+                timeoutMs: 10000,
+              });
+              const conflictFiles = conflictListResult.stdout
+                .trim()
+                .split("\n")
+                .filter((f) => f.trim().length > 0);
+
+              if (conflictFiles.length === 0) {
+                throw new Error(`Merge failed but no conflict files detected: ${mergeResult.stderr || mergeResult.stdout}`);
               }
-            : undefined;
-          await queueLog(pr.id, "info", `Launching ${agent} in autonomous mode`, {
-            phase: "agent",
-            metadata: { githubAuth: Boolean(githubToken) },
-          });
 
-          const applyResult = await this.runtime.applyFixesWithAgent({
-            agent,
-            cwd: worktreePath,
-            prompt: buildAgentFixPrompt({
-              pr,
-              pullSummary,
-              remoteName,
-              commentTasks,
-              statusTasks,
-            }),
-            env: agentEnv,
-            onStdoutChunk: agentStdout.onChunk,
-            onStderrChunk: agentStderr.onChunk,
-          });
-          await agentStdout.flush();
-          await agentStderr.flush();
+              await queueLog(pr.id, "info", `Found ${conflictFiles.length} file(s) with merge conflicts`, {
+                phase: "conflict",
+                metadata: { conflictFiles },
+              });
 
-          if (applyResult.code !== 0) {
-            throw new Error(`Agent apply failed (${applyResult.code}): ${applyResult.stderr || applyResult.stdout}`);
+              const conflictStdout = createChunkLogger(pr.id, "conflict.agent", "stdout", "info");
+              const conflictStderr = createChunkLogger(pr.id, "conflict.agent", "stderr", "warn");
+              const githubTokenForConflict = await this.github.resolveGitHubAuthToken(config);
+              const conflictAgentEnv = githubTokenForConflict
+                ? {
+                    ...process.env,
+                    GITHUB_TOKEN: githubTokenForConflict,
+                    GH_TOKEN: githubTokenForConflict,
+                  }
+                : undefined;
+
+              await queueLog(pr.id, "info", `Launching ${agent} to resolve merge conflicts`, {
+                phase: "conflict.agent",
+              });
+
+              const conflictResult = await this.runtime.applyFixesWithAgent({
+                agent,
+                cwd: worktreePath,
+                prompt: buildConflictResolutionPrompt({
+                  pr,
+                  pullSummary,
+                  remoteName,
+                  conflictFiles,
+                }),
+                env: conflictAgentEnv,
+                onStdoutChunk: conflictStdout.onChunk,
+                onStderrChunk: conflictStderr.onChunk,
+              });
+              await conflictStdout.flush();
+              await conflictStderr.flush();
+
+              if (conflictResult.code !== 0) {
+                throw new Error(`Agent failed to resolve merge conflicts (${conflictResult.code}): ${conflictResult.stderr || conflictResult.stdout}`);
+              }
+
+              await queueLog(pr.id, "info", "Agent completed merge conflict resolution", {
+                phase: "conflict.agent",
+                metadata: { code: conflictResult.code },
+              });
+
+              const postMergeStatus = await this.runtime.runCommand("git", ["status", "--porcelain"], {
+                cwd: worktreePath,
+                timeoutMs: 5000,
+              });
+              if (postMergeStatus.stdout.trim()) {
+                throw new Error(`Agent left uncommitted changes after conflict resolution: ${postMergeStatus.stdout.trim()}`);
+              }
+
+              await queueLog(pr.id, "info", "Merge conflicts resolved and committed", {
+                phase: "conflict",
+              });
+            } else {
+              await queueLog(pr.id, "info", "Merge completed without conflicts (GitHub mergeability may have been stale)", {
+                phase: "conflict",
+              });
+            }
           }
-          await queueLog(pr.id, "info", `${agent} completed successfully`, {
-            phase: "agent",
-            metadata: { code: applyResult.code },
-          });
+
+          if (commentTasks.length > 0 || statusTasks.length > 0) {
+            const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
+            const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
+            const githubToken = await this.github.resolveGitHubAuthToken(config);
+            const agentEnv = githubToken
+              ? {
+                  ...process.env,
+                  GITHUB_TOKEN: githubToken,
+                  GH_TOKEN: githubToken,
+                }
+              : undefined;
+            await queueLog(pr.id, "info", `Launching ${agent} in autonomous mode`, {
+              phase: "agent",
+              metadata: { githubAuth: Boolean(githubToken) },
+            });
+
+            const applyResult = await this.runtime.applyFixesWithAgent({
+              agent,
+              cwd: worktreePath,
+              prompt: buildAgentFixPrompt({
+                pr,
+                pullSummary,
+                remoteName,
+                commentTasks,
+                statusTasks,
+              }),
+              env: agentEnv,
+              onStdoutChunk: agentStdout.onChunk,
+              onStderrChunk: agentStderr.onChunk,
+            });
+            await agentStdout.flush();
+            await agentStderr.flush();
+
+            if (applyResult.code !== 0) {
+              throw new Error(`Agent apply failed (${applyResult.code}): ${applyResult.stderr || applyResult.stdout}`);
+            }
+            await queueLog(pr.id, "info", `${agent} completed successfully`, {
+              phase: "agent",
+              metadata: { code: applyResult.code },
+            });
+          }
 
           const status = await runLoggedCommand({
             currentPrId: pr.id,
@@ -897,6 +1051,10 @@ export class PRBabysitter {
 
           if (statusTasks.length > 0 && !branchMoved) {
             throw new Error("Agent did not update the PR head branch for accepted failing status tasks");
+          }
+
+          if (hasConflicts && !branchMoved) {
+            throw new Error("Agent did not push conflict resolution to the PR head branch");
           }
 
           headShaForFollowUp = localHeadSha;

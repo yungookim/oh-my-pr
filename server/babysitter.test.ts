@@ -31,7 +31,7 @@ function makeFeedbackItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
   };
 }
 
-function makePullSummary(pr: { url: string }) {
+function makePullSummary(pr: { url: string }, overrides?: Record<string, unknown>) {
   return {
     number: 106,
     title: "Verbose PR",
@@ -44,6 +44,9 @@ function makePullSummary(pr: { url: string }) {
     headRef: "feature/verbose",
     headRepoFullName: "alex-morgan-o/lolodex",
     headRepoCloneUrl: "https://github.com/alex-morgan-o/lolodex.git",
+    baseRef: "main",
+    mergeable: true as boolean | null,
+    ...overrides,
   };
 }
 
@@ -571,4 +574,262 @@ test("babysitPR resolves lingering review threads without reposting an existing 
   assert.equal(updated?.status, "watching");
   assert.deepEqual(postedFollowUps, []);
   assert.deepEqual(resolvedThreads, ["PRRT_kwDO_example"]);
+});
+
+test("babysitPR resolves merge conflicts when PR is not mergeable", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Verbose PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  let conflictAgentPrompt = "";
+  let fixAgentCalled = false;
+  const pullSummary = makePullSummary(pr, { mergeable: false });
+  const mergeAttempted = { value: false };
+
+  const gitRunner = makeGitRunCommand({
+    localHeadSha: "merge123",
+    remoteHeadSha: "merge123",
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => pullSummary,
+      listFailingStatuses: async () => [],
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => "test-token",
+    },
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({
+        needsFix: false,
+        reason: "No fix needed",
+      }),
+      applyFixesWithAgent: async ({ prompt, onStdoutChunk, onStderrChunk }) => {
+        if (prompt.includes("merge conflicts")) {
+          conflictAgentPrompt = prompt;
+          onStdoutChunk?.("resolved conflicts\n");
+          onStderrChunk?.("");
+          return { code: 0, stdout: "resolved conflicts\n", stderr: "" };
+        }
+        fixAgentCalled = true;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      runCommand: async (command: string, args: string[], opts?: Record<string, unknown>) => {
+        // Intercept the merge command to simulate conflict
+        if (command === "git" && args[0] === "merge") {
+          mergeAttempted.value = true;
+          return { code: 1, stdout: "", stderr: "CONFLICT (content): Merge conflict in src/example.ts" };
+        }
+        // Intercept git diff --name-only --diff-filter=U to list conflict files
+        if (command === "git" && args[0] === "diff" && args[1] === "--name-only" && args[2] === "--diff-filter=U") {
+          return { code: 0, stdout: "src/example.ts\n", stderr: "" };
+        }
+        // Delegate to the default git runner for everything else
+        return gitRunner(command, args, opts);
+      },
+    },
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+
+  const updated = await storage.getPR(pr.id);
+  const logs = await storage.getLogs(pr.id);
+
+  assert.equal(mergeAttempted.value, true);
+  assert.equal(updated?.status, "watching");
+  assert.equal(fixAgentCalled, false, "Should not run the fix agent when there are no comment/status tasks");
+  assert.match(conflictAgentPrompt, /merge conflicts/i);
+  assert.match(conflictAgentPrompt, /src\/example\.ts/);
+  assert.ok(logs.some((log) => log.phase === "conflict" && log.message.includes("merge conflicts")));
+  assert.ok(logs.some((log) => log.phase === "conflict.agent" && log.message.includes("merge conflict resolution")));
+
+  delete process.env.CODEFACTORY_HOME;
+});
+
+test("babysitPR skips conflict resolution when PR is mergeable", async () => {
+  const storage = new MemStorage();
+  const existingItem = makeFeedbackItem();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Verbose PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [existingItem],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+  let mergeAttempted = false;
+  let feedbackFetchCount = 0;
+  const pullSummary = makePullSummary(pr, { mergeable: true });
+  const followUp = makeFeedbackItem({
+    id: "gh-review-comment-2",
+    author: "code-factory",
+    body: `Addressed in commit \`abc123\` by the latest babysitter run.\n\n${existingItem.auditToken}`,
+    bodyHtml: `<p>Addressed.</p><p>${existingItem.auditToken}</p>`,
+    sourceId: "2",
+    sourceNodeId: "PRRC_kwDO_followup",
+    sourceUrl: "https://github.com/alex-morgan-o/lolodex/pull/106#discussion_r2",
+    threadId: existingItem.threadId,
+    threadResolved: true,
+    createdAt: new Date().toISOString(),
+    decision: null,
+    decisionReason: null,
+    action: null,
+  });
+
+  const gitRunner = makeGitRunCommand({
+    localHeadSha: "def456",
+    remoteHeadSha: "def456",
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => {
+        feedbackFetchCount += 1;
+        if (feedbackFetchCount === 1) return [existingItem];
+        return [{ ...existingItem, threadResolved: true }, followUp];
+      },
+      fetchPullSummary: async () => pullSummary,
+      listFailingStatuses: async () => [],
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => "test-token",
+    },
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({
+        needsFix: true,
+        reason: "Comment requires a code change",
+      }),
+      applyFixesWithAgent: async ({ onStdoutChunk, onStderrChunk }) => {
+        onStdoutChunk?.("applied fix\n");
+        onStderrChunk?.("");
+        return { code: 0, stdout: "applied fix\n", stderr: "" };
+      },
+      runCommand: async (command: string, args: string[], opts?: Record<string, unknown>) => {
+        if (command === "git" && args[0] === "merge") {
+          mergeAttempted = true;
+        }
+        return gitRunner(command, args, opts);
+      },
+    },
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+
+  const updated = await storage.getPR(pr.id);
+  const logs = await storage.getLogs(pr.id);
+
+  assert.equal(mergeAttempted, false, "Should not attempt merge when PR is mergeable");
+  assert.equal(updated?.status, "watching");
+  assert.ok(!logs.some((log) => log.phase === "conflict"));
+
+  delete process.env.CODEFACTORY_HOME;
+});
+
+test("babysitPR errors when conflict resolution agent fails", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Verbose PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+  const pullSummary = makePullSummary(pr, { mergeable: false });
+
+  const gitRunner = makeGitRunCommand({
+    localHeadSha: "abc123",
+    remoteHeadSha: "abc123",
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => pullSummary,
+      listFailingStatuses: async () => [],
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => "test-token",
+    },
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({
+        needsFix: false,
+        reason: "No fix needed",
+      }),
+      applyFixesWithAgent: async () => {
+        return { code: 1, stdout: "", stderr: "agent crashed" };
+      },
+      runCommand: async (command: string, args: string[], opts?: Record<string, unknown>) => {
+        if (command === "git" && args[0] === "merge") {
+          return { code: 1, stdout: "", stderr: "CONFLICT" };
+        }
+        if (command === "git" && args[0] === "diff" && args[1] === "--name-only" && args[2] === "--diff-filter=U") {
+          return { code: 0, stdout: "src/conflict.ts\n", stderr: "" };
+        }
+        return gitRunner(command, args, opts);
+      },
+    },
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+
+  const updated = await storage.getPR(pr.id);
+  const logs = await storage.getLogs(pr.id);
+
+  assert.equal(updated?.status, "error");
+  assert.ok(logs.some((log) => log.level === "error" && log.message.includes("merge conflicts")));
+
+  delete process.env.CODEFACTORY_HOME;
 });

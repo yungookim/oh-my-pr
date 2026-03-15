@@ -26,6 +26,8 @@ export type GitHubPullSummary = {
   headRef: string;
   headRepoFullName: string;
   headRepoCloneUrl: string;
+  baseRef: string;
+  mergeable: boolean | null;
 };
 
 export type GitHubStatusFailure = {
@@ -336,6 +338,8 @@ export async function fetchPullSummary(
     headRef: pull.head?.ref || "",
     headRepoFullName: pull.head?.repo?.full_name || `${parsed.owner}/${parsed.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${parsed.owner}/${parsed.repo}.git`,
+    baseRef: pull.base?.ref || "main",
+    mergeable: typeof pull.mergeable === "boolean" ? pull.mergeable : null,
   };
 }
 
@@ -707,6 +711,8 @@ export async function listOpenPullsForRepo(
     headRef: pull.head?.ref || "",
     headRepoFullName: pull.head?.repo?.full_name || `${repo.owner}/${repo.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${repo.owner}/${repo.repo}.git`,
+    baseRef: pull.base?.ref || "main",
+    mergeable: null,
   }));
 }
 
