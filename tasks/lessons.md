@@ -50,3 +50,11 @@
   - Enumerate the exact persisted entities before choosing a schema.
   - Reflect that scope in the design doc and implementation plan.
   - Add reload tests that cover each promised state category, not just one table.
+
+## 2026-03-15 - Confirm the exact push target before defaulting to a safety branch
+- Pattern: I defaulted to pushing a new branch for a repo import, but the user later clarified they wanted the full workspace on `main`.
+- Rule: When a user asks to push a repository, determine the intended destination branch up front; use a safety branch only when the branch target is unspecified.
+- Prevention checklist:
+  - Extract both the remote and branch target before initializing or pushing a repo.
+  - If the user says "everything", include previously excluded workspace files unless they are ignored or clearly machine-local.
+  - When an explicit user branch target conflicts with my default safety preference, follow the explicit target.

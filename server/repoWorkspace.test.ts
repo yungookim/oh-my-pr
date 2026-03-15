@@ -1,0 +1,131 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp } from "fs/promises";
+import os from "os";
+import path from "path";
+import test from "node:test";
+import { preparePrWorktree } from "./repoWorkspace";
+
+test("preparePrWorktree reuses the watched-repo cache and fetches fork heads on demand", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "codefactory-workspace-"));
+  const calls: Array<{ command: string; args: string[] }> = [];
+  let cloned = false;
+
+  const result = await preparePrWorktree({
+    rootDir,
+    repoFullName: "acme/widgets",
+    repoCloneUrl: "https://github.com/acme/widgets.git",
+    headRepoFullName: "contrib/widgets",
+    headRepoCloneUrl: "https://github.com/contrib/widgets.git",
+    headRef: "fix-branch",
+    prNumber: 42,
+    runId: "run-1",
+    runCommand: async (command, args) => {
+      calls.push({ command, args });
+
+      if (command !== "git") {
+        return { code: 1, stdout: "", stderr: `unexpected command: ${command}` };
+      }
+
+      if (args[0] === "-C" && args[2] === "rev-parse") {
+        return cloned ? { code: 0, stdout: "true\n", stderr: "" } : { code: 1, stdout: "", stderr: "" };
+      }
+
+      if (args[0] === "clone") {
+        cloned = true;
+        await mkdir(args[2], { recursive: true });
+        return { code: 0, stdout: "cloned\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "config" && args[3] === "--get" && args[4] === "remote.origin.url") {
+        return { code: 0, stdout: "https://github.com/acme/widgets.git\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "config" && args[3] === "--get" && args[4] === "remote.fork-contrib.url") {
+        return { code: 1, stdout: "", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "status") {
+        return { code: 0, stdout: "", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "fetch") {
+        return { code: 0, stdout: "fetched\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "remote" && args[3] === "add") {
+        return { code: 0, stdout: "remote added\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "worktree" && args[3] === "add") {
+        await mkdir(args[5], { recursive: true });
+        return { code: 0, stdout: "worktree added\n", stderr: "" };
+      }
+
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  assert.match(result.repoCacheDir, /\/repos\/acme__widgets$/);
+  assert.match(result.worktreePath, /\/worktrees\/acme__widgets\/pr-42-run-1$/);
+  assert.equal(result.remoteName, "fork-contrib");
+  assert.equal(result.healed, true);
+  assert.ok(calls.some((call) => call.args[2] === "remote" && call.args[3] === "add" && call.args[4] === "fork-contrib"));
+});
+
+test("preparePrWorktree reclones the cache when git health checks fail", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "codefactory-workspace-heal-"));
+  let cloneCount = 0;
+
+  const result = await preparePrWorktree({
+    rootDir,
+    repoFullName: "acme/widgets",
+    repoCloneUrl: "https://github.com/acme/widgets.git",
+    headRepoFullName: "acme/widgets",
+    headRepoCloneUrl: "https://github.com/acme/widgets.git",
+    headRef: "feature-branch",
+    prNumber: 18,
+    runId: "run-2",
+    runCommand: async (command, args) => {
+      if (command !== "git") {
+        return { code: 1, stdout: "", stderr: `unexpected command: ${command}` };
+      }
+
+      if (args[0] === "-C" && args[2] === "rev-parse") {
+        return { code: 0, stdout: "true\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "config" && args[3] === "--get" && args[4] === "remote.origin.url") {
+        if (cloneCount === 0) {
+          return { code: 0, stdout: "https://github.com/other/repo.git\n", stderr: "" };
+        }
+
+        return { code: 0, stdout: "https://github.com/acme/widgets.git\n", stderr: "" };
+      }
+
+      if (args[0] === "clone") {
+        cloneCount += 1;
+        await mkdir(args[2], { recursive: true });
+        return { code: 0, stdout: "cloned\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "status") {
+        return { code: 0, stdout: "", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "fetch") {
+        return { code: 0, stdout: "fetched\n", stderr: "" };
+      }
+
+      if (args[0] === "-C" && args[2] === "worktree" && args[3] === "add") {
+        await mkdir(args[5], { recursive: true });
+        return { code: 0, stdout: "worktree added\n", stderr: "" };
+      }
+
+      return { code: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(cloneCount, 1);
+  assert.equal(result.healed, true);
+  assert.equal(result.remoteName, "origin");
+});
