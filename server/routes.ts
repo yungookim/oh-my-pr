@@ -104,6 +104,16 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/repos/sync", async (_req, res) => {
+    try {
+      await watcherScheduler.runAndReportErrors();
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   app.get("/api/prs", async (_req, res) => {
     const prs = await storage.getPRs();
     res.json(prs);

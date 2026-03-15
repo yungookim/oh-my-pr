@@ -107,3 +107,49 @@ test("createWatcherScheduler keeps queued run promises pending until the queued 
   assert.equal(queuedRunResolved, true);
   assert.deepEqual(errors, []);
 });
+
+test("createWatcherScheduler surfaces queued rerun failures to foreground callers only", async () => {
+  const firstStarted = deferred();
+  const releaseFirstRun = deferred();
+  const errors: unknown[] = [];
+  let runCount = 0;
+
+  const scheduler = createWatcherScheduler(async () => {
+    runCount += 1;
+
+    if (runCount === 1) {
+      firstStarted.resolve();
+      await releaseFirstRun.promise;
+      return;
+    }
+
+    throw new Error("queued rerun failed");
+  }, (error) => {
+    errors.push(error);
+  });
+
+  const backgroundRun = scheduler.run();
+  await firstStarted.promise;
+
+  const foregroundRun = scheduler.runAndReportErrors();
+
+  releaseFirstRun.resolve();
+
+  await backgroundRun;
+  await assert.rejects(foregroundRun, /queued rerun failed/);
+
+  assert.equal(runCount, 2);
+  assert.equal(errors.length, 1);
+});
+
+test("createWatcherScheduler surfaces initial failures to foreground callers", async () => {
+  const errors: unknown[] = [];
+  const scheduler = createWatcherScheduler(async () => {
+    throw new Error("initial failure");
+  }, (error) => {
+    errors.push(error);
+  });
+
+  await assert.rejects(scheduler.runAndReportErrors(), /initial failure/);
+  assert.equal(errors.length, 1);
+});

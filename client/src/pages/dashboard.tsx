@@ -387,6 +387,20 @@ export default function Dashboard() {
     },
   });
 
+  const syncReposMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/repos/sync");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/repos"] });
+    },
+    onError: (error) => {
+      showMutationError("Could not sync repositories", error);
+    },
+  });
+
   const addRepoMutation = useMutation({
     mutationFn: async (repo: string) => {
       const res = await apiRequest("POST", "/api/repos", { repo });
@@ -523,8 +537,19 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <div className="mt-3">
-                  <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Tracked repositories
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Tracked repositories
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => syncReposMutation.mutate()}
+                      disabled={syncReposMutation.isPending}
+                      data-testid="button-sync-repos"
+                      className="border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-30"
+                    >
+                      {syncReposMutation.isPending ? "Fetching…" : "Fetch"}
+                    </button>
                   </div>
                   {repos.length === 0 ? (
                     <div className="text-[11px] text-muted-foreground">No repositories being watched yet.</div>
