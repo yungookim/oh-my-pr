@@ -72,3 +72,53 @@
   - Extract both the remote and branch target before initializing or pushing a repo.
   - If the user says "everything", include previously excluded workspace files unless they are ignored or clearly machine-local.
   - When an explicit user branch target conflicts with my default safety preference, follow the explicit target.
+
+## 2026-03-15 - Confirm which docs already shipped before opening a follow-up PR
+- Pattern: I was about to open a second PR from a mixed commit that bundled code changes with planning docs that had already shipped in another PR.
+- Rule: Before creating a follow-up PR from a mixed commit, verify which files already belong to existing PRs and split the new branch so it contains only the remaining intended changes.
+- Prevention checklist:
+  - Inspect the full mixed commit, not just the code paths I care about.
+  - Ask whether any docs or supporting files already shipped in another PR before reusing a previous commit.
+  - Build follow-up PR branches from `main` and cherry-pick or restage only the intended files.
+  - Re-read the final staged file list before pushing a new PR branch.
+
+## 2026-03-15 - Capture the fresh-main worktree rule in repo guidance
+- Pattern: I wrote the repository guide without stating the required workflow of starting work from a git worktree based on a freshly updated `main`.
+- Rule: When documenting or following this repository's workflow, explicitly require a fresh `main` update and a new worktree before making changes.
+- Prevention checklist:
+  - Check for repo-specific branch and worktree rules before drafting contributor docs.
+  - If the repo uses isolated branches, state the exact starting point: update `main`, create worktree, then branch.
+  - Re-read workflow sections to confirm they include branch base, isolation model, and push target.
+
+## 2026-03-15 - Ship lesson updates with the same rigor as code changes
+- Pattern: I opened the implementation PR but left the required `tasks/lessons.md` update unshipped until the user asked for a separate PR.
+- Rule: When a user correction adds a lesson, treat that lesson update as a deliverable and explicitly decide whether it belongs in the active PR or a separate PR before closing the task.
+- Prevention checklist:
+  - After each user correction, verify whether `tasks/lessons.md` changed and whether that change still needs to ship.
+  - Before opening a PR, inspect staged and unstaged diffs for pending lesson updates.
+  - If lessons should be isolated from product changes, create a docs-only branch from fresh `main` and open that PR in the same session.
+  - Call out any intentionally unshipped lesson updates in the final handoff.
+## 2026-03-15 - Confirm workspace isolation requirements before editing repo automation
+- Pattern: I started investigating a CI change in the user's current checkout before the user clarified they wanted the work done from a clean worktree off `main`.
+- Rule: For CI/CD, repository automation, or branch-sensitive changes, confirm the required git starting point and isolation model before editing files.
+- Prevention checklist:
+  - Ask whether the user wants changes in the current checkout, a fresh branch from `main`, or an isolated worktree when the request affects shared automation.
+  - Create the requested branch/worktree before installing dependencies or editing tracked files.
+  - Restate the chosen branch/worktree path in the first execution update so the working context is explicit.
+
+## 2026-03-15 - Re-verify lockfile completeness with `npm ci`
+- Pattern: I updated dependencies and committed a lockfile that still omitted the optional `bufferutil` package, so GitHub Actions failed at `npm ci` even though the branch looked healthy locally.
+- Rule: After any dependency or lockfile change, prove the committed state with a clean `npm ci`, not just `npm install`, `npm run`, or a warm existing `node_modules`.
+- Prevention checklist:
+  - Check that every declared dependency bucket, including `optionalDependencies`, appears in `package-lock.json`.
+  - Run `npm ci` in the branch before opening or updating a PR when dependency metadata changes.
+  - If CI reports a manifest-lock mismatch, inspect the exact missing package from the log instead of assuming the root dependency lists are sufficient.
+
+## 2026-03-15 - Treat PR creation as a default completion step
+- Pattern: I documented branch-push safety rules but did not explicitly require opening a PR for finished work.
+- Rule: When work is complete in this repository, open a PR unless the user explicitly says not to.
+- Prevention checklist:
+  - Re-read the repo workflow instructions before closing a task and confirm whether PR creation is mandatory.
+  - Treat "push to a branch" and "open a PR" as separate requirements, and satisfy both.
+  - If the current worktree contains unrelated changes, isolate the task in a fresh worktree before creating the PR.
+  - Call out any explicit user instruction to skip PR creation in the final handoff.

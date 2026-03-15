@@ -5,6 +5,7 @@ import { SqliteStorage } from "./sqliteStorage";
 export interface IStorage {
   // PRs
   getPRs(): Promise<PR[]>;
+  getArchivedPRs(): Promise<PR[]>;
   getPR(id: string): Promise<PR | undefined>;
   getPRByRepoAndNumber(repo: string, number: number): Promise<PR | undefined>;
   addPR(pr: Omit<PR, "id" | "addedAt">): Promise<PR>;

@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import type { Config, FeedbackItem } from "@shared/schema";
+import { z } from "zod";
 import { runCommand } from "./agentRunner";
 import { renderGitHubMarkdown } from "./markdown";
 
@@ -63,7 +64,6 @@ const REVIEW_THREADS_QUERY = `
     }
   }
 `;
-
 const REVIEW_THREAD_COMMENTS_QUERY = `
   query CodeFactoryReviewThreadComments($threadId: ID!, $cursor: String) {
     node(id: $threadId) {
@@ -83,6 +83,34 @@ const REVIEW_THREAD_COMMENTS_QUERY = `
     }
   }
 `;
+const REVIEW_THREAD_REPLY_MUTATION = `
+  mutation CodeFactoryReplyToReviewThread($threadId: ID!, $body: String!) {
+    addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
+      comment {
+        id
+        databaseId
+      }
+    }
+  }
+`;
+const RESOLVE_REVIEW_THREAD_MUTATION = `
+  mutation CodeFactoryResolveReviewThread($threadId: ID!) {
+    resolveReviewThread(input: { threadId: $threadId }) {
+      thread {
+        id
+        isResolved
+      }
+    }
+  }
+`;
+
+const statusReplyMutationSchema = z.object({
+  addPullRequestReviewThreadReply: z.object({
+    comment: z.object({
+      databaseId: z.number().nullable().optional(),
+    }).nullable().optional(),
+  }).nullable().optional(),
+});
 
 let cachedGhAuthToken: { token: string; expiresAt: number } | null = null;
 let ghAuthFailureCooldownUntil = 0;
@@ -145,23 +173,20 @@ type ReviewThreadLookup = Map<number, {
   threadId: string;
   threadResolved: boolean;
 }>;
-
-type ReviewThreadCommentNode = {
-  databaseId?: number | null;
-};
-
 type ReviewThreadCommentsConnection = {
-  nodes?: ReviewThreadCommentNode[];
+  nodes?: Array<{
+    databaseId?: number | null;
+  }> | null;
   pageInfo?: {
     hasNextPage?: boolean | null;
     endCursor?: string | null;
-  };
+  } | null;
 };
 
 type ReviewThreadNode = {
   id?: string | null;
   isResolved?: boolean | null;
-  comments?: ReviewThreadCommentsConnection;
+  comments?: ReviewThreadCommentsConnection | null;
 };
 
 export function buildFeedbackAuditToken(feedbackId: string): string {
@@ -340,6 +365,74 @@ function shouldIgnoreAuthor(
   return false;
 }
 
+function addReviewThreadCommentsToLookup(
+  lookup: ReviewThreadLookup,
+  threadId: string,
+  threadResolved: boolean,
+  comments?: ReviewThreadCommentsConnection | null,
+): void {
+  for (const comment of comments?.nodes || []) {
+    if (typeof comment?.databaseId !== "number") {
+      continue;
+    }
+
+    lookup.set(comment.databaseId, {
+      threadId,
+      threadResolved,
+    });
+  }
+}
+
+async function appendPaginatedReviewThreadComments(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  lookup: ReviewThreadLookup,
+  thread: ReviewThreadNode,
+): Promise<void> {
+  if (!thread.id) {
+    return;
+  }
+
+  let cursor = thread.comments?.pageInfo?.hasNextPage && thread.comments.pageInfo.endCursor
+    ? thread.comments.pageInfo.endCursor
+    : null;
+  let threadResolved = Boolean(thread.isResolved);
+
+  while (cursor) {
+    const response = await withGitHubErrorHandling("review thread comments", parsed, () =>
+      octokit.request("POST /graphql", {
+        query: REVIEW_THREAD_COMMENTS_QUERY,
+        threadId: thread.id,
+        cursor,
+      }),
+    );
+
+    const paginatedThread = (response.data as {
+      node?: ReviewThreadNode | null;
+    }).node;
+
+    if (!paginatedThread?.id) {
+      break;
+    }
+
+    if (typeof paginatedThread.isResolved === "boolean") {
+      threadResolved = paginatedThread.isResolved;
+    }
+
+    addReviewThreadCommentsToLookup(
+      lookup,
+      paginatedThread.id,
+      threadResolved,
+      paginatedThread.comments,
+    );
+
+    const pageInfo = paginatedThread.comments?.pageInfo;
+    cursor = pageInfo?.hasNextPage && pageInfo.endCursor
+      ? pageInfo.endCursor
+      : null;
+  }
+}
+
 async function fetchReviewThreadLookup(
   octokit: Octokit,
   parsed: ParsedPRUrl,
@@ -392,70 +485,88 @@ async function fetchReviewThreadLookup(
   return lookup;
 }
 
-function addReviewThreadCommentsToLookup(
-  lookup: ReviewThreadLookup,
-  threadId: string,
-  threadResolved: boolean,
-  comments?: ReviewThreadCommentsConnection,
-): void {
-  for (const comment of comments?.nodes || []) {
-    if (typeof comment?.databaseId !== "number") {
-      continue;
-    }
-
-    lookup.set(comment.databaseId, {
-      threadId,
-      threadResolved,
-    });
-  }
-}
-
-async function appendPaginatedReviewThreadComments(
+export async function replyToReviewThread(
   octokit: Octokit,
   parsed: ParsedPRUrl,
-  lookup: ReviewThreadLookup,
-  thread: ReviewThreadNode,
+  threadId: string,
+  body: string,
 ): Promise<void> {
-  if (!thread.id) {
+  await withGitHubErrorHandling("review thread reply", parsed, () =>
+    octokit.request("POST /graphql", {
+      query: REVIEW_THREAD_REPLY_MUTATION,
+      threadId,
+      body,
+    }),
+  );
+}
+
+export async function resolveReviewThread(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  threadId: string,
+): Promise<void> {
+  await withGitHubErrorHandling("review thread resolution", parsed, () =>
+    octokit.request("POST /graphql", {
+      query: RESOLVE_REVIEW_THREAD_MUTATION,
+      threadId,
+    }),
+  );
+}
+
+export async function replyToReview(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  body: string,
+): Promise<void> {
+  await withGitHubErrorHandling("review follow-up", parsed, () =>
+    octokit.issues.createComment({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+      body,
+    }),
+  );
+}
+
+export async function replyToIssueComment(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  body: string,
+): Promise<void> {
+  await withGitHubErrorHandling("issue comment follow-up", parsed, () =>
+    octokit.issues.createComment({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+      body,
+    }),
+  );
+}
+
+export async function postFollowUpForFeedbackItem(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  item: FeedbackItem,
+  body: string,
+): Promise<void> {
+  if (item.replyKind === "review_thread") {
+    if (!item.threadId) {
+      throw new GitHubIntegrationError(
+        `GitHub could not determine the review thread for feedback item ${item.id} on ${formatGitHubTarget(parsed)}.`,
+        502,
+      );
+    }
+
+    await replyToReviewThread(octokit, parsed, item.threadId, body);
     return;
   }
 
-  let cursor = thread.comments?.pageInfo?.hasNextPage && thread.comments.pageInfo.endCursor
-    ? thread.comments.pageInfo.endCursor
-    : null;
-  let threadResolved = Boolean(thread.isResolved);
-
-  while (cursor) {
-    const response = await withGitHubErrorHandling("review thread comments", parsed, () =>
-      octokit.request("POST /graphql", {
-        query: REVIEW_THREAD_COMMENTS_QUERY,
-        threadId: thread.id,
-        cursor,
-      }),
-    );
-
-    const paginatedThread = (response.data as {
-      node?: ReviewThreadNode;
-    }).node;
-
-    if (!paginatedThread?.id) {
-      break;
-    }
-
-    if (typeof paginatedThread.isResolved === "boolean") {
-      threadResolved = paginatedThread.isResolved;
-    }
-
-    addReviewThreadCommentsToLookup(
-      lookup,
-      paginatedThread.id,
-      threadResolved,
-      paginatedThread.comments,
-    );
-
-    const pageInfo = paginatedThread.comments?.pageInfo;
-    cursor = pageInfo?.hasNextPage && pageInfo.endCursor ? pageInfo.endCursor : null;
+  if (item.replyKind === "review") {
+    await replyToReview(octokit, parsed, body);
+    return;
   }
+
+  await replyToIssueComment(octokit, parsed, body);
 }
 
 export async function fetchFeedbackItemsForPR(
@@ -613,6 +724,125 @@ export async function listOpenPullsForRepo(
     headRepoFullName: pull.head?.repo?.full_name || `${repo.owner}/${repo.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${repo.owner}/${repo.repo}.git`,
   }));
+}
+
+export async function addReactionToComment(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  item: FeedbackItem,
+  content: "eyes" | "+1" | "-1" | "laugh" | "confused" | "heart" | "hooray" | "rocket",
+): Promise<void> {
+  const commentId = Number(item.sourceId);
+  if (!Number.isFinite(commentId)) return;
+
+  if (item.type === "review_comment") {
+    await withGitHubErrorHandling("reaction on review comment", parsed, () =>
+      octokit.reactions.createForPullRequestReviewComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: commentId,
+        content,
+      }),
+    );
+  } else if (item.type === "general_comment") {
+    await withGitHubErrorHandling("reaction on issue comment", parsed, () =>
+      octokit.reactions.createForIssueComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: commentId,
+        content,
+      }),
+    );
+  }
+  // Reviews don't support direct reactions — silently skip.
+}
+
+export type StatusReplyRef = {
+  commentDatabaseId: number;
+  replyKind: FeedbackItem["replyKind"];
+  body: string;
+};
+
+export async function postStatusReplyForFeedbackItem(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  item: FeedbackItem,
+  body: string,
+): Promise<StatusReplyRef | null> {
+  if (item.replyKind === "review_thread") {
+    if (!item.threadId) return null;
+
+    const result = await withGitHubErrorHandling("status reply in review thread", parsed, () =>
+      octokit.request("POST /graphql", {
+        query: REVIEW_THREAD_REPLY_MUTATION,
+        threadId: item.threadId,
+        body,
+      }),
+    );
+
+    const parsedResult = statusReplyMutationSchema.safeParse(result.data);
+    if (!parsedResult.success) {
+      throw new GitHubIntegrationError(
+        `GitHub returned an unexpected payload while creating a status reply for feedback item ${item.id} on ${formatGitHubTarget(parsed)}.`,
+        502,
+      );
+    }
+
+    const databaseId = parsedResult.data.addPullRequestReviewThreadReply?.comment?.databaseId;
+    if (typeof databaseId !== "number") return null;
+
+    return { commentDatabaseId: databaseId, replyKind: item.replyKind, body };
+  }
+
+  // For review and general_comment, post an issue comment.
+  const result = await withGitHubErrorHandling("status reply", parsed, () =>
+    octokit.issues.createComment({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+      body,
+    }),
+  );
+
+  return { commentDatabaseId: result.data.id, replyKind: item.replyKind, body };
+}
+
+/**
+ * Updates a status reply comment on GitHub and mutates the local reference object.
+ *
+ * @param octokit The Octokit instance for API calls.
+ * @param parsed The parsed information about the pull request.
+ * @param ref The reference to the status reply comment. This object's `body`
+ *   property is mutated to reflect the latest GitHub state after a successful update.
+ * @param newBody The new content for the comment body.
+ */
+export async function updateStatusReply(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  ref: StatusReplyRef,
+  newBody: string,
+): Promise<void> {
+  if (ref.replyKind === "review_thread") {
+    await withGitHubErrorHandling("update review comment", parsed, () =>
+      octokit.pulls.updateReviewComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: ref.commentDatabaseId,
+        body: newBody,
+      }),
+    );
+  } else {
+    await withGitHubErrorHandling("update issue comment", parsed, () =>
+      octokit.issues.updateComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: ref.commentDatabaseId,
+        body: newBody,
+      }),
+    );
+  }
+
+  ref.body = newBody;
 }
 
 export async function listFailingStatuses(

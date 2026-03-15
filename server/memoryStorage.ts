@@ -9,9 +9,15 @@ export class MemStorage implements IStorage {
   private config: Config = { ...DEFAULT_CONFIG };
 
   async getPRs(): Promise<PR[]> {
-    return Array.from(this.prs.values()).sort(
-      (a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()
-    );
+    return Array.from(this.prs.values())
+      .filter((pr) => pr.status !== "archived")
+      .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  }
+
+  async getArchivedPRs(): Promise<PR[]> {
+    return Array.from(this.prs.values())
+      .filter((pr) => pr.status === "archived")
+      .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   }
 
   async getPR(id: string): Promise<PR | undefined> {

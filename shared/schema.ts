@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // ── Types for PR feedback workflow ──────────────────────────
 
-export const prStatusEnum = z.enum(["watching", "processing", "done", "error"]);
+export const prStatusEnum = z.enum(["watching", "processing", "done", "error", "archived"]);
 export type PRStatus = z.infer<typeof prStatusEnum>;
 
 export const triageDecision = z.enum(["accept", "reject", "flag"]);

@@ -370,6 +370,21 @@ export class SqliteStorage implements IStorage {
       SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
              tests_passed, lint_passed, last_checked, added_at
       FROM prs
+      WHERE status != 'archived'
+      ORDER BY datetime(added_at) DESC
+    `).all() as PRRow[];
+
+    const itemsByPrId = this.getFeedbackItemsForPRIds(rows.map((row) => row.id));
+
+    return rows.map((row) => this.parsePRRow(row, itemsByPrId.get(row.id) || []));
+  }
+
+  async getArchivedPRs(): Promise<PR[]> {
+    const rows = this.db.prepare(`
+      SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
+             tests_passed, lint_passed, last_checked, added_at
+      FROM prs
+      WHERE status = 'archived'
       ORDER BY datetime(added_at) DESC
     `).all() as PRRow[];
 

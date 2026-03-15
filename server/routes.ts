@@ -5,6 +5,7 @@ import { addPRSchema, configSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { PRBabysitter } from "./babysitter";
 import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
+import { createWatcherScheduler } from "./watcherScheduler";
 import {
   buildOctokit,
   fetchPullSummary,
@@ -21,20 +22,14 @@ export async function registerRoutes(
   const babysitter = new PRBabysitter(storage);
   let watcherTimer: NodeJS.Timeout | null = null;
   let watcherIntervalMs = 0;
-  let watcherRunning = false;
 
-  const runWatcher = async () => {
-    if (watcherRunning) return;
-    watcherRunning = true;
-
-    try {
-      await babysitter.syncAndBabysitTrackedRepos();
-    } catch (error) {
+  const watcherScheduler = createWatcherScheduler(
+    () => babysitter.syncAndBabysitTrackedRepos(),
+    (error) => {
       console.error("Repository babysitter watcher failed", error);
-    } finally {
-      watcherRunning = false;
-    }
-  };
+    },
+  );
+  const runWatcher = watcherScheduler.run;
 
   const refreshWatcherSchedule = async () => {
     const config = await storage.getConfig();
@@ -111,6 +106,11 @@ export async function registerRoutes(
 
   app.get("/api/prs", async (_req, res) => {
     const prs = await storage.getPRs();
+    res.json(prs);
+  });
+
+  app.get("/api/prs/archived", async (_req, res) => {
+    const prs = await storage.getArchivedPRs();
     res.json(prs);
   });
 
