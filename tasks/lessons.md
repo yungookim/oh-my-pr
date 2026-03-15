@@ -99,3 +99,12 @@
   - Check that every declared dependency bucket, including `optionalDependencies`, appears in `package-lock.json`.
   - Run `npm ci` in the branch before opening or updating a PR when dependency metadata changes.
   - If CI reports a manifest-lock mismatch, inspect the exact missing package from the log instead of assuming the root dependency lists are sufficient.
+
+## 2026-03-15 - Treat PR creation as a default completion step
+- Pattern: I documented branch-push safety rules but did not explicitly require opening a PR for finished work.
+- Rule: When work is complete in this repository, open a PR unless the user explicitly says not to.
+- Prevention checklist:
+  - Re-read the repo workflow instructions before closing a task and confirm whether PR creation is mandatory.
+  - Treat "push to a branch" and "open a PR" as separate requirements, and satisfy both.
+  - If the current worktree contains unrelated changes, isolate the task in a fresh worktree before creating the PR.
+  - Call out any explicit user instruction to skip PR creation in the final handoff.
