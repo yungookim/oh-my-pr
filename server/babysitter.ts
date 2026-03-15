@@ -9,6 +9,7 @@ import {
   type CodingAgent,
 } from "./agentRunner";
 import {
+  addReactionToComment,
   buildOctokit,
   fetchFeedbackItemsForPR,
   fetchPullSummary,
@@ -17,10 +18,13 @@ import {
   listOpenPullsForRepo,
   parseRepoSlug,
   postFollowUpForFeedbackItem,
+  postStatusReplyForFeedbackItem,
   resolveReviewThread,
   resolveGitHubAuthToken,
+  updateStatusReply,
   type GitHubPullSummary,
   type ParsedPRUrl,
+  type StatusReplyRef,
 } from "./github";
 import { getCodeFactoryPaths } from "./paths";
 import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
@@ -29,14 +33,17 @@ const DEFAULT_GIT_USER_NAME = "PR Babysitter";
 const DEFAULT_GIT_USER_EMAIL = "pr-babysitter@local";
 
 type GitHubService = {
+  addReactionToComment: typeof addReactionToComment;
   buildOctokit: typeof buildOctokit;
   fetchFeedbackItemsForPR: typeof fetchFeedbackItemsForPR;
   fetchPullSummary: typeof fetchPullSummary;
   listFailingStatuses: typeof listFailingStatuses;
   listOpenPullsForRepo: typeof listOpenPullsForRepo;
   postFollowUpForFeedbackItem: typeof postFollowUpForFeedbackItem;
+  postStatusReplyForFeedbackItem: typeof postStatusReplyForFeedbackItem;
   resolveReviewThread: typeof resolveReviewThread;
   resolveGitHubAuthToken: typeof resolveGitHubAuthToken;
+  updateStatusReply: typeof updateStatusReply;
 };
 
 type BabysitterRuntime = {
@@ -47,14 +54,17 @@ type BabysitterRuntime = {
 };
 
 const defaultGitHubService: GitHubService = {
+  addReactionToComment,
   buildOctokit,
   fetchFeedbackItemsForPR,
   fetchPullSummary,
   listFailingStatuses,
   listOpenPullsForRepo,
   postFollowUpForFeedbackItem,
+  postStatusReplyForFeedbackItem,
   resolveReviewThread,
   resolveGitHubAuthToken,
+  updateStatusReply,
 };
 
 const defaultBabysitterRuntime: BabysitterRuntime = {
@@ -293,6 +303,10 @@ function buildFeedbackFollowUpBody(headSha: string, auditToken: string): string 
     "",
     auditToken,
   ].join("\n");
+}
+
+function appendStatusLine(existingBody: string, line: string): string {
+  return existingBody ? `${existingBody}\n${line}` : line;
 }
 
 function formatCommand(command: string, args: string[]): string {
@@ -619,6 +633,19 @@ export class PRBabysitter {
       const pullSummary = await this.github.fetchPullSummary(octokit, parsedPr);
       const failingStatuses = await this.github.listFailingStatuses(octokit, parsedRepo, pullSummary.headSha);
 
+      // Track status reply comments so we can update them with progress.
+      const statusReplies = new Map<string, StatusReplyRef>();
+      const updateItemStatus = async (feedbackId: string, line: string) => {
+        const ref = statusReplies.get(feedbackId);
+        if (!ref) return;
+        try {
+          const newBody = appendStatusLine(ref.body, line);
+          await this.github.updateStatusReply(octokit, parsedPr, ref, newBody);
+        } catch {
+          // Status updates are best-effort; don't fail the run.
+        }
+      };
+
       const pendingComments = pr.feedbackItems.filter((item) => item.decision === null);
       await queueLog(pr.id, "info", `Evaluating ${pendingComments.length} pending feedback item(s)`, {
         phase: "evaluate.comments",
@@ -650,6 +677,28 @@ export class PRBabysitter {
             phase: "evaluate.comments",
             metadata: { feedbackId: item.id, decision: "accept" },
           });
+
+          // Add 👀 reaction to signal we've seen this comment.
+          try {
+            await this.github.addReactionToComment(octokit, parsedPr, item, "eyes");
+          } catch {
+            // Best-effort — don't fail the run for a reaction.
+          }
+
+          // Post an initial status reply so the reviewer sees progress.
+          try {
+            const ref = await this.github.postStatusReplyForFeedbackItem(
+              octokit,
+              parsedPr,
+              item,
+              `\u23f3 **Accepted** — this comment requires code changes. Queuing fix...`,
+            );
+            if (ref) {
+              statusReplies.set(item.id, ref);
+            }
+          } catch {
+            // Best-effort status reply.
+          }
         } else {
           commentDecisions.set(item.id, { decision: "reject", reason: evaluation.reason });
           await queueLog(pr.id, "info", `Rejected feedback ${item.id}: ${evaluation.reason}`, {
@@ -804,6 +853,11 @@ export class PRBabysitter {
             metadata: { githubAuth: Boolean(githubToken) },
           });
 
+          // Update status replies: agent is starting.
+          for (const task of commentTasks) {
+            await updateItemStatus(task.id, `\ud83e\uddf0 **Agent running** — \`${agent}\` is working on the fix...`);
+          }
+
           const applyResult = await this.runtime.applyFixesWithAgent({
             agent,
             cwd: worktreePath,
@@ -822,8 +876,18 @@ export class PRBabysitter {
           await agentStderr.flush();
 
           if (applyResult.code !== 0) {
+            // Update status replies on failure.
+            for (const task of commentTasks) {
+              await updateItemStatus(task.id, `\u274c **Agent failed** — the coding agent exited with an error.`);
+            }
             throw new Error(`Agent apply failed (${applyResult.code}): ${applyResult.stderr || applyResult.stdout}`);
           }
+
+          // Update status replies: agent succeeded.
+          for (const task of commentTasks) {
+            await updateItemStatus(task.id, `\u2705 **Agent completed** — verifying changes...`);
+          }
+
           await queueLog(pr.id, "info", `${agent} completed successfully`, {
             phase: "agent",
             metadata: { code: applyResult.code },
@@ -981,6 +1045,13 @@ export class PRBabysitter {
             resolved: shouldResolveThread,
           },
         });
+
+        // Final status update on the progress reply.
+        const shortSha = headShaForFollowUp.trim().slice(0, 7);
+        const resolvedMsg = shortSha
+          ? `\ud83c\udf89 **Resolved** — addressed in commit \`${shortSha}\`.`
+          : `\ud83c\udf89 **Resolved** — addressed in the latest babysitter run.`;
+        await updateItemStatus(item.id, resolvedMsg);
       }
 
       pr = await this.syncFeedbackForPR(pr.id, {

@@ -87,6 +87,7 @@ const REVIEW_THREAD_REPLY_MUTATION = `
     addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
       comment {
         id
+        databaseId
       }
     }
   }
@@ -708,6 +709,111 @@ export async function listOpenPullsForRepo(
     headRepoFullName: pull.head?.repo?.full_name || `${repo.owner}/${repo.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${repo.owner}/${repo.repo}.git`,
   }));
+}
+
+export async function addReactionToComment(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  item: FeedbackItem,
+  content: "eyes" | "+1" | "-1" | "laugh" | "confused" | "heart" | "hooray" | "rocket",
+): Promise<void> {
+  const commentId = Number(item.sourceId);
+  if (!Number.isFinite(commentId)) return;
+
+  if (item.type === "review_comment") {
+    await withGitHubErrorHandling("reaction on review comment", parsed, () =>
+      octokit.reactions.createForPullRequestReviewComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: commentId,
+        content,
+      }),
+    );
+  } else if (item.type === "general_comment") {
+    await withGitHubErrorHandling("reaction on issue comment", parsed, () =>
+      octokit.reactions.createForIssueComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: commentId,
+        content,
+      }),
+    );
+  }
+  // Reviews don't support direct reactions — silently skip.
+}
+
+export type StatusReplyRef = {
+  commentDatabaseId: number;
+  replyKind: FeedbackItem["replyKind"];
+  body: string;
+};
+
+export async function postStatusReplyForFeedbackItem(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  item: FeedbackItem,
+  body: string,
+): Promise<StatusReplyRef | null> {
+  if (item.replyKind === "review_thread") {
+    if (!item.threadId) return null;
+
+    const result = await withGitHubErrorHandling("status reply in review thread", parsed, () =>
+      octokit.request("POST /graphql", {
+        query: REVIEW_THREAD_REPLY_MUTATION,
+        threadId: item.threadId,
+        body,
+      }),
+    );
+
+    const commentData = (result.data as {
+      addPullRequestReviewThreadReply?: { comment?: { databaseId?: number | null } };
+    })?.addPullRequestReviewThreadReply?.comment;
+    const databaseId = commentData?.databaseId;
+    if (typeof databaseId !== "number") return null;
+
+    return { commentDatabaseId: databaseId, replyKind: item.replyKind, body };
+  }
+
+  // For review and general_comment, post an issue comment.
+  const result = await withGitHubErrorHandling("status reply", parsed, () =>
+    octokit.issues.createComment({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+      body,
+    }),
+  );
+
+  return { commentDatabaseId: result.data.id, replyKind: item.replyKind, body };
+}
+
+export async function updateStatusReply(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  ref: StatusReplyRef,
+  newBody: string,
+): Promise<void> {
+  if (ref.replyKind === "review_thread") {
+    await withGitHubErrorHandling("update review comment", parsed, () =>
+      octokit.pulls.updateReviewComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: ref.commentDatabaseId,
+        body: newBody,
+      }),
+    );
+  } else {
+    await withGitHubErrorHandling("update issue comment", parsed, () =>
+      octokit.issues.updateComment({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        comment_id: ref.commentDatabaseId,
+        body: newBody,
+      }),
+    );
+  }
+
+  ref.body = newBody;
 }
 
 export async function listFailingStatuses(

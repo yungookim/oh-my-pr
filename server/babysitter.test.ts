@@ -155,6 +155,9 @@ test("syncFeedbackForPR logs completion even when no new feedback items arrive",
       throw new Error("unused in this test");
     },
     resolveGitHubAuthToken: async () => undefined,
+    addReactionToComment: async () => {},
+    postStatusReplyForFeedbackItem: async () => null,
+    updateStatusReply: async () => {},
   });
 
   const updated = await babysitter.syncFeedbackForPR(pr.id);
@@ -233,6 +236,9 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
         resolvedThreads.push(threadId);
       },
       resolveGitHubAuthToken: async () => "test-token",
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
     },
     {
       resolveAgent: async () => "codex",
@@ -331,6 +337,9 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
       },
       resolveReviewThread: async () => undefined,
       resolveGitHubAuthToken: async () => "test-token",
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
     },
     {
       resolveAgent: async () => "codex",
@@ -438,6 +447,9 @@ test("babysitPR retries accepted feedback items that still need GitHub follow-up
         resolvedThreads.push(threadId);
       },
       resolveGitHubAuthToken: async () => "test-token",
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
     },
     {
       resolveAgent: async () => "codex",
@@ -544,6 +556,9 @@ test("babysitPR resolves lingering review threads without reposting an existing 
         resolvedThreads.push(threadId);
       },
       resolveGitHubAuthToken: async () => "test-token",
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
     },
     {
       resolveAgent: async () => "codex",
