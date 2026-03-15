@@ -4,6 +4,7 @@ import { z } from "zod";
 import { addPRSchema, configSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { PRBabysitter } from "./babysitter";
+import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
 import {
   buildOctokit,
   fetchPullSummary,
@@ -222,29 +223,14 @@ export async function registerRoutes(
 
       const body = item.body.toLowerCase();
       if (body.includes("lgtm") || body.includes("looks good")) {
-        return {
-          ...item,
-          decision: "reject" as const,
-          decisionReason: "Acknowledgement, no code change requested",
-          action: null,
-        };
+        return applyEvaluationDecision(item, false, "Acknowledgement, no code change requested");
       }
 
       if (body.includes("please") || body.includes("should") || body.includes("fix") || body.includes("error") || body.includes("fail")) {
-        return {
-          ...item,
-          decision: "accept" as const,
-          decisionReason: "Likely actionable request",
-          action: item.body,
-        };
+        return { ...applyEvaluationDecision(item, true, "Likely actionable request"), action: item.body };
       }
 
-      return {
-        ...item,
-        decision: "flag" as const,
-        decisionReason: "Unclear actionability, flagged for manual review",
-        action: null,
-      };
+      return applyFlagDecision(item, "Unclear actionability, flagged for manual review");
     });
 
     const accepted = triaged.filter((i) => i.decision === "accept").length;
@@ -308,7 +294,7 @@ export async function registerRoutes(
 
     const feedbackItems = pr.feedbackItems.map((item) =>
       item.id === req.params.feedbackId
-        ? { ...item, decision, decisionReason: "Manual override" }
+        ? applyManualDecision(item, decision as "accept" | "reject" | "flag")
         : item,
     );
 

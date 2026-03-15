@@ -4,10 +4,22 @@ import type { FeedbackItem } from "@shared/schema";
 import {
   applyManualDecision,
   applyEvaluationDecision,
+  applyFlagDecision,
   markInProgress,
   markResolved,
   markFailed,
 } from "./feedbackLifecycle";
+
+function applyLegacyTriage(item: FeedbackItem): FeedbackItem {
+  const body = item.body.toLowerCase();
+  if (body.includes("lgtm") || body.includes("looks good")) {
+    return applyEvaluationDecision(item, false, "Acknowledgement, no code change requested");
+  }
+  if (body.includes("please") || body.includes("should") || body.includes("fix") || body.includes("error") || body.includes("fail")) {
+    return applyEvaluationDecision(item, true, "Likely actionable request");
+  }
+  return applyFlagDecision(item, "Unclear actionability, flagged for manual review");
+}
 
 function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
   return {
@@ -106,4 +118,50 @@ test("helpers return full FeedbackItem with unchanged fields preserved", () => {
   assert.equal(result.author, "bob");
   assert.equal(result.body, "Check this");
   assert.equal(result.id, item.id);
+});
+
+test("applyFlagDecision maps to flagged with reason", () => {
+  const item = makeItem();
+  const result = applyFlagDecision(item, "Unclear actionability");
+  assert.equal(result.decision, "flag");
+  assert.equal(result.status, "flagged");
+  assert.equal(result.statusReason, "Unclear actionability");
+});
+
+test("applyLegacyTriage lgtm phrase maps to rejected", () => {
+  const item = makeItem({ body: "LGTM, looks good to me!" });
+  const result = applyLegacyTriage(item);
+  assert.equal(result.decision, "reject");
+  assert.equal(result.status, "rejected");
+  assert.equal(result.statusReason, "Acknowledgement, no code change requested");
+});
+
+test("applyLegacyTriage looks good phrase maps to rejected", () => {
+  const item = makeItem({ body: "Looks good overall" });
+  const result = applyLegacyTriage(item);
+  assert.equal(result.decision, "reject");
+  assert.equal(result.status, "rejected");
+});
+
+test("applyLegacyTriage actionable phrase maps to queued", () => {
+  const item = makeItem({ body: "Please fix the null check here" });
+  const result = applyLegacyTriage(item);
+  assert.equal(result.decision, "accept");
+  assert.equal(result.status, "queued");
+  assert.equal(result.statusReason, "Likely actionable request");
+});
+
+test("applyLegacyTriage should phrase maps to queued", () => {
+  const item = makeItem({ body: "This should be refactored" });
+  const result = applyLegacyTriage(item);
+  assert.equal(result.decision, "accept");
+  assert.equal(result.status, "queued");
+});
+
+test("applyLegacyTriage ambiguous phrase maps to flagged", () => {
+  const item = makeItem({ body: "Interesting approach here" });
+  const result = applyLegacyTriage(item);
+  assert.equal(result.decision, "flag");
+  assert.equal(result.status, "flagged");
+  assert.equal(result.statusReason, "Unclear actionability, flagged for manual review");
 });

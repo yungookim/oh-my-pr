@@ -40,6 +40,10 @@ export function applyEvaluationDecision(
   };
 }
 
+export function applyFlagDecision(item: FeedbackItem, reason: string): FeedbackItem {
+  return { ...item, decision: "flag", status: "flagged", statusReason: reason };
+}
+
 export function markInProgress(item: FeedbackItem): FeedbackItem {
   return {
     ...item,
