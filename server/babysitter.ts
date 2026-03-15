@@ -948,18 +948,23 @@ export class PRBabysitter {
       }
 
       for (const item of followUpTasks) {
-        await queueLog(pr.id, "info", `Posting GitHub follow-up for ${item.id}`, {
-          phase: "github.followup",
-          metadata: {
-            feedbackId: item.id,
-            replyKind: item.replyKind,
-          },
-        });
+        const shouldPostFollowUp = !hasAuditTrail(item, pr.feedbackItems);
+        const shouldResolveThread = item.replyKind === "review_thread" && !item.threadResolved;
 
-        const body = buildFeedbackFollowUpBody(headShaForFollowUp, item.auditToken);
-        await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body);
+        if (shouldPostFollowUp) {
+          await queueLog(pr.id, "info", `Posting GitHub follow-up for ${item.id}`, {
+            phase: "github.followup",
+            metadata: {
+              feedbackId: item.id,
+              replyKind: item.replyKind,
+            },
+          });
 
-        if (item.replyKind === "review_thread") {
+          const body = buildFeedbackFollowUpBody(headShaForFollowUp, item.auditToken);
+          await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body);
+        }
+
+        if (shouldResolveThread) {
           if (!item.threadId) {
             throw new Error(`Missing review thread metadata for ${item.id}`);
           }
@@ -972,7 +977,8 @@ export class PRBabysitter {
           metadata: {
             feedbackId: item.id,
             replyKind: item.replyKind,
-            resolved: item.replyKind === "review_thread",
+            posted: shouldPostFollowUp,
+            resolved: shouldResolveThread,
           },
         });
       }
