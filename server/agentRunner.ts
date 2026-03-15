@@ -87,7 +87,10 @@ export async function evaluateFixNecessityWithAgent(params: {
       } catch (error) {
         if (isMissingFileError(error)) {
           const suffix = result.stderr ? `: ${result.stderr}` : "";
-          throw new Error(`codex evaluation completed without writing expected output file ${outputFile}${suffix}`);
+          throw new Error(
+            `codex evaluation completed without writing expected output file ${outputFile}${suffix}`,
+            { cause: error },
+          );
         }
         throw error;
       }
