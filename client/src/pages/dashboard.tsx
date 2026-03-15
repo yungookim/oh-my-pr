@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getRepoHref } from "@/lib/repoHref";
 import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 
@@ -31,15 +32,6 @@ function formatStatusLabel(status: PR["status"]): string {
 function formatPollInterval(pollIntervalMs?: number): string {
   const seconds = Math.max(1, Math.round((pollIntervalMs ?? 120000) / 1000));
   return `${seconds}s`;
-}
-
-function getRepoHref(repo: string): string {
-  const [owner, name] = repo.split("/");
-  if (!owner || !name) {
-    return `https://github.com/${repo}`;
-  }
-
-  return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
 }
 
 function StatusDot({ status }: { status: PR["status"] }) {
