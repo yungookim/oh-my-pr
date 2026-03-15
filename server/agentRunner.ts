@@ -14,6 +14,8 @@ export type CommandResult = {
   stdout: string;
   stderr: string;
   code: number;
+  signal?: NodeJS.Signals | null;
+  timedOut?: boolean;
 };
 
 const AGENTS: CodingAgent[] = ["codex", "claude"];
@@ -79,7 +81,16 @@ export async function evaluateFixNecessityWithAgent(params: {
         throw new Error(`codex evaluation failed (${result.code}): ${result.stderr || result.stdout}`);
       }
 
-      const raw = await readFile(outputFile, "utf8");
+      let raw: string;
+      try {
+        raw = await readFile(outputFile, "utf8");
+      } catch (error) {
+        if (isMissingFileError(error)) {
+          const suffix = result.stderr ? `: ${result.stderr}` : "";
+          throw new Error(`codex evaluation completed without writing expected output file ${outputFile}${suffix}`);
+        }
+        throw error;
+      }
       return parseEvaluationOutput(raw);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -188,6 +199,10 @@ function tryParseJsonFromText(text: string): unknown {
   }
 }
 
+function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 export async function runCommand(
   command: string,
   args: string[],
@@ -210,8 +225,10 @@ export async function runCommand(
 
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
 
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGTERM");
     }, timeoutMs);
 
@@ -227,12 +244,21 @@ export async function runCommand(
       options?.onStderrChunk?.(text);
     });
 
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
+      const stderrParts = [stderr.trim()];
+      if (timedOut) {
+        stderrParts.push(`Command timed out after ${timeoutMs}ms`);
+      } else if (signal) {
+        stderrParts.push(`Command terminated by signal ${signal}`);
+      }
+
       resolve({
         stdout,
-        stderr,
-        code: code ?? 1,
+        stderr: stderrParts.filter(Boolean).join("\n"),
+        code: timedOut ? 124 : (code ?? 1),
+        signal,
+        timedOut,
       });
     });
 

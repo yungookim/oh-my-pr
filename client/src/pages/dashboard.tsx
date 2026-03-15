@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getRepoHref } from "@/lib/repoHref";
 import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 
@@ -69,10 +70,22 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
   const checkedAt = formatClock(pr.lastChecked);
 
   return (
-    <button
+    <div
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
       data-testid={`pr-row-${pr.id}`}
-      className={`w-full border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+      className={`w-full border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
         isSelected ? "bg-muted" : ""
       }`}
     >
@@ -84,7 +97,15 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
             <span className="truncate">{pr.title}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.75rem] text-[11px] text-muted-foreground">
-            <span>{pr.repo}</span>
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              className="underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
+            >
+              {pr.repo}
+            </a>
             <span>{formatStatusLabel(pr.status)}</span>
             {pr.feedbackItems.length > 0 && (
               <span>{pr.accepted}a {pr.rejected}r {pr.flagged}f</span>
@@ -93,7 +114,7 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -480,6 +501,29 @@ export default function Dashboard() {
                   >
                     Watch
                   </button>
+                </div>
+                <div className="mt-3">
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Tracked repositories
+                  </div>
+                  {repos.length === 0 ? (
+                    <div className="text-[11px] text-muted-foreground">No repositories being watched yet.</div>
+                  ) : (
+                    <div className="space-y-1 text-[12px]">
+                      {repos.map((repo) => (
+                        <a
+                          key={repo}
+                          href={getRepoHref(repo)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid={`tracked-repo-${repo.replace("/", "-")}`}
+                          className="block break-all text-foreground/75 underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
+                        >
+                          {repo}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </form>
             </>
