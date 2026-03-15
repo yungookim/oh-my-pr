@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
+import { feedbackStatusEnum } from "@shared/schema";
 import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { getCodeFactoryPaths } from "./paths";
@@ -148,6 +149,8 @@ export class SqliteStorage implements IStorage {
         decision TEXT,
         decision_reason TEXT,
         action TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        status_reason TEXT,
         FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
       );
 
@@ -313,7 +316,7 @@ export class SqliteStorage implements IStorage {
         decision: row.decision,
         decisionReason: row.decision_reason,
         action: row.action,
-        status: (row.status ?? "pending") as FeedbackItem["status"],
+        status: feedbackStatusEnum.catch("pending").parse(row.status ?? "pending"),
         statusReason: row.status_reason ?? null,
       };
 
