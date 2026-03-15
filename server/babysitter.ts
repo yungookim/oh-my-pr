@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Config, FeedbackItem, PR } from "@shared/schema";
+import type { FeedbackItem, PR } from "@shared/schema";
 import type { IStorage } from "./storage";
 import {
   applyFixesWithAgent,
