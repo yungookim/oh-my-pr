@@ -51,6 +51,20 @@
   - Reflect that scope in the design doc and implementation plan.
   - Add reload tests that cover each promised state category, not just one table.
 
+## 2026-03-15 - Sync CREATE TABLE DDL with ensureColumn migrations
+- Pattern: New columns were added via `ensureColumn` but the `CREATE TABLE` statement was left unchanged, causing the DDL to diverge from the actual table shape.
+- Rule: When adding columns to an existing SQLite table via `ensureColumn`, also add those columns to the `CREATE TABLE` block so fresh databases and migrated databases have identical schemas.
+- Prevention checklist:
+  - After adding an `ensureColumn` call, also update the `CREATE TABLE` statement with the same column definition.
+  - Use `ensureColumn` only for migration of existing DBs; the canonical definition lives in `CREATE TABLE`.
+
+## 2026-03-15 - Use Zod's `.catch()` for safe SQLite enum round-trips
+- Pattern: Raw SQLite string values were cast with TypeScript `as` to enum types, bypassing validation. A corrupt or future value would silently produce invalid state.
+- Rule: When reading enum-typed columns from SQLite, use `schema.catch(defaultValue).parse(row.field)` so unknown values fall back gracefully instead of propagating invalid state.
+- Prevention checklist:
+  - Never cast SQLite TEXT columns to enum types with `as`; use Zod parse with `.catch()` instead.
+  - Provide a safe default (e.g., `"pending"`) that keeps old rows valid without throwing.
+
 ## 2026-03-15 - Confirm the exact push target before defaulting to a safety branch
 - Pattern: I defaulted to pushing a new branch for a repo import, but the user later clarified they wanted the full workspace on `main`.
 - Rule: When a user asks to push a repository, determine the intended destination branch up front; use a safety branch only when the branch target is unspecified.
