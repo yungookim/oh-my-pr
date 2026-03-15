@@ -81,12 +81,14 @@ function mergeFeedbackItems(existing: FeedbackItem[], incoming: FeedbackItem[]):
       return item;
     }
 
-    // Preserve triage decisions and action annotations across refreshes.
+    // Preserve triage decisions, action annotations, and lifecycle status across refreshes.
     return {
       ...item,
       decision: previous.decision,
       decisionReason: previous.decisionReason,
       action: previous.action,
+      status: previous.status,
+      statusReason: previous.statusReason,
     };
   });
 

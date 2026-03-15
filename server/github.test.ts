@@ -144,6 +144,19 @@ test("fetchFeedbackItemsForPR keeps review bots that are not explicitly ignored"
   assert.match(items[0].bodyHtml, /<p>Conversation summary comment<\/p>/);
   assert.match(items[1].bodyHtml, /<p>Top-level review body<\/p>/);
   assert.match(items[2].bodyHtml, /<p>Inline bot suggestion<\/p>/);
+
+  // Every normalized item must carry lifecycle defaults.
+  for (const item of items) {
+    assert.equal(item.status, "pending", `expected status=pending for item ${item.id}`);
+    assert.equal(item.statusReason, null, `expected statusReason=null for item ${item.id}`);
+  }
+
+  // The review-comment item with review-thread metadata must still carry the defaults.
+  const reviewCommentItem = items.find((item) => item.type === "review_comment");
+  assert.ok(reviewCommentItem, "expected a review_comment item");
+  assert.ok(reviewCommentItem.threadId, "expected threadId to be present");
+  assert.equal(reviewCommentItem.status, "pending");
+  assert.equal(reviewCommentItem.statusReason, null);
 });
 
 test("fetchFeedbackItemsForPR paginates review thread comments beyond the first page", async () => {
