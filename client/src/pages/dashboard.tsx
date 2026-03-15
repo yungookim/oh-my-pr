@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
+import {
+  formatFeedbackStatusLabel,
+  getFeedbackStatusBadgeClass,
+  isFeedbackCollapsedByDefault,
+  countActiveFeedbackStatuses,
+} from "@/lib/feedbackStatus";
 
 function formatClock(timestamp: string | null): string | null {
   if (!timestamp) {
@@ -60,6 +67,15 @@ function DecisionTag({ decision }: { decision: string | null }) {
   );
 }
 
+function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
+  const cls = getFeedbackStatusBadgeClass(status);
+  return (
+    <span className={`inline-block border px-1.5 py-0 text-[11px] uppercase tracking-wide ${cls}`}>
+      {formatFeedbackStatusLabel(status)}
+    </span>
+  );
+}
+
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
 
@@ -81,9 +97,15 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.75rem] text-[11px] text-muted-foreground">
             <span>{pr.repo}</span>
             <span>{formatStatusLabel(pr.status)}</span>
-            {pr.feedbackItems.length > 0 && (
-              <span>{pr.accepted}a {pr.rejected}r {pr.flagged}f</span>
-            )}
+            {pr.feedbackItems.length > 0 && (() => {
+              const counts = countActiveFeedbackStatuses(pr.feedbackItems);
+              const parts: string[] = [];
+              if (counts.queued > 0) parts.push(`${counts.queued}q`);
+              if (counts.inProgress > 0) parts.push(`${counts.inProgress} active`);
+              if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+              if (parts.length === 0) return <span>{pr.feedbackItems.length} items</span>;
+              return <span>{parts.join(" · ")}</span>;
+            })()}
             {checkedAt && <span>checked {checkedAt}</span>}
           </div>
         </div>
@@ -111,24 +133,54 @@ function FeedbackRow({
   });
 
   const createdAt = formatClock(item.createdAt);
+  const collapsedByDefault = isFeedbackCollapsedByDefault(item.status);
 
   return (
-    <div className="border-b border-border px-4 py-3" data-testid={`feedback-${item.id}`}>
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 pt-0.5">
-          <DecisionTag decision={item.decision} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            <span className="font-medium">{item.author}</span>
-            {item.file && (
-              <span className="text-[11px] text-muted-foreground">
-                {item.file}{item.line ? `:${item.line}` : ""}
-              </span>
-            )}
-            <span className="text-[11px] text-muted-foreground">{item.type.replace("_", " ")}</span>
-            {createdAt && <span className="text-[11px] text-muted-foreground">{createdAt}</span>}
+    <Collapsible.Root defaultOpen={!collapsedByDefault} className="border-b border-border">
+      <div className="px-4 py-3">
+        {/* Header row - always visible */}
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 pt-0.5">
+            <FeedbackStatusTag status={item.status} />
           </div>
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="font-medium">{item.author}</span>
+              {item.file && (
+                <span className="text-[11px] text-muted-foreground">
+                  {item.file}{item.line ? `:${item.line}` : ""}
+                </span>
+              )}
+              <span className="text-[11px] text-muted-foreground">{item.type.replace("_", " ")}</span>
+              {createdAt && <span className="text-[11px] text-muted-foreground">{createdAt}</span>}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Collapsible.Trigger asChild>
+              <button
+                data-testid={`toggle-${item.id}`}
+                className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-foreground hover:text-background border border-border"
+              >
+                ↕
+              </button>
+            </Collapsible.Trigger>
+            {["accept", "reject", "flag"].map((decision) => (
+              <button
+                key={decision}
+                onClick={() => overrideMutation.mutate(decision)}
+                data-testid={`override-${decision}-${item.id}`}
+                className={`px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background ${
+                  item.decision === decision ? "bg-foreground text-background" : "border border-border text-muted-foreground"
+                }`}
+              >
+                {decision.charAt(0)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <Collapsible.Content>
+        <div className="px-4 pb-3">
           {item.bodyHtml ? (
             <div
               className="feedback-markdown text-[12px] leading-relaxed"
@@ -137,26 +189,14 @@ function FeedbackRow({
           ) : (
             <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/80">{item.body}</p>
           )}
-          {item.decisionReason && (
-            <p className="mt-2 text-[11px] text-muted-foreground">{item.decisionReason}</p>
+          {(item.statusReason || item.decisionReason) && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {item.statusReason || item.decisionReason}
+            </p>
           )}
         </div>
-        <div className="flex shrink-0 gap-1">
-          {["accept", "reject", "flag"].map((decision) => (
-            <button
-              key={decision}
-              onClick={() => overrideMutation.mutate(decision)}
-              data-testid={`override-${decision}-${item.id}`}
-              className={`px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background ${
-                item.decision === decision ? "bg-foreground text-background" : "border border-border text-muted-foreground"
-              }`}
-            >
-              {decision.charAt(0)}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }
 
@@ -474,9 +514,16 @@ export default function Dashboard() {
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                       <span>status: {formatStatusLabel(selectedPR.status)}</span>
                       <span>{selectedPR.feedbackItems.length} items</span>
-                      {selectedPR.accepted > 0 && <span>{selectedPR.accepted} accepted</span>}
-                      {selectedPR.rejected > 0 && <span>{selectedPR.rejected} rejected</span>}
-                      {selectedPR.flagged > 0 && <span>{selectedPR.flagged} flagged</span>}
+                      {selectedPR.feedbackItems.length > 0 && (() => {
+                        const counts = countActiveFeedbackStatuses(selectedPR.feedbackItems);
+                        return (
+                          <>
+                            {counts.queued > 0 && <span>{counts.queued} queued</span>}
+                            {counts.inProgress > 0 && <span>{counts.inProgress} in progress</span>}
+                            {counts.failed > 0 && <span>{counts.failed} failed</span>}
+                          </>
+                        );
+                      })()}
                       {selectedPR.testsPassed !== null && (
                         <span>tests: {selectedPR.testsPassed ? "pass" : "fail"}</span>
                       )}
