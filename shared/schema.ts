@@ -8,6 +8,17 @@ export type PRStatus = z.infer<typeof prStatusEnum>;
 export const triageDecision = z.enum(["accept", "reject", "flag"]);
 export type TriageDecision = z.infer<typeof triageDecision>;
 
+export const feedbackStatusEnum = z.enum([
+  "pending",
+  "queued",
+  "in_progress",
+  "resolved",
+  "failed",
+  "rejected",
+  "flagged",
+]);
+export type FeedbackStatus = z.infer<typeof feedbackStatusEnum>;
+
 export const feedbackItemSchema = z.object({
   id: z.string(),
   author: z.string(),
@@ -27,6 +38,8 @@ export const feedbackItemSchema = z.object({
   decision: triageDecision.nullable(),
   decisionReason: z.string().nullable(),
   action: z.string().nullable(),
+  status: feedbackStatusEnum,
+  statusReason: z.string().nullable(),
 });
 export type FeedbackItem = z.infer<typeof feedbackItemSchema>;
 

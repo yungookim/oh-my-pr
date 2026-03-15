@@ -57,6 +57,8 @@ type FeedbackItemRow = {
   decision: FeedbackItem["decision"];
   decision_reason: string | null;
   action: string | null;
+  status: string;
+  status_reason: string | null;
 };
 
 type LogRow = {
@@ -172,6 +174,8 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("feedback_items", "thread_id", "TEXT");
     this.ensureColumn("feedback_items", "thread_resolved", "INTEGER");
     this.ensureColumn("feedback_items", "audit_token", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("feedback_items", "status", "TEXT NOT NULL DEFAULT 'pending'");
+    this.ensureColumn("feedback_items", "status_reason", "TEXT");
 
     const configExists = this.db.prepare("SELECT 1 AS present FROM config WHERE id = 1").get() as { present: number } | undefined;
     if (!configExists) {
@@ -283,7 +287,7 @@ export class SqliteStorage implements IStorage {
     const rows = this.db.prepare(`
       SELECT id, pr_id, author, body, body_html, reply_kind, source_id, source_node_id, source_url,
              thread_id, thread_resolved, audit_token, file, line, type, created_at, decision,
-             decision_reason, action
+             decision_reason, action, status, status_reason
       FROM feedback_items
       WHERE pr_id IN (${placeholders})
       ORDER BY created_at ASC
@@ -309,6 +313,8 @@ export class SqliteStorage implements IStorage {
         decision: row.decision,
         decisionReason: row.decision_reason,
         action: row.action,
+        status: (row.status ?? "pending") as FeedbackItem["status"],
+        statusReason: row.status_reason ?? null,
       };
 
       const items = itemsByPrId.get(row.pr_id) || [];
@@ -324,8 +330,9 @@ export class SqliteStorage implements IStorage {
     const insert = this.db.prepare(`
       INSERT INTO feedback_items (
         id, pr_id, author, body, body_html, reply_kind, source_id, source_node_id, source_url,
-        thread_id, thread_resolved, audit_token, file, line, type, created_at, decision, decision_reason, action
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        thread_id, thread_resolved, audit_token, file, line, type, created_at, decision, decision_reason, action,
+        status, status_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const item of items) {
@@ -349,6 +356,8 @@ export class SqliteStorage implements IStorage {
         item.decision,
         item.decisionReason,
         item.action,
+        item.status,
+        item.statusReason,
       );
     }
   }

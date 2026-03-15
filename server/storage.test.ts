@@ -50,6 +50,8 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
         decision: "accept",
         decisionReason: "Actionable request",
         action: "Fix thing",
+        status: "resolved",
+        statusReason: "GitHub audit trail verified",
       },
     ],
     accepted: 1,
@@ -78,6 +80,8 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(reloadedPr?.feedbackItems[0]?.threadId, "PRRT_kwDO_thread");
   assert.equal(reloadedPr?.feedbackItems[0]?.auditToken, "codefactory-feedback:feedback-1");
   assert.equal(reloadedPr?.accepted, 1);
+  assert.equal(reloadedPr?.feedbackItems[0]?.status, "resolved");
+  assert.equal(reloadedPr?.feedbackItems[0]?.statusReason, "GitHub audit trail verified");
   assert.equal(logs.length, 1);
   assert.equal(logs[0]?.phase, "agent");
   assert.deepEqual(logs[0]?.metadata, { attempt: 1 });
