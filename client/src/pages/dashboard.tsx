@@ -273,10 +273,6 @@ export default function Dashboard() {
 
   const { data: archivedPRs = [], isLoading: isLoadingArchived } = useQuery<PR[]>({
     queryKey: ["/api/prs/archived"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/prs/archived");
-      return res.json();
-    },
     refetchInterval: 10000,
   });
 
