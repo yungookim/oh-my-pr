@@ -48,7 +48,31 @@ const REVIEW_THREADS_QUERY = `
               nodes {
                 databaseId
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
+
+const REVIEW_THREAD_COMMENTS_QUERY = `
+  query CodeFactoryReviewThreadComments($threadId: ID!, $cursor: String) {
+    node(id: $threadId) {
+      ... on PullRequestReviewThread {
+        id
+        isResolved
+        comments(first: 100, after: $cursor) {
+          nodes {
+            databaseId
           }
           pageInfo {
             hasNextPage
@@ -121,6 +145,24 @@ type ReviewThreadLookup = Map<number, {
   threadId: string;
   threadResolved: boolean;
 }>;
+
+type ReviewThreadCommentNode = {
+  databaseId?: number | null;
+};
+
+type ReviewThreadCommentsConnection = {
+  nodes?: ReviewThreadCommentNode[];
+  pageInfo?: {
+    hasNextPage?: boolean | null;
+    endCursor?: string | null;
+  };
+};
+
+type ReviewThreadNode = {
+  id?: string | null;
+  isResolved?: boolean | null;
+  comments?: ReviewThreadCommentsConnection;
+};
 
 export function buildFeedbackAuditToken(feedbackId: string): string {
   return `codefactory-feedback:${feedbackId}`;
@@ -320,15 +362,7 @@ async function fetchReviewThreadLookup(
       repository?: {
         pullRequest?: {
           reviewThreads?: {
-            nodes?: Array<{
-              id?: string | null;
-              isResolved?: boolean | null;
-              comments?: {
-                nodes?: Array<{
-                  databaseId?: number | null;
-                }>;
-              };
-            }>;
+            nodes?: ReviewThreadNode[];
             pageInfo?: {
               hasNextPage?: boolean | null;
               endCursor?: string | null;
@@ -343,16 +377,8 @@ async function fetchReviewThreadLookup(
         continue;
       }
 
-      for (const comment of thread.comments?.nodes || []) {
-        if (typeof comment?.databaseId !== "number") {
-          continue;
-        }
-
-        lookup.set(comment.databaseId, {
-          threadId: thread.id,
-          threadResolved: Boolean(thread.isResolved),
-        });
-      }
+      addReviewThreadCommentsToLookup(lookup, thread.id, Boolean(thread.isResolved), thread.comments);
+      await appendPaginatedReviewThreadComments(octokit, parsed, lookup, thread);
     }
 
     const pageInfo = reviewThreads?.pageInfo;
@@ -364,6 +390,72 @@ async function fetchReviewThreadLookup(
   }
 
   return lookup;
+}
+
+function addReviewThreadCommentsToLookup(
+  lookup: ReviewThreadLookup,
+  threadId: string,
+  threadResolved: boolean,
+  comments?: ReviewThreadCommentsConnection,
+): void {
+  for (const comment of comments?.nodes || []) {
+    if (typeof comment?.databaseId !== "number") {
+      continue;
+    }
+
+    lookup.set(comment.databaseId, {
+      threadId,
+      threadResolved,
+    });
+  }
+}
+
+async function appendPaginatedReviewThreadComments(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  lookup: ReviewThreadLookup,
+  thread: ReviewThreadNode,
+): Promise<void> {
+  if (!thread.id) {
+    return;
+  }
+
+  let cursor = thread.comments?.pageInfo?.hasNextPage && thread.comments.pageInfo.endCursor
+    ? thread.comments.pageInfo.endCursor
+    : null;
+  let threadResolved = Boolean(thread.isResolved);
+
+  while (cursor) {
+    const response = await withGitHubErrorHandling("review thread comments", parsed, () =>
+      octokit.request("POST /graphql", {
+        query: REVIEW_THREAD_COMMENTS_QUERY,
+        threadId: thread.id,
+        cursor,
+      }),
+    );
+
+    const paginatedThread = (response.data as {
+      node?: ReviewThreadNode;
+    }).node;
+
+    if (!paginatedThread?.id) {
+      break;
+    }
+
+    if (typeof paginatedThread.isResolved === "boolean") {
+      threadResolved = paginatedThread.isResolved;
+    }
+
+    addReviewThreadCommentsToLookup(
+      lookup,
+      paginatedThread.id,
+      threadResolved,
+      paginatedThread.comments,
+    );
+
+    const pageInfo = paginatedThread.comments?.pageInfo;
+    cursor = pageInfo?.hasNextPage && pageInfo.endCursor ? pageInfo.endCursor : null;
+  }
 }
 
 export async function fetchFeedbackItemsForPR(
