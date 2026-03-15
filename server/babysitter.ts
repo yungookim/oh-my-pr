@@ -32,6 +32,7 @@ import { applyEvaluationDecision, markInProgress, markResolved, markFailed } fro
 
 const DEFAULT_GIT_USER_NAME = "PR Babysitter";
 const DEFAULT_GIT_USER_EMAIL = "pr-babysitter@local";
+const AUDIT_TOKEN_PATTERN = /\bcodefactory-feedback:[^\s<>()[\]{}"']+/g;
 
 type GitHubService = {
   addReactionToComment: typeof addReactionToComment;
@@ -245,6 +246,39 @@ function buildAgentFixPrompt(params: {
   ].join("\n");
 }
 
+function extractMentionedAuditTokens(body: string): string[] {
+  const matches = body.match(AUDIT_TOKEN_PATTERN);
+  if (!matches) {
+    return [];
+  }
+
+  return Array.from(new Set(matches));
+}
+
+function isAutomationAuditTrailFollowUp(item: FeedbackItem, feedbackItems: FeedbackItem[]): boolean {
+  const mentionedTokens = extractMentionedAuditTokens(item.body).filter((token) => token !== item.auditToken);
+  if (mentionedTokens.length === 0) {
+    return false;
+  }
+
+  const itemCreatedAtMs = new Date(item.createdAt).getTime();
+
+  return mentionedTokens.some((token) =>
+    feedbackItems.some((candidate) => {
+      if (candidate.id === item.id || candidate.auditToken !== token) {
+        return false;
+      }
+
+      const candidateCreatedAtMs = new Date(candidate.createdAt).getTime();
+      if (Number.isNaN(itemCreatedAtMs) || Number.isNaN(candidateCreatedAtMs)) {
+        return false;
+      }
+
+      return candidateCreatedAtMs <= itemCreatedAtMs;
+    })
+  );
+}
+
 function hasAuditTrail(
   item: FeedbackItem,
   feedbackItems: FeedbackItem[],
@@ -253,6 +287,12 @@ function hasAuditTrail(
   return feedbackItems.some((candidate) => {
     if (candidate.id === item.id || !candidate.body.includes(item.auditToken)) {
       return false;
+    }
+
+    if (item.replyKind === "review_thread") {
+      if (!item.threadId || candidate.threadId !== item.threadId) {
+        return false;
+      }
     }
 
     const createdAtMs = new Date(candidate.createdAt).getTime();
@@ -718,6 +758,19 @@ export class PRBabysitter {
             line: item.line,
           },
         });
+
+        if (isAutomationAuditTrailFollowUp(item, pr.feedbackItems)) {
+          const reason = "Automation audit trail follow-up; no code change required";
+          evaluatedItems.set(item.id, applyEvaluationDecision(item, false, reason));
+          await queueLog(pr.id, "info", `Ignored audit-trail follow-up comment ${item.id}`, {
+            phase: "evaluate.comments",
+            metadata: {
+              feedbackId: item.id,
+              decision: "reject",
+            },
+          });
+          continue;
+        }
 
         const evaluation = await this.runtime.evaluateFixNecessityWithAgent({
           agent,
