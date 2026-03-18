@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -11,6 +11,7 @@ import {
   getFeedbackStatusBadgeClass,
   isFeedbackCollapsedByDefault,
   countActiveFeedbackStatuses,
+  isPRReadyToMerge,
 } from "@/lib/feedbackStatus";
 
 function formatClock(timestamp: string | null): string | null {
@@ -65,6 +66,41 @@ function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
   );
 }
 
+function ReadyToMergeIndicator({
+  href,
+  testId,
+  label,
+  hint,
+  className,
+  dotClassName,
+  hintClassName,
+  onClick,
+}: {
+  href: string;
+  testId: string;
+  label: string;
+  hint?: string;
+  className: string;
+  dotClassName: string;
+  hintClassName?: string;
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={onClick}
+      data-testid={testId}
+      className={`inline-flex items-center border border-green-600 bg-green-600/10 font-medium uppercase text-green-500 transition-colors hover:bg-green-600/20 ${className}`}
+    >
+      <span className={`inline-block rounded-full bg-green-500 ${dotClassName}`} />
+      {label}
+      {hint && <span className={hintClassName}>{hint}</span>}
+    </a>
+  );
+}
+
 function AgentIndicator({ pr }: { pr: PR }) {
   const agentCount = countActiveFeedbackStatuses(pr.feedbackItems).inProgress;
   const isProcessing = pr.status === "processing";
@@ -99,6 +135,7 @@ function AgentIndicator({ pr }: { pr: PR }) {
 
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
+  const readyToMerge = isPRReadyToMerge(pr.feedbackItems);
 
   return (
     <div
@@ -128,6 +165,18 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
             <span className="truncate">{pr.title}</span>
             <AgentIndicator pr={pr} />
           </div>
+          {readyToMerge && (
+            <ReadyToMergeIndicator
+              href={pr.url}
+              testId={`ready-to-merge-${pr.id}`}
+              label="Ready to merge"
+              hint="— click to open PR"
+              onClick={(event) => event.stopPropagation()}
+              className="mt-1.5 ml-[3.75rem] gap-1.5 px-2 py-0.5 text-[11px] tracking-wider"
+              dotClassName="h-1.5 w-1.5"
+              hintClassName="text-[10px] normal-case tracking-normal text-green-500/70"
+            />
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.75rem] text-[11px] text-muted-foreground">
             <a
               href={pr.url}
@@ -681,6 +730,17 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
+                {isPRReadyToMerge(selectedPR.feedbackItems) && (
+                  <ReadyToMergeIndicator
+                    href={selectedPR.url}
+                    testId="detail-ready-to-merge"
+                    label="All comments resolved — ready to merge"
+                    hint="Open PR on GitHub →"
+                    className="mt-2 gap-2 px-3 py-1.5 text-[12px] tracking-wider"
+                    dotClassName="h-2 w-2"
+                    hintClassName="text-[11px] normal-case tracking-normal text-green-500/70"
+                  />
+                )}
                 <div className="text-[11px] text-muted-foreground">
                   Background watcher syncs GitHub feedback and pushes approved fixes automatically.
                 </div>

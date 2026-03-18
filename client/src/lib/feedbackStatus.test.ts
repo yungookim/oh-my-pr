@@ -5,6 +5,7 @@ import {
   formatFeedbackStatusLabel,
   isFeedbackCollapsedByDefault,
   countActiveFeedbackStatuses,
+  isPRReadyToMerge,
 } from "./feedbackStatus";
 
 // formatFeedbackStatusLabel
@@ -32,6 +33,30 @@ test('isFeedbackCollapsedByDefault("failed") === false', () => {
 test('isFeedbackCollapsedByDefault("pending") === false', () => {
   assert.equal(isFeedbackCollapsedByDefault("pending"), false);
 });
+
+// isPRReadyToMerge
+test("isPRReadyToMerge returns false for empty items", () => {
+  assert.equal(isPRReadyToMerge([]), false);
+});
+
+test("isPRReadyToMerge returns true when all resolved or rejected", () => {
+  const items: Pick<FeedbackItem, "status">[] = [
+    { status: "resolved" },
+    { status: "rejected" },
+    { status: "resolved" },
+  ];
+  assert.equal(isPRReadyToMerge(items as FeedbackItem[]), true);
+});
+
+for (const status of ["pending", "in_progress", "failed", "queued", "flagged"] as const) {
+  test(`isPRReadyToMerge returns false when any item is ${status}`, () => {
+    const items: Pick<FeedbackItem, "status">[] = [
+      { status: "resolved" },
+      { status },
+    ];
+    assert.equal(isPRReadyToMerge(items as FeedbackItem[]), false);
+  });
+}
 
 // countActiveFeedbackStatuses
 test("countActiveFeedbackStatuses returns correct queued, inProgress, failed counts", () => {
