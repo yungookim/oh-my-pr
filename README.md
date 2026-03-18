@@ -13,6 +13,8 @@
 
 ---
 
+<img width="1944" height="692" alt="SCR-20260318-qsnq-2" src="https://github.com/user-attachments/assets/b0ac55cd-a5e0-40c8-aae3-f65f59284b08" />
+
 ## Why Code Factory?
 
 Managing PR feedback across multiple repositories is tedious. Review comments pile up, context-switching kills productivity, and small fixes sit idle for hours. Code Factory automates the entire feedback loop:
