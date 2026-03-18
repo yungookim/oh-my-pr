@@ -15,8 +15,21 @@ export function getFeedbackStatusBadgeClass(status: FeedbackStatus): string {
   return "border-foreground/30 text-foreground/60"; // pending
 }
 
+function isTerminalFeedbackStatus(status: FeedbackStatus): boolean {
+  return status === "resolved" || status === "rejected";
+}
+
 export function isFeedbackCollapsedByDefault(status: FeedbackStatus): boolean {
-  return status === "resolved" || status === "rejected" || status === "warning";
+  return isTerminalFeedbackStatus(status) || status === "warning";
+}
+
+/**
+ * A PR is ready to merge when it has feedback items and every item
+ * has reached a terminal state (resolved or rejected).
+ */
+export function isPRReadyToMerge(items: FeedbackItem[]): boolean {
+  if (items.length === 0) return false;
+  return items.every((item) => isTerminalFeedbackStatus(item.status));
 }
 
 export function countActiveFeedbackStatuses(items: FeedbackItem[]): {
