@@ -1,184 +1,191 @@
 # Code Factory
 
-Code Factory is a local GitHub PR babysitter. It watches repositories and pull requests, syncs review feedback into a dashboard, triages comments into actionable work, and can launch an autonomous coding agent to prepare fixes and push them back to the PR branch.
+**Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
 
-The app is built as a single local service: an Express API, a React dashboard, SQLite-backed state, mirrored run logs, and Git/GitHub orchestration for isolated PR work.
+[![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 
-## What It Does
+---
 
-- Watches one or more GitHub repositories for open pull requests.
-- Registers individual pull requests directly from a GitHub PR URL.
-- Pulls review comments, reviews, and discussion into local persistent storage.
-- Renders GitHub markdown feedback into safe HTML for the dashboard.
-- Triage feedback into `accept`, `reject`, or `flag` buckets, with manual overrides.
-- Runs `codex` or `claude` in an isolated worktree to apply approved changes.
-- Commits and pushes fixes back to the PR branch after a successful agent run.
-- Stores full app state locally and mirrors activity logs to daily log files.
+> Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude or Codex agents to prepare fixes — all running on your machine.
 
-## High-Level Flow
+---
 
-1. Add a repository to the watch list or register a PR directly.
-2. The watcher polls GitHub on the configured interval.
-3. Open PRs are synced into local storage.
-4. Review feedback is fetched, normalized, and stored with triage metadata.
-5. The babysitter decides what needs action and what can be ignored or flagged.
-6. An agent run happens inside an isolated git worktree.
-7. Verification, commit, push, and detailed logs are recorded for the dashboard.
+## Why Code Factory?
 
-## Stack
+Managing PR feedback across multiple repositories is tedious. Review comments pile up, context-switching kills productivity, and small fixes sit idle for hours. Code Factory automates the entire feedback loop:
 
-- Server: Node.js, TypeScript, Express
-- Client: React, Vite, TanStack Query, Tailwind
-- Storage: SQLite via `node:sqlite`
-- GitHub integration: Octokit plus optional `gh auth token` fallback
-- Agents: local `codex` or `claude` CLI
+- **Watch** one or more GitHub repositories for open pull requests
+- **Sync** review comments, reviews, and discussion threads into persistent local storage
+- **Triage** feedback into `accept`, `reject`, or `flag` buckets — automatically or manually
+- **Dispatch** Claude or Codex agents in isolated git worktrees to apply approved changes
+- **Push** verified fixes back to the PR branch with full audit logs
 
-## Requirements
+All of this happens locally on your machine. No hosted service, no data leaving your environment.
 
-- Node.js 22+  
-  Tested in this workspace with Node `v24.12.0`.
-- `npm`
-- `git`
-- One of:
-  - `GITHUB_TOKEN`
-  - a GitHub token saved in the app config
-  - `gh auth login` on the local machine
-- One of:
-  - `codex`
-  - `claude`
+## How It Works
 
-## Local Development
-
-Install dependencies:
-
-```bash
-npm install
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Watch Repos │────▶│ Sync Reviews │────▶│ Triage Items │────▶│  Agent Runs  │
+│  & PRs       │     │  & Comments  │     │  accept/     │     │  codex or    │
+│              │     │              │     │  reject/flag │     │  claude CLI  │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────┬───────┘
+                                                                      │
+                                                                      ▼
+                                                               ┌──────────────┐
+                                                               │ Commit & Push│
+                                                               │  to PR branch│
+                                                               └──────────────┘
 ```
 
-Start the app in development mode:
+1. Add a repository to the watch list or register a PR directly by URL.
+2. The watcher polls GitHub on a configurable interval.
+3. Open PRs and their review feedback are fetched, normalized, and stored.
+4. The babysitter triages what needs action and what can be ignored.
+5. An agent run happens inside an isolated git worktree — your working copy stays untouched.
+6. Verification, commit, push, and detailed logs are recorded for the dashboard.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-repo watching** | Monitor multiple GitHub repos simultaneously |
+| **PR registration** | Add individual PRs by URL for one-off tracking |
+| **Smart triage** | Auto-categorize feedback with manual override support |
+| **Agent flexibility** | Choose between Claude and Codex for code remediation |
+| **Isolated worktrees** | Agent runs happen in detached git worktrees — zero risk to your working copy |
+| **Persistent state** | SQLite-backed storage survives restarts |
+| **Activity logs** | Daily mirrored log files with full run details |
+| **Trusted reviewers** | Configure whose feedback gets auto-accepted |
+| **Bot filtering** | Ignore noise from dependabot, codecov, and other bots |
+| **Real-time dashboard** | React-based UI with live status, triage controls, and config management |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Server** | Node.js 22+, TypeScript (strict), Express 5 |
+| **Client** | React 18, Vite, TanStack Query, Tailwind CSS, shadcn/ui |
+| **Storage** | SQLite via `node:sqlite`, Drizzle ORM |
+| **GitHub** | Octokit + `gh auth token` fallback |
+| **Agents** | Claude CLI or Codex CLI |
+| **Testing** | Node test runner with tsx |
+
+## Quick Start
+
+### Prerequisites
+
+- **Node.js 22+** (tested with Node v24.12.0)
+- **npm**
+- **git**
+- A GitHub token (via `GITHUB_TOKEN`, app config, or `gh auth login`)
+- Either `codex` or `claude` CLI installed
+
+### Install & Run
 
 ```bash
+# Clone the repository
+git clone https://github.com/yungookim/codefactory.git
+cd codefactory
+
+# Install dependencies
+npm install
+
+# Start in development mode
 npm run dev
 ```
 
-The server listens on `PORT`, defaulting to `5001`, and serves both the API and the dashboard.
+The server starts on port `5001` (configurable via `PORT`) and serves both the API and the dashboard.
 
-Build the production bundle:
-
-```bash
-npm run build
-```
-
-Start the production build:
+### Production Build
 
 ```bash
-npm run start
+npm run build    # Build the production bundle
+npm run start    # Start the production server
 ```
 
-Run the baseline typecheck:
+### Other Commands
 
 ```bash
-npm run check
+npm run check    # TypeScript strict typecheck
+npm run lint     # ESLint validation
+npm run test     # Run all tests
+npm run db:push  # Push Drizzle schema changes
 ```
 
-Module-level tests in this repo use the Node test runner with `tsx`, for example:
+## Authentication
 
-```bash
-node --test --import tsx server/storage.test.ts
+GitHub auth is resolved in order:
+
+1. `GITHUB_TOKEN` environment variable
+2. Token stored in app config (via the dashboard)
+3. `gh auth token` (GitHub CLI fallback)
+
+## Configuration
+
+All configuration is managed through the dashboard or the API. Persisted settings include:
+
+| Setting | Description |
+|---------|-------------|
+| **Agent** | `codex` or `claude` |
+| **Model** | Model name for the selected agent |
+| **Max turns** | Maximum agent conversation turns |
+| **Polling interval** | How often to check GitHub for updates |
+| **Batch window** | Time window for batching feedback |
+| **Max changes per run** | Limit on changes per agent execution |
+| **Watched repositories** | List of repos to monitor |
+| **Trusted reviewers** | Reviewers whose feedback is auto-accepted |
+| **Ignored bots** | Bot accounts to filter out (defaults: dependabot, codecov, github-actions) |
+
+## Local State & Filesystem
+
+| Path | Purpose |
+|------|---------|
+| `~/.codefactory/state.sqlite` | Durable app state |
+| `~/.codefactory/log/` | Daily mirrored activity logs |
+| `/tmp/pr-babysitter` | PR worktrees for isolated agent runs |
+
+Override paths with `CODEFACTORY_HOME` and `PR_BABYSITTER_ROOT` environment variables.
+
+## API Reference
+
+The dashboard communicates with the server through a REST API:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/repos` | List watched repositories |
+| `POST` | `/api/repos` | Add a repository to watch |
+| `GET` | `/api/prs` | List tracked pull requests |
+| `GET` | `/api/prs/:id` | Get PR details with feedback |
+| `POST` | `/api/prs` | Register a PR by URL |
+| `DELETE` | `/api/prs/:id` | Remove a tracked PR |
+| `POST` | `/api/prs/:id/fetch` | Force-refresh PR feedback |
+| `POST` | `/api/prs/:id/triage` | Run triage on a PR |
+| `POST` | `/api/prs/:id/apply` | Apply accepted changes via agent |
+| `POST` | `/api/prs/:id/babysit` | Run full babysit cycle |
+| `PATCH` | `/api/prs/:id/feedback/:feedbackId` | Update feedback triage status |
+| `GET` | `/api/logs` | Retrieve activity logs |
+| `GET` | `/api/config` | Get current configuration |
+| `PATCH` | `/api/config` | Update configuration |
+
+## Project Structure
+
 ```
-
-## Authentication And Configuration
-
-GitHub auth is resolved in this order:
-
-1. `GITHUB_TOKEN`
-2. token stored in app config
-3. `gh auth token`
-
-The persisted config includes:
-
-- coding agent selection (`codex` or `claude`)
-- model name
-- max turns
-- polling interval
-- batch window
-- max changes per run
-- watched repositories
-- trusted reviewers
-- ignored bots
-
-Default ignored bots are:
-
-- `dependabot[bot]`
-- `codecov[bot]`
-- `github-actions[bot]`
-
-## Local State And Filesystem Layout
-
-By default, app-owned state lives under `~/.codefactory`. You can override that root with `CODEFACTORY_HOME`.
-
-Important paths:
-
-- `~/.codefactory/state.sqlite`: durable app state
-- `~/.codefactory/log/`: daily mirrored log files
-
-PR worktrees are created separately under:
-
-- `/tmp/pr-babysitter` by default
-- `PR_BABYSITTER_ROOT` if overridden
-
-The babysitter uses cached clones and detached worktrees so agent runs can edit code outside your current working copy.
-
-## Dashboard And API
-
-The dashboard is the main operator surface. It exposes:
-
-- watched repositories
-- tracked PRs
-- feedback items with triage state
-- manual triage overrides
-- activity logs
-- runtime configuration
-
-Key API routes:
-
-- `GET /api/repos`
-- `POST /api/repos`
-- `GET /api/prs`
-- `GET /api/prs/:id`
-- `POST /api/prs`
-- `DELETE /api/prs/:id`
-- `POST /api/prs/:id/fetch`
-- `POST /api/prs/:id/triage`
-- `POST /api/prs/:id/apply`
-- `POST /api/prs/:id/babysit`
-- `PATCH /api/prs/:id/feedback/:feedbackId`
-- `GET /api/logs`
-- `GET /api/config`
-- `PATCH /api/config`
-
-## Repository Layout
-
-```text
-client/          React dashboard
-server/          Express routes, babysitter logic, GitHub integration, storage
-shared/          Shared schemas and types
+client/          React dashboard (Vite + Tailwind + shadcn/ui)
+server/          Express API, babysitter logic, GitHub integration, storage
+shared/          Shared Zod schemas and TypeScript types
 script/          Build tooling
-docs/plans/      Design and implementation planning docs
-dogfood-output/  QA artifacts captured during exploratory testing
+docs/plans/      Design and implementation planning documents
 tasks/           Project lessons and working notes
 ```
 
-## Development Notes
+## Contributing
 
-- Production state uses `SqliteStorage`; the in-memory storage implementation remains in the repo as a simple alternative/test fixture.
-- The dashboard masks stored GitHub tokens when reading config back from the API.
-- Feedback markdown is rendered and sanitized before display.
-- The watcher runs continuously after server startup and reconfigures its polling interval when config changes.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Caveats
+## License
 
-- This is a local automation tool, not a hosted multi-user service.
-- Agent-driven remediation depends on external CLIs being installed and available on `PATH`.
-- GitHub API access and repo visibility depend on the token or `gh` session available on the machine.
-- The repo also contains planning docs and dogfooding artifacts that document the feature direction and testing history.
+[MIT](LICENSE) — Copyright 2026 KimY

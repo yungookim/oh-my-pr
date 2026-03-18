@@ -1,8 +1,29 @@
 {
   "name": "code-factory",
   "version": "1.0.0",
+  "description": "Autonomous GitHub PR babysitter that watches repos, triages review feedback, and dispatches AI agents to fix code locally",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/yungookim/codefactory#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yungookim/codefactory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yungookim/codefactory/issues"
+  },
+  "keywords": [
+    "github",
+    "pull-request",
+    "code-review",
+    "ai-agent",
+    "claude",
+    "codex",
+    "automation",
+    "developer-tools",
+    "pr-management",
+    "babysitter"
+  ],
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
