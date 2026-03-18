@@ -14,8 +14,12 @@ export function getFeedbackStatusBadgeClass(status: FeedbackStatus): string {
   return "border-foreground/30 text-foreground/60"; // pending
 }
 
-export function isFeedbackCollapsedByDefault(status: FeedbackStatus): boolean {
+function isTerminalFeedbackStatus(status: FeedbackStatus): boolean {
   return status === "resolved" || status === "rejected";
+}
+
+export function isFeedbackCollapsedByDefault(status: FeedbackStatus): boolean {
+  return isTerminalFeedbackStatus(status);
 }
 
 /**
@@ -24,7 +28,7 @@ export function isFeedbackCollapsedByDefault(status: FeedbackStatus): boolean {
  */
 export function isPRReadyToMerge(items: FeedbackItem[]): boolean {
   if (items.length === 0) return false;
-  return items.every((item) => item.status === "resolved" || item.status === "rejected");
+  return items.every((item) => isTerminalFeedbackStatus(item.status));
 }
 
 export function countActiveFeedbackStatuses(items: FeedbackItem[]): {
