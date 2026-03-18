@@ -186,8 +186,6 @@ tasks/           Project lessons and working notes
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-This project follows strict TypeScript conventions — see [AGENTS.md](AGENTS.md) for code style and development practices.
-
 ## License
 
 [MIT](LICENSE) — Copyright 2026 KimY

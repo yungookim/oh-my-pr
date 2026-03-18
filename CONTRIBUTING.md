@@ -25,7 +25,7 @@ npm run test     # Tests
 - **kebab-case** for API route paths
 - Tests are colocated with source files in `server/` (e.g., `foo.ts` → `foo.test.ts`)
 
-See [AGENTS.md](AGENTS.md) for the full code style and development practices guide.
+See [AGENTS.md](AGENTS.md) for more detailed repository guidelines and development practices.
 
 ## Commit Messages
 
