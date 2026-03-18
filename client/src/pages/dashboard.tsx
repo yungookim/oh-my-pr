@@ -376,22 +376,11 @@ function LogPanel({ prId }: { prId: string | null }) {
 }
 
 function RightPanel({ prId }: { prId: string | null }) {
-  const [tab, setTab] = useState<"activity" | "ask">("activity");
+  const [tab, setTab] = useState<"activity" | "ask">("ask");
 
   return (
     <div className="w-80 shrink-0 border-l border-border flex flex-col">
       <div className="flex border-b border-border">
-        <button
-          onClick={() => setTab("activity")}
-          data-testid="tab-activity"
-          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${
-            tab === "activity"
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Activity
-        </button>
         <button
           onClick={() => setTab("ask")}
           data-testid="tab-ask"
@@ -402,6 +391,17 @@ function RightPanel({ prId }: { prId: string | null }) {
           }`}
         >
           Ask Agent
+        </button>
+        <button
+          onClick={() => setTab("activity")}
+          data-testid="tab-activity"
+          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${
+            tab === "activity"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Activity
         </button>
       </div>
       <div className="flex-1 overflow-hidden">
