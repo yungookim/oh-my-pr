@@ -18,6 +18,7 @@ jobs:
 
       - uses: openai/codex-action@v1
         with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt: |
             Review this pull request. Focus on:
             - Code correctness and potential bugs
@@ -25,5 +26,3 @@ jobs:
             - Performance concerns
             - Code style and readability
             Post your review as GitHub PR review comments.
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
