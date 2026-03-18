@@ -315,10 +315,6 @@ function QAPanel({ prId }: { prId: string }) {
 
   const { data: questions = [] } = useQuery<PRQuestion[]>({
     queryKey: ["/api/prs", prId, "questions"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/prs/${prId}/questions`);
-      return res.json();
-    },
     refetchInterval: 2000,
   });
 
