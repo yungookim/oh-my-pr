@@ -25,6 +25,7 @@ Managing PR feedback across multiple repositories is tedious. Review comments pi
 - **Triage** feedback into `accept`, `reject`, or `flag` buckets — automatically or manually
 - **Dispatch** Claude or Codex agents in isolated git worktrees to apply approved changes
 - **Ask** follow-up questions about PR status, feedback, and activity from the dashboard
+- **Resolve** merge conflicts automatically using AI-powered conflict resolution
 - **Push** verified fixes back to the PR branch with full audit logs
 
 All of this happens locally on your machine. No hosted service, no data leaving your environment.
@@ -32,16 +33,16 @@ All of this happens locally on your machine. No hosted service, no data leaving 
 ## How It Works
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Watch Repos │────▶│ Sync Reviews │────▶│ Triage Items │────▶│  Agent Runs  │
-│  & PRs       │     │  & Comments  │     │  accept/     │     │  codex or    │
-│              │     │              │     │  reject/flag │     │  claude CLI  │
-└─────────────┘     └──────────────┘     └──────────────┘     └──────┬───────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Watch Repos  │────▶│ Sync Reviews │────▶│ Triage Items │────▶│  Agent Runs  │
+│ & PRs        │     │ & Comments   │     │ accept/      │     │  codex or    │
+│              │     │              │     │ reject/flag  │     │  claude CLI  │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────┬───────┘
                                                                       │
                                                                       ▼
                                                                ┌──────────────┐
                                                                │ Commit & Push│
-                                                               │  to PR branch│
+                                                               │ to PR branch │
                                                                └──────────────┘
 ```
 
@@ -65,6 +66,7 @@ All of this happens locally on your machine. No hosted service, no data leaving 
 | **Persistent state** | SQLite-backed storage survives restarts |
 | **Activity logs** | Daily mirrored log files with full run details |
 | **Trusted reviewers** | Configure whose feedback gets auto-accepted |
+| **Conflict resolution** | Automatically resolve merge conflicts using AI agents |
 | **Bot filtering** | Ignore noise from dependabot, codecov, and other bots |
 | **Real-time dashboard** | React-based UI with live status, triage controls, PR Q&A, and config management |
 
