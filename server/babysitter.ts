@@ -479,15 +479,6 @@ function summarizeUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function drainChunkLines(buffer: string, chunk: string): { lines: string[]; buffer: string } {
-  const text = `${buffer}${chunk}`;
-  const parts = text.split(/\r?\n/);
-  return {
-    lines: parts.slice(0, -1),
-    buffer: parts.at(-1) ?? "",
-  };
-}
-
 async function ensureGitIdentity(worktreePath: string, run: typeof runCommand): Promise<void> {
   const name = await run("git", ["config", "--get", "user.name"], { cwd: worktreePath, timeoutMs: 3000 });
   if (name.code !== 0 || !name.stdout.trim()) {
@@ -703,39 +694,6 @@ export class PRBabysitter {
       });
     };
 
-    const createChunkLogger = (
-      currentPrId: string,
-      phase: string,
-      stream: "stdout" | "stderr",
-      level: "info" | "warn",
-    ) => {
-      let buffer = "";
-
-      return {
-        onChunk: (chunk: string) => {
-          const drained = drainChunkLines(buffer, chunk);
-          buffer = drained.buffer;
-          for (const line of drained.lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            void queueLog(currentPrId, level, `[${stream}] ${trimmed}`, {
-              phase,
-              metadata: { stream },
-            });
-          }
-        },
-        flush: async () => {
-          const trimmed = buffer.trim();
-          if (!trimmed) return;
-          buffer = "";
-          await queueLog(currentPrId, level, `[${stream}] ${trimmed}`, {
-            phase,
-            metadata: { stream },
-          });
-        },
-      };
-    };
-
     const runLoggedCommand = async (params: {
       currentPrId: string;
       command: string;
@@ -751,18 +709,10 @@ export class PRBabysitter {
         phase,
       });
 
-      const stdoutLogger = createChunkLogger(currentPrId, phase, "stdout", "info");
-      const stderrLogger = createChunkLogger(currentPrId, phase, "stderr", "warn");
-
       const result = await this.runtime.runCommand(command, args, {
         cwd,
         timeoutMs,
-        onStdoutChunk: stdoutLogger.onChunk,
-        onStderrChunk: stderrLogger.onChunk,
       });
-
-      await stdoutLogger.flush();
-      await stderrLogger.flush();
 
       if (result.code === 0) {
         await queueLog(currentPrId, "info", successMessage, {
@@ -1146,8 +1096,6 @@ export class PRBabysitter {
                 metadata: { conflictFiles },
               });
 
-              const conflictStdout = createChunkLogger(pr.id, "conflict.agent", "stdout", "info");
-              const conflictStderr = createChunkLogger(pr.id, "conflict.agent", "stderr", "warn");
               const githubTokenForConflict = await this.github.resolveGitHubAuthToken(config);
               const conflictAgentEnv = githubTokenForConflict
                 ? {
@@ -1176,11 +1124,7 @@ export class PRBabysitter {
                 cwd: worktreePath,
                 prompt: conflictPrompt,
                 env: conflictAgentEnv,
-                onStdoutChunk: conflictStdout.onChunk,
-                onStderrChunk: conflictStderr.onChunk,
               });
-              await conflictStdout.flush();
-              await conflictStderr.flush();
 
               if (conflictResult.code !== 0) {
                 throw new Error(`Agent failed to resolve merge conflicts (${conflictResult.code}): ${conflictResult.stderr || conflictResult.stdout}`);
@@ -1240,8 +1184,6 @@ export class PRBabysitter {
           }
 
           if (commentTasks.length > 0 || statusTasks.length > 0) {
-            const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
-            const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
             const githubToken = await this.github.resolveGitHubAuthToken(config);
             const agentEnv = githubToken
               ? {
@@ -1276,11 +1218,7 @@ export class PRBabysitter {
               cwd: worktreePath,
               prompt: fixPrompt,
               env: agentEnv,
-              onStdoutChunk: agentStdout.onChunk,
-              onStderrChunk: agentStderr.onChunk,
             });
-            await agentStdout.flush();
-            await agentStderr.flush();
 
             if (applyResult.code !== 0) {
               // Update status replies on failure.
