@@ -1,0 +1,29 @@
+name: Codex Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  code-review:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: openai/codex-action@v1
+        with:
+          prompt: |
+            Review this pull request. Focus on:
+            - Code correctness and potential bugs
+            - Security issues
+            - Performance concerns
+            - Code style and readability
+            Post your review as GitHub PR review comments.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
