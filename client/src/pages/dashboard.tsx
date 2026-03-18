@@ -319,10 +319,8 @@ function QAPanel({ prId }: { prId: string }) {
   });
 
   const askMutation = useMutation({
-    mutationFn: async (question: string) => {
-      const res = await apiRequest("POST", `/api/prs/${prId}/questions`, { question });
-      return res.json();
-    },
+    mutationFn: (question: string) =>
+      apiRequest("POST", `/api/prs/${prId}/questions`, { question }).then((res) => res.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prs", prId, "questions"] });
       setInput("");
