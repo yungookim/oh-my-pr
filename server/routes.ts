@@ -1,11 +1,12 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { z } from "zod";
-import { addPRSchema, configSchema } from "@shared/schema";
+import { addPRSchema, askQuestionSchema, configSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { PRBabysitter } from "./babysitter";
 import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
 import { createWatcherScheduler } from "./watcherScheduler";
+import { answerPRQuestion } from "./prQuestionAgent";
 import {
   buildOctokit,
   fetchPullSummary,
@@ -380,6 +381,43 @@ export async function registerRoutes(
 
     const updated = await storage.updatePR(pr.id, { feedbackItems, accepted, rejected, flagged });
     res.json(updated);
+  });
+
+  // ── PR Questions ─────────────────────────────────────────
+
+  app.get("/api/prs/:id/questions", async (req, res) => {
+    const pr = await storage.getPR(req.params.id);
+    if (!pr) return res.status(404).json({ error: "PR not found" });
+
+    const questions = await storage.getQuestions(pr.id);
+    res.json(questions);
+  });
+
+  app.post("/api/prs/:id/questions", async (req, res) => {
+    try {
+      const pr = await storage.getPR(req.params.id);
+      if (!pr) return res.status(404).json({ error: "PR not found" });
+
+      const { question } = askQuestionSchema.parse(req.body);
+      const entry = await storage.addQuestion(pr.id, question);
+
+      const config = await storage.getConfig();
+      void answerPRQuestion({
+        storage,
+        prId: pr.id,
+        questionId: entry.id,
+        question,
+        preferredAgent: config.codingAgent,
+      });
+
+      res.status(201).json(entry);
+    } catch (err: unknown) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.errors[0].message });
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
   });
 
   // ── Logs ───────────────────────────────────────────────────

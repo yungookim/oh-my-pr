@@ -21,6 +21,7 @@ Managing PR feedback across multiple repositories is tedious. Review comments pi
 - **Sync** review comments, reviews, and discussion threads into persistent local storage
 - **Triage** feedback into `accept`, `reject`, or `flag` buckets — automatically or manually
 - **Dispatch** Claude or Codex agents in isolated git worktrees to apply approved changes
+- **Ask** follow-up questions about PR status, feedback, and activity from the dashboard
 - **Push** verified fixes back to the PR branch with full audit logs
 
 All of this happens locally on your machine. No hosted service, no data leaving your environment.
@@ -56,12 +57,13 @@ All of this happens locally on your machine. No hosted service, no data leaving 
 | **PR registration** | Add individual PRs by URL for one-off tracking |
 | **Smart triage** | Auto-categorize feedback with manual override support |
 | **Agent flexibility** | Choose between Claude and Codex for code remediation |
+| **PR Q&A** | Ask the configured agent questions about a PR and get context-aware answers from feedback and logs |
 | **Isolated worktrees** | Agent runs happen in detached git worktrees — zero risk to your working copy |
 | **Persistent state** | SQLite-backed storage survives restarts |
 | **Activity logs** | Daily mirrored log files with full run details |
 | **Trusted reviewers** | Configure whose feedback gets auto-accepted |
 | **Bot filtering** | Ignore noise from dependabot, codecov, and other bots |
-| **Real-time dashboard** | React-based UI with live status, triage controls, and config management |
+| **Real-time dashboard** | React-based UI with live status, triage controls, PR Q&A, and config management |
 
 ## Tech Stack
 
@@ -167,6 +169,8 @@ The dashboard communicates with the server through a REST API:
 | `POST` | `/api/prs/:id/apply` | Apply accepted changes via agent |
 | `POST` | `/api/prs/:id/babysit` | Run full babysit cycle |
 | `PATCH` | `/api/prs/:id/feedback/:feedbackId` | Update feedback triage status |
+| `GET` | `/api/prs/:id/questions` | List PR question/answer history |
+| `POST` | `/api/prs/:id/questions` | Ask the configured agent a question about the PR |
 | `GET` | `/api/logs` | Retrieve activity logs |
 | `GET` | `/api/config` | Get current configuration |
 | `PATCH` | `/api/config` | Update configuration |
