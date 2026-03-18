@@ -14,6 +14,7 @@ import {
   fetchFeedbackItemsForPR,
   fetchPullSummary,
   formatRepoSlug,
+  GitHubIntegrationError,
   listFailingStatuses,
   listOpenPullsForRepo,
   parseRepoSlug,
@@ -29,7 +30,14 @@ import {
 } from "./github";
 import { getCodeFactoryPaths } from "./paths";
 import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
-import { applyEvaluationDecision, markInProgress, markResolved, markFailed } from "./feedbackLifecycle";
+import {
+  applyEvaluationDecision,
+  markInProgress,
+  markResolved,
+  markFailed,
+  markRetry,
+  markWarning,
+} from "./feedbackLifecycle";
 
 const DEFAULT_GIT_USER_NAME = "PR Babysitter";
 const DEFAULT_GIT_USER_EMAIL = "pr-babysitter@local";
@@ -507,6 +515,7 @@ function wait(ms: number): Promise<void> {
 export class PRBabysitter {
   private readonly storage: IStorage;
   private readonly inProgress = new Set<string>();
+  private readonly feedbackMutationLocks = new Map<string, Promise<void>>();
   private readonly github: GitHubService;
   private readonly runtime: BabysitterRuntime;
 
@@ -569,6 +578,72 @@ export class PRBabysitter {
         allowDuringDrain: true,
       });
     }
+  }
+
+  private async withFeedbackMutationLock<T>(
+    prId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previousLock = this.feedbackMutationLocks.get(prId) ?? Promise.resolve();
+    let releaseCurrentLock: (() => void) | undefined;
+    const currentLock = new Promise<void>((resolve) => {
+      releaseCurrentLock = () => resolve();
+    });
+    const lockQueue = previousLock.then(() => currentLock);
+    this.feedbackMutationLocks.set(prId, lockQueue);
+
+    await previousLock;
+    try {
+      return await operation();
+    } finally {
+      releaseCurrentLock?.();
+      if (this.feedbackMutationLocks.get(prId) === lockQueue) {
+        this.feedbackMutationLocks.delete(prId);
+      }
+    }
+  }
+
+  async retryFeedbackItem(
+    prId: string,
+    feedbackId: string,
+  ): Promise<
+    | { kind: "ok"; updated: PR }
+    | { kind: "pr_not_found" }
+    | { kind: "feedback_not_found" }
+    | { kind: "feedback_not_retryable" }
+  > {
+    return this.withFeedbackMutationLock(prId, async () => {
+      const pr = await this.storage.getPR(prId);
+      if (!pr) {
+        return { kind: "pr_not_found" };
+      }
+
+      const item = pr.feedbackItems.find((candidate) => candidate.id === feedbackId);
+      if (!item) {
+        return { kind: "feedback_not_found" };
+      }
+
+      if (item.status !== "failed" && item.status !== "warning") {
+        return { kind: "feedback_not_retryable" };
+      }
+
+      const feedbackItems = pr.feedbackItems.map((candidate) =>
+        candidate.id === feedbackId ? markRetry(candidate) : candidate,
+      );
+      const counters = countDecisions(feedbackItems);
+      const updated = await this.storage.updatePR(pr.id, {
+        feedbackItems,
+        accepted: counters.accepted,
+        rejected: counters.rejected,
+        flagged: counters.flagged,
+      });
+
+      if (!updated) {
+        throw new Error(`Failed to queue retry for feedback item ${feedbackId} on PR ${prId}`);
+      }
+
+      return { kind: "ok", updated };
+    });
   }
 
   async syncFeedbackForPR(
@@ -900,6 +975,7 @@ export class PRBabysitter {
     const replayInitialHeadSha = options?.replayInitialHeadSha ?? null;
     const recoveryMode = Boolean(options?.recoveryMode);
     let skipForcedReplay = false;
+    let branchMoved = false;
 
     try {
       await updateRunRecord({
@@ -1183,7 +1259,8 @@ export class PRBabysitter {
       }
 
       let headShaForFollowUp = pullSummary.headSha;
-      let branchMoved = false;
+      // branchMoved is declared in the outer scope so it's accessible in the catch block
+      branchMoved = false;
       let remoteNameForLogs: string | null = null;
       let agentSummaries = new Map<string, string>();
 
@@ -1644,7 +1721,10 @@ export class PRBabysitter {
         runStartedAtMs: auditWindowStartMs,
       });
       if (auditTrailErrors.length > 0) {
-        throw new Error(`GitHub audit trail verification failed: ${auditTrailErrors.join("; ")}`);
+        throw new GitHubIntegrationError(
+          `GitHub audit trail verification failed: ${auditTrailErrors.join("; ")}`,
+          502,
+        );
       }
 
       await queueLog(pr.id, "info", "GitHub audit trail verified", {
@@ -1696,26 +1776,42 @@ export class PRBabysitter {
       });
       const currentPr = await this.storage.getPR(prId);
       if (currentPr) {
-        await queueLog(currentPr.id, "error", `Babysitter error: ${message}`, {
+        // Determine if this is a non-critical GitHub integration failure
+        // (e.g. couldn't post a comment or resolve a thread) vs a real
+        // agent/processing failure. GitHub errors that happen *after* the
+        // agent successfully pushed code are warnings, not failures.
+        const isGitHubError = error instanceof GitHubIntegrationError;
+        const isNonCritical = isGitHubError && branchMoved;
+        const logLevel = isNonCritical ? "warn" : "error";
+        const logPrefix = isNonCritical ? "Babysitter warning" : "Babysitter error";
+
+        await queueLog(currentPr.id, logLevel, `${logPrefix}: ${message}`, {
           phase: "run",
         });
 
         if (followUpTasks.length > 0) {
-          const failedIds = new Set(followUpTasks.map((item) => item.id));
-          const failedItems = currentPr.feedbackItems.map((item) =>
-            failedIds.has(item.id) ? markFailed(item, message) : item,
-          );
-          const failedCounters = countDecisions(failedItems);
+          const affectedIds = new Set(followUpTasks.map((item) => item.id));
+          const updatedItems = currentPr.feedbackItems.map((item) => {
+            if (!affectedIds.has(item.id)) return item;
+            if (isNonCritical) {
+              return markWarning(item, `GitHub comment could not be posted: ${message}`);
+            }
+            return markFailed(item, message);
+          });
+          const updatedCounters = countDecisions(updatedItems);
           await this.storage.updatePR(currentPr.id, {
-            feedbackItems: failedItems,
-            accepted: failedCounters.accepted,
-            rejected: failedCounters.rejected,
-            flagged: failedCounters.flagged,
-            status: "error",
+            feedbackItems: updatedItems,
+            accepted: updatedCounters.accepted,
+            rejected: updatedCounters.rejected,
+            flagged: updatedCounters.flagged,
+            status: isNonCritical ? "watching" : "error",
             lastChecked: new Date().toISOString(),
           });
         } else {
-          await this.storage.updatePR(currentPr.id, { status: "error", lastChecked: new Date().toISOString() });
+          await this.storage.updatePR(currentPr.id, {
+            status: isNonCritical ? "watching" : "error",
+            lastChecked: new Date().toISOString(),
+          });
         }
       }
       console.error("Babysitter failure", error);

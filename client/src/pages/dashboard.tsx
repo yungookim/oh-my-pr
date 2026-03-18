@@ -194,6 +194,7 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
               if (counts.queued > 0) parts.push(`${counts.queued}q`);
               if (counts.inProgress > 0) parts.push(`${counts.inProgress} active`);
               if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+              if (counts.warning > 0) parts.push(`${counts.warning} warn`);
               if (parts.length === 0) return <span>{pr.feedbackItems.length} items</span>;
               return <span>{parts.join(" · ")}</span>;
             })()}
@@ -225,6 +226,21 @@ function FeedbackRow({
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/prs/${prId}/feedback/${item.id}/retry`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/prs", prId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/logs"] });
+    },
+    onError: (error) => {
+      showMutationError("Could not retry feedback item", error);
+    },
+  });
+
   const createdAt = formatClock(item.createdAt);
   const collapsedByDefault = isFeedbackCollapsedByDefault(item.status);
 
@@ -249,6 +265,16 @@ function FeedbackRow({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {!readOnly && (item.status === "failed" || item.status === "warning") && (
+              <button
+                onClick={() => retryMutation.mutate()}
+                disabled={retryMutation.isPending}
+                data-testid={`retry-${item.id}`}
+                className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background border border-border text-muted-foreground disabled:opacity-30"
+              >
+                R
+              </button>
+            )}
             <Collapsible.Trigger asChild>
               <button
                 data-testid={`toggle-${item.id}`}
@@ -844,6 +870,7 @@ export default function Dashboard() {
                             {counts.queued > 0 && <span>{counts.queued} queued</span>}
                             {counts.inProgress > 0 && <span>{counts.inProgress} in progress</span>}
                             {counts.failed > 0 && <span>{counts.failed} failed</span>}
+                            {counts.warning > 0 && <span>{counts.warning} warnings</span>}
                           </>
                         );
                       })()}

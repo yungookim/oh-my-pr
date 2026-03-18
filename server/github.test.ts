@@ -230,11 +230,11 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
 
       throw new Error("Unexpected paginate call");
     },
-    request: async (_route: string, params: { query: string; threadId?: string; cursor?: string | null }) => {
+    request: async (_route: string, params: { query: string; variables?: { threadId?: string; cursor?: string | null } }) => {
       graphqlCalls.push({
         query: params.query,
-        threadId: params.threadId,
-        cursor: params.cursor ?? null,
+        threadId: params.variables?.threadId,
+        cursor: params.variables?.cursor ?? null,
       });
 
       if (params.query.includes("CodeFactoryReviewThreads")) {
@@ -269,8 +269,8 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
         };
       }
 
-      assert.equal(params.threadId, "THREAD_node_999");
-      assert.equal(params.cursor, "cursor-100");
+      assert.equal(params.variables?.threadId, "THREAD_node_999");
+      assert.equal(params.variables?.cursor, "cursor-100");
 
       return {
         data: {
@@ -360,14 +360,16 @@ test("postFollowUpForFeedbackItem replies to review threads and resolveReviewThr
   assert.equal(requests.length, 2);
   assert.equal(requests[0]?.route, "POST /graphql");
   assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
-  assert.equal(requests[0]?.params.threadId, "THREAD_node_123");
+  const vars0 = requests[0]?.params.variables as { threadId?: string; body?: string } | undefined;
+  assert.equal(vars0?.threadId, "THREAD_node_123");
   assert.equal(
-    requests[0]?.params.body,
+    vars0?.body,
     "Addressed in the latest babysitter update.\n\ncodefactory-feedback:gh-review-comment-1",
   );
   assert.equal(requests[1]?.route, "POST /graphql");
   assert.match(String(requests[1]?.params.query || ""), /resolveReviewThread/);
-  assert.equal(requests[1]?.params.threadId, "THREAD_node_123");
+  const vars1 = requests[1]?.params.variables as { threadId?: string } | undefined;
+  assert.equal(vars1?.threadId, "THREAD_node_123");
 });
 
 test("postFollowUpForFeedbackItem routes review and general comments to PR comments", async () => {
@@ -477,8 +479,9 @@ test("postStatusReplyForFeedbackItem validates review-thread replies and updateS
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.route, "POST /graphql");
   assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
-  assert.equal(requests[0]?.params.threadId, "THREAD_node_123");
-  assert.equal(requests[0]?.params.body, "Queued for processing");
+  const statusVars = requests[0]?.params.variables as { threadId?: string; body?: string } | undefined;
+  assert.equal(statusVars?.threadId, "THREAD_node_123");
+  assert.equal(statusVars?.body, "Queued for processing");
   assert.deepEqual(ref, {
     commentDatabaseId: 456,
     replyKind: "review_thread",

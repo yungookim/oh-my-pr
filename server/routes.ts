@@ -383,6 +383,28 @@ export async function registerRoutes(
     res.json(updated);
   });
 
+  app.post("/api/prs/:id/feedback/:feedbackId/retry", async (req, res) => {
+    const result = await babysitter.retryFeedbackItem(req.params.id, req.params.feedbackId);
+    if (result.kind === "pr_not_found") {
+      return res.status(404).json({ error: "PR not found" });
+    }
+
+    if (result.kind === "feedback_not_found") {
+      return res.status(404).json({ error: "Feedback item not found" });
+    }
+
+    if (result.kind === "feedback_not_retryable") {
+      return res.status(400).json({ error: "Only failed or warning items can be retried" });
+    }
+
+    await storage.addLog(req.params.id, "info", `Feedback item ${req.params.feedbackId} queued for retry`);
+
+    const config = await storage.getConfig();
+    void babysitter.babysitPR(req.params.id, config.codingAgent);
+
+    res.json(result.updated);
+  });
+
   // ── PR Questions ─────────────────────────────────────────
 
   app.get("/api/prs/:id/questions", async (req, res) => {

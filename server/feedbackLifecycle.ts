@@ -65,3 +65,19 @@ export function markFailed(item: FeedbackItem, reason: string): FeedbackItem {
     statusReason: reason,
   };
 }
+
+export function markWarning(item: FeedbackItem, reason: string): FeedbackItem {
+  return {
+    ...item,
+    status: "warning",
+    statusReason: reason,
+  };
+}
+
+export function markRetry(item: FeedbackItem): FeedbackItem {
+  return {
+    ...item,
+    status: "queued",
+    statusReason: "Queued for retry",
+  };
+}

@@ -14,6 +14,7 @@ export const feedbackStatusEnum = z.enum([
   "in_progress",
   "resolved",
   "failed",
+  "warning",
   "rejected",
   "flagged",
 ]);

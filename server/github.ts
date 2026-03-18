@@ -406,8 +406,10 @@ async function appendPaginatedReviewThreadComments(
     const response = await withGitHubErrorHandling("review thread comments", parsed, () =>
       octokit.request("POST /graphql", {
         query: REVIEW_THREAD_COMMENTS_QUERY,
-        threadId: thread.id,
-        cursor,
+        variables: {
+          threadId: thread.id,
+          cursor,
+        },
       }),
     );
 
@@ -448,10 +450,12 @@ async function fetchReviewThreadLookup(
     const response = await withGitHubErrorHandling("review threads", parsed, () =>
       octokit.request("POST /graphql", {
         query: REVIEW_THREADS_QUERY,
-        owner: parsed.owner,
-        repo: parsed.repo,
-        number: parsed.number,
-        cursor,
+        variables: {
+          owner: parsed.owner,
+          repo: parsed.repo,
+          number: parsed.number,
+          cursor,
+        },
       }),
     );
 
@@ -498,8 +502,10 @@ export async function replyToReviewThread(
   await withGitHubErrorHandling("review thread reply", parsed, () =>
     octokit.request("POST /graphql", {
       query: REVIEW_THREAD_REPLY_MUTATION,
-      threadId,
-      body,
+      variables: {
+        threadId,
+        body,
+      },
     }),
   );
 }
@@ -512,7 +518,9 @@ export async function resolveReviewThread(
   await withGitHubErrorHandling("review thread resolution", parsed, () =>
     octokit.request("POST /graphql", {
       query: RESOLVE_REVIEW_THREAD_MUTATION,
-      threadId,
+      variables: {
+        threadId,
+      },
     }),
   );
 }
@@ -796,8 +804,10 @@ export async function postStatusReplyForFeedbackItem(
     const result = await withGitHubErrorHandling("status reply in review thread", parsed, () =>
       octokit.request("POST /graphql", {
         query: REVIEW_THREAD_REPLY_MUTATION,
-        threadId: item.threadId,
-        body,
+        variables: {
+          threadId: item.threadId,
+          body,
+        },
       }),
     );
 
