@@ -1,10 +1,11 @@
 import { randomUUID } from "crypto";
-import type { PR, LogEntry, Config } from "@shared/schema";
+import type { PR, PRQuestion, LogEntry, Config } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
 
 export class MemStorage implements IStorage {
   private prs: Map<string, PR> = new Map();
+  private questions: Map<string, PRQuestion> = new Map();
   private logs: LogEntry[] = [];
   private config: Config = { ...DEFAULT_CONFIG };
 
@@ -45,6 +46,35 @@ export class MemStorage implements IStorage {
 
   async removePR(id: string): Promise<boolean> {
     return this.prs.delete(id);
+  }
+
+  async getQuestions(prId: string): Promise<PRQuestion[]> {
+    return Array.from(this.questions.values())
+      .filter((q) => q.prId === prId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+
+  async addQuestion(prId: string, question: string): Promise<PRQuestion> {
+    const entry: PRQuestion = {
+      id: randomUUID(),
+      prId,
+      question,
+      answer: null,
+      status: "pending",
+      error: null,
+      createdAt: new Date().toISOString(),
+      answeredAt: null,
+    };
+    this.questions.set(entry.id, entry);
+    return entry;
+  }
+
+  async updateQuestion(id: string, updates: Partial<PRQuestion>): Promise<PRQuestion | undefined> {
+    const existing = this.questions.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates, id: existing.id, prId: existing.prId, createdAt: existing.createdAt };
+    this.questions.set(id, updated);
+    return updated;
   }
 
   async getLogs(prId?: string): Promise<LogEntry[]> {

@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
-import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
+import type { Config, FeedbackItem, LogEntry, PR, PRQuestion } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import {
   formatFeedbackStatusLabel,
@@ -233,9 +233,6 @@ function LogPanel({ prId }: { prId: string | null }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-        Activity
-      </div>
       <div ref={scrollerRef} className="flex-1 overflow-y-auto p-4 font-mono text-[11px] leading-relaxed">
         {logs.length === 0 ? (
           <span className="text-muted-foreground">No log entries.</span>
@@ -264,6 +261,152 @@ function LogPanel({ prId }: { prId: string | null }) {
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+function RightPanel({ prId }: { prId: string | null }) {
+  const [tab, setTab] = useState<"activity" | "ask">("activity");
+
+  return (
+    <div className="w-80 shrink-0 border-l border-border flex flex-col">
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setTab("activity")}
+          data-testid="tab-activity"
+          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${
+            tab === "activity"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Activity
+        </button>
+        <button
+          onClick={() => setTab("ask")}
+          data-testid="tab-ask"
+          className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider transition-colors ${
+            tab === "ask"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Ask Agent
+        </button>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {tab === "activity" ? (
+          <LogPanel prId={prId} />
+        ) : prId ? (
+          <QAPanel prId={prId} />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[12px] text-muted-foreground">
+            Select a PR to ask questions.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QAPanel({ prId }: { prId: string }) {
+  const [input, setInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { data: questions = [] } = useQuery<PRQuestion[]>({
+    queryKey: ["/api/prs", prId, "questions"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/prs/${prId}/questions`);
+      return res.json();
+    },
+    refetchInterval: 2000,
+  });
+
+  const askMutation = useMutation({
+    mutationFn: async (question: string) => {
+      const res = await apiRequest("POST", `/api/prs/${prId}/questions`, { question });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prs", prId, "questions"] });
+      setInput("");
+    },
+  });
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [questions.length, questions[questions.length - 1]?.status]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-border px-4 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        Ask Agent
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {questions.length === 0 ? (
+          <span className="text-[12px] text-muted-foreground">
+            Ask questions about this PR — the agent will read activity logs, feedback, and status to answer.
+          </span>
+        ) : (
+          questions.map((q) => (
+            <div key={q.id} className="space-y-1.5" data-testid={`question-${q.id}`}>
+              <div className="text-[12px]">
+                <span className="font-medium text-foreground/90">Q: </span>
+                <span className="text-foreground/80">{q.question}</span>
+              </div>
+              {q.status === "pending" || q.status === "answering" ? (
+                <div className="text-[11px] text-muted-foreground animate-pulse">
+                  Agent is thinking...
+                </div>
+              ) : q.status === "error" ? (
+                <div className="text-[11px] text-destructive">
+                  Error: {q.error || "Unknown error"}
+                </div>
+              ) : (
+                <div className="text-[12px] leading-relaxed text-foreground/75 whitespace-pre-wrap border-l-2 border-border pl-3">
+                  {q.answer}
+                </div>
+              )}
+              <div className="text-[10px] text-muted-foreground">
+                {formatClock(q.createdAt)}
+                {q.answeredAt && ` — answered ${formatClock(q.answeredAt)}`}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (input.trim() && !askMutation.isPending) askMutation.mutate(input.trim());
+        }}
+        className="border-t border-border p-3"
+      >
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Was the review done? Why did this fail?"
+            data-testid="input-question"
+            className="flex-1 border border-border bg-transparent px-2 py-1 text-[12px] placeholder:text-muted-foreground/50 focus:border-foreground focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={askMutation.isPending || !input.trim()}
+            data-testid="button-ask"
+            className="border border-border px-2 py-1 text-[11px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background disabled:opacity-30"
+          >
+            {askMutation.isPending ? "..." : "Ask"}
+          </button>
+        </div>
+        {askMutation.isError && (
+          <div className="mt-1 text-[11px] text-destructive">
+            {getErrorMessage(askMutation.error)}
+          </div>
+        )}
+      </form>
     </div>
   );
 }
@@ -665,9 +808,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="w-80 shrink-0 border-l border-border">
-          <LogPanel prId={selectedPRId} />
-        </div>
+        <RightPanel prId={selectedPRId} />
       </div>
     </div>
   );

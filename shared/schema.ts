@@ -80,6 +80,25 @@ export const logEntrySchema = z.object({
 });
 export type LogEntry = z.infer<typeof logEntrySchema>;
 
+export const questionStatusEnum = z.enum(["pending", "answering", "answered", "error"]);
+export type QuestionStatus = z.infer<typeof questionStatusEnum>;
+
+export const prQuestionSchema = z.object({
+  id: z.string(),
+  prId: z.string(),
+  question: z.string(),
+  answer: z.string().nullable(),
+  status: questionStatusEnum,
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  answeredAt: z.string().nullable(),
+});
+export type PRQuestion = z.infer<typeof prQuestionSchema>;
+
+export const askQuestionSchema = z.object({
+  question: z.string().min(1).max(2000),
+});
+
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),

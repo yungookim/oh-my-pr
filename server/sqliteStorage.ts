@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
 import { feedbackStatusEnum } from "@shared/schema";
-import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
+import type { Config, FeedbackItem, LogEntry, PR, PRQuestion } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { getCodeFactoryPaths } from "./paths";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -71,6 +71,17 @@ type LogRow = {
   phase: string | null;
   message: string;
   metadata_json: string | null;
+};
+
+type QuestionRow = {
+  id: string;
+  pr_id: string;
+  question: string;
+  answer: string | null;
+  status: PRQuestion["status"];
+  error: string | null;
+  created_at: string;
+  answered_at: string | null;
 };
 
 export class SqliteStorage implements IStorage {
@@ -166,8 +177,21 @@ export class SqliteStorage implements IStorage {
         FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS pr_questions (
+        id TEXT PRIMARY KEY,
+        pr_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error TEXT,
+        created_at TEXT NOT NULL,
+        answered_at TEXT,
+        FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_feedback_items_pr_id ON feedback_items(pr_id);
       CREATE INDEX IF NOT EXISTS idx_logs_pr_id_timestamp ON logs(pr_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_pr_questions_pr_id ON pr_questions(pr_id);
     `);
 
     this.ensureColumn("feedback_items", "reply_kind", "TEXT NOT NULL DEFAULT 'general_comment'");
@@ -502,6 +526,68 @@ export class SqliteStorage implements IStorage {
   async removePR(id: string): Promise<boolean> {
     const result = this.db.prepare("DELETE FROM prs WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  async getQuestions(prId: string): Promise<PRQuestion[]> {
+    const rows = this.db.prepare(`
+      SELECT id, pr_id, question, answer, status, error, created_at, answered_at
+      FROM pr_questions
+      WHERE pr_id = ?
+      ORDER BY datetime(created_at) ASC
+    `).all(prId) as QuestionRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      prId: row.pr_id,
+      question: row.question,
+      answer: row.answer,
+      status: row.status,
+      error: row.error,
+      createdAt: row.created_at,
+      answeredAt: row.answered_at,
+    }));
+  }
+
+  async addQuestion(prId: string, question: string): Promise<PRQuestion> {
+    const entry: PRQuestion = {
+      id: randomUUID(),
+      prId,
+      question,
+      answer: null,
+      status: "pending",
+      error: null,
+      createdAt: new Date().toISOString(),
+      answeredAt: null,
+    };
+
+    this.db.prepare(`
+      INSERT INTO pr_questions (id, pr_id, question, answer, status, error, created_at, answered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(entry.id, entry.prId, entry.question, entry.answer, entry.status, entry.error, entry.createdAt, entry.answeredAt);
+
+    return entry;
+  }
+
+  async updateQuestion(id: string, updates: Partial<PRQuestion>): Promise<PRQuestion | undefined> {
+    const row = this.db.prepare(`
+      SELECT id, pr_id, question, answer, status, error, created_at, answered_at
+      FROM pr_questions WHERE id = ?
+    `).get(id) as QuestionRow | undefined;
+
+    if (!row) return undefined;
+
+    const current: PRQuestion = {
+      id: row.id, prId: row.pr_id, question: row.question, answer: row.answer,
+      status: row.status, error: row.error, createdAt: row.created_at, answeredAt: row.answered_at,
+    };
+
+    const updated = { ...current, ...updates, id: current.id, prId: current.prId, createdAt: current.createdAt };
+
+    this.db.prepare(`
+      UPDATE pr_questions SET answer = ?, status = ?, error = ?, answered_at = ? WHERE id = ?
+    `).run(updated.answer, updated.status, updated.error, updated.answeredAt, updated.id);
+
+    return updated;
   }
 
   async getLogs(prId?: string): Promise<LogEntry[]> {
