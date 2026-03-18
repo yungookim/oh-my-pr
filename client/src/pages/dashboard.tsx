@@ -135,7 +135,8 @@ function AgentIndicator({ pr }: { pr: PR }) {
 
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
-  const readyToMerge = isPRReadyToMerge(pr.feedbackItems);
+  const agentActive = pr.status === "processing" || countActiveFeedbackStatuses(pr.feedbackItems).inProgress > 0;
+  const readyToMerge = !agentActive && isPRReadyToMerge(pr.feedbackItems);
 
   return (
     <div
@@ -894,7 +895,7 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
-                {isPRReadyToMerge(selectedPR.feedbackItems) && (
+                {isPRReadyToMerge(selectedPR.feedbackItems) && selectedPR.status !== "processing" && countActiveFeedbackStatuses(selectedPR.feedbackItems).inProgress === 0 && (
                   <ReadyToMergeIndicator
                     href={selectedPR.url}
                     testId="detail-ready-to-merge"
