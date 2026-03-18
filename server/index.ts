@@ -23,8 +23,13 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 export function log(message: string, source = "express") {
-  // Only errors are logged to the console; callers that need verbose
-  // output should use the structured logger (storage.addLog) instead.
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
 }
 
 (async () => {
