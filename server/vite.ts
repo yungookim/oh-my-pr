@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
 
-const viteLogger = createLogger();
+const viteLogger = createLogger("error");
 
 export async function setupVite(server: Server, app: Express) {
   const serverOptions = {
