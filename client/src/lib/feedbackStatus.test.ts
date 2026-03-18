@@ -5,6 +5,7 @@ import {
   formatFeedbackStatusLabel,
   isFeedbackCollapsedByDefault,
   countActiveFeedbackStatuses,
+  isPRReadyToMerge,
 } from "./feedbackStatus";
 
 // formatFeedbackStatusLabel
@@ -31,6 +32,44 @@ test('isFeedbackCollapsedByDefault("failed") === false', () => {
 
 test('isFeedbackCollapsedByDefault("pending") === false', () => {
   assert.equal(isFeedbackCollapsedByDefault("pending"), false);
+});
+
+// isPRReadyToMerge
+test("isPRReadyToMerge returns false for empty items", () => {
+  assert.equal(isPRReadyToMerge([]), false);
+});
+
+test("isPRReadyToMerge returns true when all resolved or rejected", () => {
+  const items: Pick<FeedbackItem, "status">[] = [
+    { status: "resolved" },
+    { status: "rejected" },
+    { status: "resolved" },
+  ];
+  assert.equal(isPRReadyToMerge(items as FeedbackItem[]), true);
+});
+
+test("isPRReadyToMerge returns false when any item is pending", () => {
+  const items: Pick<FeedbackItem, "status">[] = [
+    { status: "resolved" },
+    { status: "pending" },
+  ];
+  assert.equal(isPRReadyToMerge(items as FeedbackItem[]), false);
+});
+
+test("isPRReadyToMerge returns false when any item is in_progress", () => {
+  const items: Pick<FeedbackItem, "status">[] = [
+    { status: "resolved" },
+    { status: "in_progress" },
+  ];
+  assert.equal(isPRReadyToMerge(items as FeedbackItem[]), false);
+});
+
+test("isPRReadyToMerge returns false when any item is failed", () => {
+  const items: Pick<FeedbackItem, "status">[] = [
+    { status: "resolved" },
+    { status: "failed" },
+  ];
+  assert.equal(isPRReadyToMerge(items as FeedbackItem[]), false);
 });
 
 // countActiveFeedbackStatuses

@@ -18,6 +18,15 @@ export function isFeedbackCollapsedByDefault(status: FeedbackStatus): boolean {
   return status === "resolved" || status === "rejected";
 }
 
+/**
+ * A PR is ready to merge when it has feedback items and every item
+ * has reached a terminal state (resolved or rejected).
+ */
+export function isPRReadyToMerge(items: FeedbackItem[]): boolean {
+  if (items.length === 0) return false;
+  return items.every((item) => item.status === "resolved" || item.status === "rejected");
+}
+
 export function countActiveFeedbackStatuses(items: FeedbackItem[]): {
   queued: number;
   inProgress: number;

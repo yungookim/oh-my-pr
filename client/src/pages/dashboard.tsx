@@ -10,6 +10,7 @@ import {
   getFeedbackStatusBadgeClass,
   isFeedbackCollapsedByDefault,
   countActiveFeedbackStatuses,
+  isPRReadyToMerge,
 } from "@/lib/feedbackStatus";
 
 function formatClock(timestamp: string | null): string | null {
@@ -66,6 +67,7 @@ function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
 
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
+  const readyToMerge = isPRReadyToMerge(pr.feedbackItems);
 
   return (
     <div
@@ -94,6 +96,20 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
             <span className="w-12 shrink-0 text-muted-foreground">#{pr.number}</span>
             <span className="truncate">{pr.title}</span>
           </div>
+          {readyToMerge && (
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              data-testid={`ready-to-merge-${pr.id}`}
+              className="mt-1.5 ml-[3.75rem] inline-flex items-center gap-1.5 border border-green-600 bg-green-600/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-green-500 transition-colors hover:bg-green-600/20"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+              Ready to merge
+              <span className="text-[10px] normal-case tracking-normal text-green-500/70">— click to open PR</span>
+            </a>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.75rem] text-[11px] text-muted-foreground">
             <a
               href={pr.url}
@@ -646,6 +662,19 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
+                {isPRReadyToMerge(selectedPR.feedbackItems) && (
+                  <a
+                    href={selectedPR.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="detail-ready-to-merge"
+                    className="mt-2 inline-flex items-center gap-2 border border-green-600 bg-green-600/10 px-3 py-1.5 text-[12px] font-medium uppercase tracking-wider text-green-500 transition-colors hover:bg-green-600/20"
+                  >
+                    <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                    All comments resolved — ready to merge
+                    <span className="text-[11px] normal-case tracking-normal text-green-500/70">Open PR on GitHub →</span>
+                  </a>
+                )}
                 <div className="text-[11px] text-muted-foreground">
                   Background watcher syncs GitHub feedback and pushes approved fixes automatically.
                 </div>
