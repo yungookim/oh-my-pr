@@ -405,16 +405,36 @@ function buildFeedbackFollowUpBody(headSha: string, auditToken: string): string 
   ].join("\n");
 }
 
+const CODEFACTORY_COMMENT_MARKER = "<!-- codefactory-agent-command -->";
+
+function buildCodeFence(content: string): { open: string; close: string } {
+  let maxRun = 0;
+  const backtickRuns = content.match(/`{3,}/g);
+  if (backtickRuns) {
+    for (const run of backtickRuns) {
+      if (run.length > maxRun) maxRun = run.length;
+    }
+  }
+  const fence = "`".repeat(Math.max(3, maxRun + 1));
+  return { open: `${fence}text`, close: fence };
+}
+
+function isCodeFactoryComment(body: string): boolean {
+  return body.includes(CODEFACTORY_COMMENT_MARKER);
+}
+
 function formatAgentCommandGitHubComment(agent: CodingAgent, prompt: string): string {
+  const fence = buildCodeFence(prompt);
   return [
+    CODEFACTORY_COMMENT_MARKER,
     `\ud83e\udd16 **CodeFactory** dispatched \`${agent}\` with the following prompt:`,
     "",
     "<details>",
     "<summary>Agent prompt (click to expand)</summary>",
     "",
-    "```text",
+    fence.open,
     prompt,
-    "```",
+    fence.close,
     "",
     "</details>",
   ].join("\n");
@@ -829,6 +849,19 @@ export class PRBabysitter {
             line: item.line,
           },
         });
+
+        if (isCodeFactoryComment(item.body)) {
+          const reason = "CodeFactory-authored agent command comment; no code change required";
+          evaluatedItems.set(item.id, applyEvaluationDecision(item, false, reason));
+          await queueLog(pr.id, "info", `Ignored self-authored agent command comment ${item.id}`, {
+            phase: "evaluate.comments",
+            metadata: {
+              feedbackId: item.id,
+              decision: "reject",
+            },
+          });
+          continue;
+        }
 
         if (isAutomationAuditTrailFollowUp(item, pr.feedbackItems)) {
           const reason = "Automation audit trail follow-up; no code change required";
