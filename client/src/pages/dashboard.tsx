@@ -4,6 +4,7 @@ import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
 import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
 import {
   formatFeedbackStatusLabel,
@@ -64,6 +65,38 @@ function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
   );
 }
 
+function AgentIndicator({ pr }: { pr: PR }) {
+  const agentCount = countActiveFeedbackStatuses(pr.feedbackItems).inProgress;
+  const isProcessing = pr.status === "processing";
+
+  if (!isProcessing && agentCount === 0) {
+    return null;
+  }
+
+  const label = agentCount > 0
+    ? `${agentCount} agent${agentCount !== 1 ? "s" : ""} running on this PR`
+    : "Agent run active on this PR";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex shrink-0 cursor-default items-center gap-0.5 text-[12px]"
+          data-testid={`agent-indicator-${pr.id}`}
+        >
+          <span className="animate-pulse">🤖</span>
+          {agentCount > 0 && (
+            <span className="text-[10px] text-muted-foreground">{agentCount}</span>
+          )}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p className="text-xs">{label}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
 
@@ -93,6 +126,7 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
           <div className="flex items-center gap-3">
             <span className="w-12 shrink-0 text-muted-foreground">#{pr.number}</span>
             <span className="truncate">{pr.title}</span>
+            <AgentIndicator pr={pr} />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.75rem] text-[11px] text-muted-foreground">
             <a
@@ -604,6 +638,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <StatusDot status={selectedPR.status} />
                       <span className="truncate font-medium">{selectedPR.title}</span>
+                      <AgentIndicator pr={selectedPR} />
                       <a
                         href={selectedPR.url}
                         target="_blank"
