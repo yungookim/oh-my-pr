@@ -254,11 +254,17 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
       applyFixesWithAgent: async ({ prompt, env, onStdoutChunk, onStderrChunk }) => {
         receivedPrompt = prompt;
         receivedEnv = env;
-        onStdoutChunk?.("agent stdout line\n");
+        const agentOutput = [
+          "agent stdout line",
+          "FEEDBACK_SUMMARY_START codefactory-feedback:gh-review-comment-1",
+          "Renamed the variable from `foo` to `bar` as requested.",
+          "FEEDBACK_SUMMARY_END",
+        ].join("\n") + "\n";
+        onStdoutChunk?.(agentOutput);
         onStderrChunk?.("agent stderr line\n");
         return {
           code: 0,
-          stdout: "agent stdout line\n",
+          stdout: agentOutput,
           stderr: "agent stderr line\n",
         };
       },
@@ -286,7 +292,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
   assert.deepEqual(postedFollowUps, [
     {
       id: "gh-review-comment-1",
-      body: "Addressed in commit `def456` by the latest babysitter run.\n\ncodefactory-feedback:gh-review-comment-1",
+      body: "Addressed in commit `def456` by the latest babysitter run.\n\nRenamed the variable from `foo` to `bar` as requested.\n\ncodefactory-feedback:gh-review-comment-1",
     },
   ]);
   assert.deepEqual(resolvedThreads, ["PRRT_kwDO_example"]);
@@ -297,6 +303,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
   assert.match(receivedPrompt, /commit it and push it to origin HEAD:feature\/verbose/i);
   assert.match(receivedPrompt, /GitHub follow-up replies and review-thread resolution will be handled by the babysitter/i);
   assert.match(receivedPrompt, /auditToken=codefactory-feedback:gh-review-comment-1/);
+  assert.match(receivedPrompt, /FEEDBACK_SUMMARY_START/);
   assert.equal(receivedEnv?.GITHUB_TOKEN, "test-token");
   assert.equal(receivedEnv?.GH_TOKEN, "test-token");
 

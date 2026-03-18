@@ -281,8 +281,11 @@ function buildAgentFixPrompt(params: {
     "When done:",
     "1) Run the relevant verification for your changes.",
     `2) If you changed code, commit it and push it to ${remoteName} HEAD:${pullSummary.headRef}.`,
-    "3) Summarize every addressed or blocked feedback item in your final response and include the exact audit token for each item.",
-    "4) Summarize the code changes, verification, and git actions you completed.",
+    "3) For each feedback item you addressed or were blocked on, emit a summary block in the following format:",
+    "   FEEDBACK_SUMMARY_START <auditToken>",
+    "   <A concise 1-2 sentence summary of what you did or why you were blocked>",
+    "   FEEDBACK_SUMMARY_END",
+    "   Include one block per audit token. These summaries will be posted as follow-up comments on the PR.",
   ].join("\n");
 }
 
@@ -293,6 +296,22 @@ function extractMentionedAuditTokens(body: string): string[] {
   }
 
   return Array.from(new Set(matches));
+}
+
+const FEEDBACK_SUMMARY_BLOCK = /FEEDBACK_SUMMARY_START\s+(codefactory-feedback:[^\s]+)\s*\n([\s\S]*?)FEEDBACK_SUMMARY_END/g;
+
+function extractAgentSummaries(agentOutput: string): Map<string, string> {
+  const summaries = new Map<string, string>();
+  let match: RegExpExecArray | null;
+  const pattern = new RegExp(FEEDBACK_SUMMARY_BLOCK.source, FEEDBACK_SUMMARY_BLOCK.flags);
+  while ((match = pattern.exec(agentOutput)) !== null) {
+    const auditToken = match[1];
+    const summary = match[2].trim();
+    if (auditToken && summary) {
+      summaries.set(auditToken, summary);
+    }
+  }
+  return summaries;
 }
 
 function isAutomationAuditTrailFollowUp(item: FeedbackItem, feedbackItems: FeedbackItem[]): boolean {
@@ -392,17 +411,21 @@ function collectGitHubFollowUpTasks(pr: PR): FeedbackItem[] {
   return pr.feedbackItems.filter((item) => needsGitHubFollowUp(item, pr.feedbackItems));
 }
 
-function buildFeedbackFollowUpBody(headSha: string, auditToken: string): string {
+function buildFeedbackFollowUpBody(headSha: string, auditToken: string, agentSummary?: string): string {
   const shortSha = headSha.trim() ? headSha.trim().slice(0, 7) : "";
-  const summary = shortSha
+  const headline = shortSha
     ? `Addressed in commit \`${shortSha}\` by the latest babysitter run.`
     : "Addressed in the latest babysitter run.";
 
-  return [
-    summary,
-    "",
-    auditToken,
-  ].join("\n");
+  const parts = [headline];
+
+  if (agentSummary) {
+    parts.push("", agentSummary);
+  }
+
+  parts.push("", auditToken);
+
+  return parts.join("\n");
 }
 
 const CODEFACTORY_COMMENT_MARKER = "<!-- codefactory-agent-command -->";
@@ -1008,6 +1031,7 @@ export class PRBabysitter {
       let headShaForFollowUp = pullSummary.headSha;
       let branchMoved = false;
       let remoteNameForLogs: string | null = null;
+      let agentSummaries = new Map<string, string>();
 
       if (hasConflicts) {
         await queueLog(pr.id, "info", `PR #${pr.number} has merge conflicts with base branch ${pullSummary.baseRef}`, {
@@ -1267,9 +1291,12 @@ export class PRBabysitter {
             // Update status replies: agent succeeded.
             await Promise.all(commentTasks.map((task) => updateItemStatus(task.id, STATUS_MESSAGES.agentCompleted)));
 
+            // Extract per-feedback-item summaries from agent output.
+            agentSummaries = extractAgentSummaries(applyResult.stdout);
+
             await queueLog(pr.id, "info", `${agent} completed successfully`, {
               phase: "agent",
-              metadata: { code: applyResult.code },
+              metadata: { code: applyResult.code, extractedSummaries: agentSummaries.size },
             });
           }
 
@@ -1408,7 +1435,7 @@ export class PRBabysitter {
             },
           });
 
-          const body = buildFeedbackFollowUpBody(headShaForFollowUp, item.auditToken);
+          const body = buildFeedbackFollowUpBody(headShaForFollowUp, item.auditToken, agentSummaries.get(item.auditToken));
           await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body);
         }
 
