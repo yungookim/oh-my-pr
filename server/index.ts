@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { exec } from "child_process";
 
 const app = express();
 const httpServer = createServer(app);
@@ -101,6 +102,24 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+
+      // Auto-open browser when running locally in development
+      if (process.env.NODE_ENV !== "production") {
+        const url = `http://localhost:${port}`;
+        const platform = process.platform;
+        const openCommand =
+          platform === "darwin"
+            ? `open "${url}"`
+            : platform === "win32"
+              ? `start "${url}"`
+              : `xdg-open "${url}"`;
+
+        exec(openCommand, (err) => {
+          if (err) {
+            log(`Could not open browser automatically: ${err.message}`);
+          }
+        });
+      }
     },
   );
 })();
