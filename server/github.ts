@@ -547,6 +547,21 @@ export async function replyToIssueComment(
   );
 }
 
+export async function postPRComment(
+  octokit: Octokit,
+  parsed: ParsedPRUrl,
+  body: string,
+): Promise<void> {
+  await withGitHubErrorHandling("PR comment", parsed, () =>
+    octokit.issues.createComment({
+      owner: parsed.owner,
+      repo: parsed.repo,
+      issue_number: parsed.number,
+      body,
+    }),
+  );
+}
+
 export async function postFollowUpForFeedbackItem(
   octokit: Octokit,
   parsed: ParsedPRUrl,

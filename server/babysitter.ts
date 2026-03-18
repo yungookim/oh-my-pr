@@ -18,6 +18,7 @@ import {
   listOpenPullsForRepo,
   parseRepoSlug,
   postFollowUpForFeedbackItem,
+  postPRComment,
   postStatusReplyForFeedbackItem,
   resolveReviewThread,
   resolveGitHubAuthToken,
@@ -42,6 +43,7 @@ type GitHubService = {
   listFailingStatuses: typeof listFailingStatuses;
   listOpenPullsForRepo: typeof listOpenPullsForRepo;
   postFollowUpForFeedbackItem: typeof postFollowUpForFeedbackItem;
+  postPRComment: typeof postPRComment;
   postStatusReplyForFeedbackItem: typeof postStatusReplyForFeedbackItem;
   resolveReviewThread: typeof resolveReviewThread;
   resolveGitHubAuthToken: typeof resolveGitHubAuthToken;
@@ -63,6 +65,7 @@ const defaultGitHubService: GitHubService = {
   listFailingStatuses,
   listOpenPullsForRepo,
   postFollowUpForFeedbackItem,
+  postPRComment,
   postStatusReplyForFeedbackItem,
   resolveReviewThread,
   resolveGitHubAuthToken,
@@ -399,6 +402,21 @@ function buildFeedbackFollowUpBody(headSha: string, auditToken: string): string 
     summary,
     "",
     auditToken,
+  ].join("\n");
+}
+
+function formatAgentCommandGitHubComment(agent: CodingAgent, prompt: string): string {
+  return [
+    `\ud83e\udd16 **CodeFactory** dispatched \`${agent}\` with the following prompt:`,
+    "",
+    "<details>",
+    "<summary>Agent prompt (click to expand)</summary>",
+    "",
+    "```",
+    prompt,
+    "```",
+    "",
+    "</details>",
   ].join("\n");
 }
 
@@ -809,10 +827,16 @@ export class PRBabysitter {
           continue;
         }
 
+        const evalPrompt = buildCommentEvaluationPrompt({ pr, item });
+        await queueLog(pr.id, "info", `Evaluating feedback ${item.id} with ${agent}`, {
+          phase: "evaluate.comments",
+          metadata: { feedbackId: item.id, agent, prompt: evalPrompt },
+        });
+
         const evaluation = await this.runtime.evaluateFixNecessityWithAgent({
           agent,
           cwd: process.cwd(),
-          prompt: buildCommentEvaluationPrompt({ pr, item }),
+          prompt: evalPrompt,
         });
 
         const updated = applyEvaluationDecision(item, evaluation.needsFix, evaluation.reason);
@@ -868,15 +892,21 @@ export class PRBabysitter {
         phase: "evaluate.status",
       });
       for (const status of failingStatuses) {
+        const statusEvalPrompt = buildStatusEvaluationPrompt({
+          pr,
+          context: status.context,
+          description: status.description,
+          targetUrl: status.targetUrl,
+        });
+        await queueLog(pr.id, "info", `Evaluating failing status ${status.context} with ${agent}`, {
+          phase: "evaluate.status",
+          metadata: { context: status.context, agent, prompt: statusEvalPrompt },
+        });
+
         const evaluation = await this.runtime.evaluateFixNecessityWithAgent({
           agent,
           cwd: process.cwd(),
-          prompt: buildStatusEvaluationPrompt({
-            pr,
-            context: status.context,
-            description: status.description,
-            targetUrl: status.targetUrl,
-          }),
+          prompt: statusEvalPrompt,
         });
 
         if (evaluation.needsFix) {
@@ -1054,19 +1084,36 @@ export class PRBabysitter {
                   }
                 : undefined;
 
+              const conflictPrompt = buildConflictResolutionPrompt({
+                pr,
+                pullSummary,
+                remoteName,
+                conflictFiles,
+              });
+
               await queueLog(pr.id, "info", `Launching ${agent} to resolve merge conflicts`, {
                 phase: "conflict.agent",
+                metadata: { agent, prompt: conflictPrompt },
               });
+
+              try {
+                await this.github.postPRComment(
+                  octokit,
+                  parsedPr,
+                  formatAgentCommandGitHubComment(agent, conflictPrompt),
+                );
+              } catch (error) {
+                await logBestEffortFailure(
+                  pr.id,
+                  "github.agent-command",
+                  `Failed to post agent command comment: ${summarizeUnknownError(error)}`,
+                );
+              }
 
               const conflictResult = await this.runtime.applyFixesWithAgent({
                 agent,
                 cwd: worktreePath,
-                prompt: buildConflictResolutionPrompt({
-                  pr,
-                  pullSummary,
-                  remoteName,
-                  conflictFiles,
-                }),
+                prompt: conflictPrompt,
                 env: conflictAgentEnv,
                 onStdoutChunk: conflictStdout.onChunk,
                 onStderrChunk: conflictStderr.onChunk,
@@ -1143,10 +1190,33 @@ export class PRBabysitter {
                 }
               : undefined;
 
+            const fixPrompt = buildAgentFixPrompt({
+              pr,
+              pullSummary,
+              remoteName,
+              commentTasks,
+              statusTasks,
+            });
+
             await queueLog(pr.id, "info", `Launching ${agent} in autonomous mode`, {
               phase: "agent",
-              metadata: { githubAuth: Boolean(githubToken) },
+              metadata: { githubAuth: Boolean(githubToken), prompt: fixPrompt },
             });
+
+            // Post agent command to GitHub PR as a comment for debugging visibility.
+            try {
+              await this.github.postPRComment(
+                octokit,
+                parsedPr,
+                formatAgentCommandGitHubComment(agent, fixPrompt),
+              );
+            } catch (error) {
+              await logBestEffortFailure(
+                pr.id,
+                "github.agent-command",
+                `Failed to post agent command comment: ${summarizeUnknownError(error)}`,
+              );
+            }
 
             // Update status replies: agent is starting.
             const agentRunningStatus = STATUS_MESSAGES.agentRunning(agent);
@@ -1155,13 +1225,7 @@ export class PRBabysitter {
             const applyResult = await this.runtime.applyFixesWithAgent({
               agent,
               cwd: worktreePath,
-              prompt: buildAgentFixPrompt({
-                pr,
-                pullSummary,
-                remoteName,
-                commentTasks,
-                statusTasks,
-              }),
+              prompt: fixPrompt,
               env: agentEnv,
               onStdoutChunk: agentStdout.onChunk,
               onStderrChunk: agentStderr.onChunk,
