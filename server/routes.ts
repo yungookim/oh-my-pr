@@ -31,6 +31,14 @@ export async function registerRoutes(
   );
   const runWatcher = watcherScheduler.run;
 
+  const getRuntimeSnapshot = async () => {
+    const state = await storage.getRuntimeState();
+    return {
+      ...state,
+      activeRuns: babysitter.getActiveRunCount(),
+    };
+  };
+
   const refreshWatcherSchedule = async () => {
     const config = await storage.getConfig();
     const interval = Math.max(10000, config.pollIntervalMs || 120000);
@@ -51,12 +59,57 @@ export async function registerRoutes(
   };
 
   await refreshWatcherSchedule();
+  void babysitter.resumeInterruptedRuns();
   void runWatcher();
 
   httpServer.on("close", () => {
     if (watcherTimer) {
       clearInterval(watcherTimer);
       watcherTimer = null;
+    }
+  });
+
+  app.get("/api/runtime", async (_req, res) => {
+    res.json(await getRuntimeSnapshot());
+  });
+
+  app.post("/api/runtime/drain", async (req, res) => {
+    try {
+      const payload = z.object({
+        enabled: z.boolean(),
+        reason: z.string().optional(),
+        waitForIdle: z.boolean().optional(),
+        timeoutMs: z.number().int().positive().max(600000).optional(),
+      }).parse(req.body);
+
+      const updated = await storage.updateRuntimeState({
+        drainMode: payload.enabled,
+        drainRequestedAt: payload.enabled ? new Date().toISOString() : null,
+        drainReason: payload.enabled ? payload.reason ?? null : null,
+      });
+
+      if (payload.enabled && payload.waitForIdle) {
+        const drained = await babysitter.waitForIdle(payload.timeoutMs ?? 120000);
+        const snapshot = await getRuntimeSnapshot();
+        return res.status(drained ? 200 : 202).json({
+          ...updated,
+          ...snapshot,
+          drained,
+        });
+      }
+
+      const snapshot = await getRuntimeSnapshot();
+      res.json({
+        ...updated,
+        ...snapshot,
+      });
+    } catch (err: unknown) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.errors[0].message });
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
     }
   });
 
@@ -105,6 +158,11 @@ export async function registerRoutes(
   });
 
   app.post("/api/repos/sync", async (_req, res) => {
+    const runtime = await storage.getRuntimeState();
+    if (runtime.drainMode) {
+      return res.status(409).json({ error: "Drain mode is enabled. Sync-triggered runs are blocked until drain mode is disabled." });
+    }
+
     try {
       await watcherScheduler.runAndReportErrors();
       res.json({ ok: true });
@@ -262,6 +320,10 @@ export async function registerRoutes(
   app.post("/api/prs/:id/apply", async (req, res) => {
     const pr = await storage.getPR(req.params.id);
     if (!pr) return res.status(404).json({ error: "PR not found" });
+    const runtime = await storage.getRuntimeState();
+    if (runtime.drainMode) {
+      return res.status(409).json({ error: "Drain mode is enabled. Manual runs are blocked until drain mode is disabled." });
+    }
 
     const config = await storage.getConfig();
     await storage.updatePR(pr.id, { status: "processing" });
@@ -280,6 +342,10 @@ export async function registerRoutes(
   app.post("/api/prs/:id/babysit", async (req, res) => {
     const pr = await storage.getPR(req.params.id);
     if (!pr) return res.status(404).json({ error: "PR not found" });
+    const runtime = await storage.getRuntimeState();
+    if (runtime.drainMode) {
+      return res.status(409).json({ error: "Drain mode is enabled. Manual runs are blocked until drain mode is disabled." });
+    }
 
     const config = await storage.getConfig();
     await storage.addLog(pr.id, "info", `Manual babysitter trigger using ${config.codingAgent}`);

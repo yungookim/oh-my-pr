@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
 import { feedbackStatusEnum } from "@shared/schema";
-import type { Config, FeedbackItem, LogEntry, PR } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, FeedbackItem, LogEntry, PR, RuntimeState } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { getCodeFactoryPaths } from "./paths";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -71,6 +71,27 @@ type LogRow = {
   phase: string | null;
   message: string;
   metadata_json: string | null;
+};
+
+type RuntimeStateRow = {
+  drain_mode: number;
+  drain_requested_at: string | null;
+  drain_reason: string | null;
+};
+
+type AgentRunRow = {
+  id: string;
+  pr_id: string;
+  preferred_agent: Config["codingAgent"];
+  resolved_agent: Config["codingAgent"] | null;
+  status: AgentRunStatus;
+  phase: string;
+  prompt: string | null;
+  initial_head_sha: string | null;
+  metadata_json: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export class SqliteStorage implements IStorage {
@@ -166,8 +187,32 @@ export class SqliteStorage implements IStorage {
         FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS runtime_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        drain_mode INTEGER NOT NULL DEFAULT 0,
+        drain_requested_at TEXT,
+        drain_reason TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id TEXT PRIMARY KEY,
+        pr_id TEXT NOT NULL,
+        preferred_agent TEXT NOT NULL,
+        resolved_agent TEXT,
+        status TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        prompt TEXT,
+        initial_head_sha TEXT,
+        metadata_json TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_feedback_items_pr_id ON feedback_items(pr_id);
       CREATE INDEX IF NOT EXISTS idx_logs_pr_id_timestamp ON logs(pr_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_status_updated_at ON agent_runs(status, updated_at);
     `);
 
     this.ensureColumn("feedback_items", "reply_kind", "TEXT NOT NULL DEFAULT 'general_comment'");
@@ -183,6 +228,16 @@ export class SqliteStorage implements IStorage {
     const configExists = this.db.prepare("SELECT 1 AS present FROM config WHERE id = 1").get() as { present: number } | undefined;
     if (!configExists) {
       this.writeConfig(DEFAULT_CONFIG);
+    }
+
+    const runtimeStateExists = this.db.prepare(
+      "SELECT 1 AS present FROM runtime_state WHERE id = 1",
+    ).get() as { present: number } | undefined;
+    if (!runtimeStateExists) {
+      this.db.prepare(`
+        INSERT INTO runtime_state (id, drain_mode, drain_requested_at, drain_reason)
+        VALUES (1, 0, NULL, NULL)
+      `).run();
     }
   }
 
@@ -277,6 +332,31 @@ export class SqliteStorage implements IStorage {
       lintPassed: row.lint_passed === null ? null : Boolean(row.lint_passed),
       lastChecked: row.last_checked,
       addedAt: row.added_at,
+    };
+  }
+
+  private parseRuntimeStateRow(row: RuntimeStateRow): RuntimeState {
+    return {
+      drainMode: Boolean(row.drain_mode),
+      drainRequestedAt: row.drain_requested_at,
+      drainReason: row.drain_reason,
+    };
+  }
+
+  private parseAgentRunRow(row: AgentRunRow): AgentRun {
+    return {
+      id: row.id,
+      prId: row.pr_id,
+      preferredAgent: row.preferred_agent,
+      resolvedAgent: row.resolved_agent,
+      status: row.status,
+      phase: row.phase,
+      prompt: row.prompt,
+      initialHeadSha: row.initial_head_sha,
+      metadata: row.metadata_json ? JSON.parse(row.metadata_json) : null,
+      lastError: row.last_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 
@@ -607,6 +687,117 @@ export class SqliteStorage implements IStorage {
 
     this.writeConfig(next);
     return next;
+  }
+
+  async getRuntimeState(): Promise<RuntimeState> {
+    const row = this.db.prepare(`
+      SELECT drain_mode, drain_requested_at, drain_reason
+      FROM runtime_state
+      WHERE id = 1
+    `).get() as RuntimeStateRow;
+
+    return this.parseRuntimeStateRow(row);
+  }
+
+  async updateRuntimeState(updates: Partial<RuntimeState>): Promise<RuntimeState> {
+    const current = await this.getRuntimeState();
+    const next: RuntimeState = {
+      ...current,
+      ...updates,
+    };
+
+    this.db.prepare(`
+      INSERT INTO runtime_state (id, drain_mode, drain_requested_at, drain_reason)
+      VALUES (1, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        drain_mode = excluded.drain_mode,
+        drain_requested_at = excluded.drain_requested_at,
+        drain_reason = excluded.drain_reason
+    `).run(
+      Number(next.drainMode),
+      next.drainRequestedAt,
+      next.drainReason,
+    );
+
+    return next;
+  }
+
+  async getAgentRun(id: string): Promise<AgentRun | undefined> {
+    const row = this.db.prepare(`
+      SELECT id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
+             metadata_json, last_error, created_at, updated_at
+      FROM agent_runs
+      WHERE id = ?
+    `).get(id) as AgentRunRow | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return this.parseAgentRunRow(row);
+  }
+
+  async listAgentRuns(filters?: { status?: AgentRunStatus; prId?: string }): Promise<AgentRun[]> {
+    const clauses: string[] = [];
+    const values: string[] = [];
+
+    if (filters?.status) {
+      clauses.push("status = ?");
+      values.push(filters.status);
+    }
+
+    if (filters?.prId) {
+      clauses.push("pr_id = ?");
+      values.push(filters.prId);
+    }
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+    const rows = this.db.prepare(`
+      SELECT id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
+             metadata_json, last_error, created_at, updated_at
+      FROM agent_runs
+      ${whereClause}
+      ORDER BY datetime(created_at) ASC
+    `).all(...values) as AgentRunRow[];
+
+    return rows.map((row) => this.parseAgentRunRow(row));
+  }
+
+  async upsertAgentRun(run: AgentRun): Promise<AgentRun> {
+    this.db.prepare(`
+      INSERT INTO agent_runs (
+        id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
+        metadata_json, last_error, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        pr_id = excluded.pr_id,
+        preferred_agent = excluded.preferred_agent,
+        resolved_agent = excluded.resolved_agent,
+        status = excluded.status,
+        phase = excluded.phase,
+        prompt = excluded.prompt,
+        initial_head_sha = excluded.initial_head_sha,
+        metadata_json = excluded.metadata_json,
+        last_error = excluded.last_error,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `).run(
+      run.id,
+      run.prId,
+      run.preferredAgent,
+      run.resolvedAgent,
+      run.status,
+      run.phase,
+      run.prompt,
+      run.initialHeadSha,
+      run.metadata ? JSON.stringify(run.metadata) : null,
+      run.lastError,
+      run.createdAt,
+      run.updatedAt,
+    );
+
+    return run;
   }
 
   close(): void {

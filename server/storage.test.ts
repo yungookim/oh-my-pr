@@ -12,6 +12,11 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     pollIntervalMs: 45000,
     watchedRepos: ["alex-morgan-o/lolodex"],
   });
+  await first.updateRuntimeState({
+    drainMode: true,
+    drainRequestedAt: "2026-03-18T10:00:00.000Z",
+    drainReason: "planned update",
+  });
 
   const pr = await first.addPR({
     number: 106,
@@ -64,15 +69,35 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     phase: "agent",
     metadata: { attempt: 1 },
   });
+  await first.upsertAgentRun({
+    id: "run-1",
+    prId: pr.id,
+    preferredAgent: "codex",
+    resolvedAgent: "codex",
+    status: "running",
+    phase: "run.agent-running",
+    prompt: "Fix the accepted tasks and push",
+    initialHeadSha: "abc123",
+    metadata: { replay: true },
+    lastError: null,
+    createdAt: "2026-03-18T10:01:00.000Z",
+    updatedAt: "2026-03-18T10:02:00.000Z",
+  });
   first.close();
 
   const second = new SqliteStorage(root);
   const config = await second.getConfig();
+  const runtime = await second.getRuntimeState();
   const reloadedPr = await second.getPR(pr.id);
+  const run = await second.getAgentRun("run-1");
+  const runningRuns = await second.listAgentRuns({ status: "running" });
   const logs = await second.getLogs(pr.id);
 
   assert.equal(config.pollIntervalMs, 45000);
   assert.deepEqual(config.watchedRepos, ["alex-morgan-o/lolodex"]);
+  assert.equal(runtime.drainMode, true);
+  assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
+  assert.equal(runtime.drainReason, "planned update");
   assert.equal(reloadedPr?.repo, "alex-morgan-o/lolodex");
   assert.equal(reloadedPr?.feedbackItems.length, 1);
   assert.equal(reloadedPr?.feedbackItems[0]?.bodyHtml, "<p>Please fix <code>thing</code></p>");
@@ -82,6 +107,11 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(reloadedPr?.accepted, 1);
   assert.equal(reloadedPr?.feedbackItems[0]?.status, "resolved");
   assert.equal(reloadedPr?.feedbackItems[0]?.statusReason, "GitHub audit trail verified");
+  assert.equal(run?.status, "running");
+  assert.equal(run?.prompt, "Fix the accepted tasks and push");
+  assert.equal(run?.initialHeadSha, "abc123");
+  assert.equal(runningRuns.length, 1);
+  assert.equal(runningRuns[0]?.id, "run-1");
   assert.equal(logs.length, 1);
   assert.equal(logs[0]?.phase, "agent");
   assert.deepEqual(logs[0]?.metadata, { attempt: 1 });

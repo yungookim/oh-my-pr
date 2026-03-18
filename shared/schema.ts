@@ -80,6 +80,32 @@ export const logEntrySchema = z.object({
 });
 export type LogEntry = z.infer<typeof logEntrySchema>;
 
+export const agentRunStatusEnum = z.enum(["running", "completed", "failed"]);
+export type AgentRunStatus = z.infer<typeof agentRunStatusEnum>;
+
+export const agentRunSchema = z.object({
+  id: z.string(),
+  prId: z.string(),
+  preferredAgent: z.enum(["codex", "claude"]),
+  resolvedAgent: z.enum(["codex", "claude"]).nullable(),
+  status: agentRunStatusEnum,
+  phase: z.string(),
+  prompt: z.string().nullable(),
+  initialHeadSha: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+  lastError: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AgentRun = z.infer<typeof agentRunSchema>;
+
+export const runtimeStateSchema = z.object({
+  drainMode: z.boolean(),
+  drainRequestedAt: z.string().nullable(),
+  drainReason: z.string().nullable(),
+});
+export type RuntimeState = z.infer<typeof runtimeStateSchema>;
+
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),

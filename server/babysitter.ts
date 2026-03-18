@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { FeedbackItem, PR } from "@shared/schema";
+import type { AgentRun, FeedbackItem, PR } from "@shared/schema";
 import type { IStorage } from "./storage";
 import {
   applyFixesWithAgent,
@@ -500,6 +500,10 @@ async function ensureGitIdentity(worktreePath: string, run: typeof runCommand): 
   }
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class PRBabysitter {
   private readonly storage: IStorage;
   private readonly inProgress = new Set<string>();
@@ -514,6 +518,57 @@ export class PRBabysitter {
     this.storage = storage;
     this.github = github;
     this.runtime = runtime;
+  }
+
+  getActiveRunCount(): number {
+    return this.inProgress.size;
+  }
+
+  async waitForIdle(timeoutMs = 120000): Promise<boolean> {
+    const startedAt = Date.now();
+
+    while (this.inProgress.size > 0) {
+      if (Date.now() - startedAt >= timeoutMs) {
+        return false;
+      }
+      await wait(100);
+    }
+
+    return true;
+  }
+
+  async resumeInterruptedRuns(): Promise<void> {
+    const interruptedRuns = await this.storage.listAgentRuns({ status: "running" });
+    if (interruptedRuns.length === 0) {
+      return;
+    }
+
+    for (const run of interruptedRuns) {
+      const canReplay = Boolean(run.prompt && run.resolvedAgent && run.initialHeadSha);
+      if (!canReplay) {
+        const now = new Date().toISOString();
+        await this.storage.upsertAgentRun({
+          ...run,
+          status: "failed",
+          phase: "run.failed",
+          lastError: "Interrupted run missing replay context",
+          updatedAt: now,
+        });
+        await this.babysitPR(run.prId, run.preferredAgent, {
+          allowDuringDrain: true,
+        });
+        continue;
+      }
+
+      await this.babysitPR(run.prId, run.preferredAgent, {
+        runId: run.id,
+        recoveryMode: true,
+        forceAgentPrompt: run.prompt,
+        forceResolvedAgent: run.resolvedAgent,
+        replayInitialHeadSha: run.initialHeadSha,
+        allowDuringDrain: true,
+      });
+    }
   }
 
   async syncFeedbackForPR(
@@ -582,6 +637,11 @@ export class PRBabysitter {
   }
 
   async syncAndBabysitTrackedRepos(): Promise<void> {
+    const runtimeState = await this.storage.getRuntimeState();
+    if (runtimeState.drainMode) {
+      return;
+    }
+
     const config = await this.storage.getConfig();
     const octokit = await this.github.buildOctokit(config);
 
@@ -651,7 +711,29 @@ export class PRBabysitter {
     }
   }
 
-  async babysitPR(prId: string, preferredAgent: CodingAgent): Promise<void> {
+  async babysitPR(
+    prId: string,
+    preferredAgent: CodingAgent,
+    options?: {
+      runId?: string;
+      recoveryMode?: boolean;
+      forceAgentPrompt?: string | null;
+      forceResolvedAgent?: CodingAgent | null;
+      replayInitialHeadSha?: string | null;
+      allowDuringDrain?: boolean;
+    },
+  ): Promise<void> {
+    const runtimeState = await this.storage.getRuntimeState();
+    if (runtimeState.drainMode && !options?.allowDuringDrain) {
+      const pr = await this.storage.getPR(prId);
+      if (pr) {
+        await this.storage.addLog(pr.id, "warn", "Babysitter run skipped because drain mode is enabled", {
+          phase: "run",
+        });
+      }
+      return;
+    }
+
     if (this.inProgress.has(prId)) {
       const pr = await this.storage.getPR(prId);
       if (pr) {
@@ -663,9 +745,38 @@ export class PRBabysitter {
     }
 
     this.inProgress.add(prId);
-    const runId = randomUUID();
+    const runId = options?.runId || randomUUID();
     const auditWindowStartMs = Math.floor(Date.now() / 1000) * 1000 - 1000;
     let logQueue = Promise.resolve();
+    const runCreatedAt = new Date().toISOString();
+    let runRecord: AgentRun = (await this.storage.getAgentRun(runId)) || {
+      id: runId,
+      prId,
+      preferredAgent,
+      resolvedAgent: options?.forceResolvedAgent ?? null,
+      status: "running",
+      phase: "run.started",
+      prompt: options?.forceAgentPrompt ?? null,
+      initialHeadSha: options?.replayInitialHeadSha ?? null,
+      metadata: {
+        recoveryMode: Boolean(options?.recoveryMode),
+      },
+      lastError: null,
+      createdAt: runCreatedAt,
+      updatedAt: runCreatedAt,
+    };
+    await this.storage.upsertAgentRun(runRecord);
+
+    const updateRunRecord = async (
+      updates: Partial<Pick<AgentRun, "status" | "phase" | "resolvedAgent" | "prompt" | "initialHeadSha" | "metadata" | "lastError">>,
+    ) => {
+      runRecord = {
+        ...runRecord,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.storage.upsertAgentRun(runRecord);
+    };
 
     const queueLog = (
       currentPrId: string,
@@ -784,16 +895,32 @@ export class PRBabysitter {
     };
 
     let followUpTasks: FeedbackItem[] = [];
+    const forcedFixPrompt = options?.forceAgentPrompt ?? null;
+    const forcedResolvedAgent = options?.forceResolvedAgent ?? null;
+    const replayInitialHeadSha = options?.replayInitialHeadSha ?? null;
+    const recoveryMode = Boolean(options?.recoveryMode);
+    let skipForcedReplay = false;
 
     try {
+      await updateRunRecord({
+        status: "running",
+        phase: "run.started",
+        metadata: {
+          ...(runRecord.metadata ?? {}),
+          recoveryMode,
+        },
+        lastError: null,
+      });
+
       await this.storage.updatePR(prId, {
         status: "processing",
         lastChecked: new Date().toISOString(),
       });
-      await queueLog(prId, "info", `Babysitter run started using preferred agent ${preferredAgent}`, {
+      await queueLog(prId, "info", `Babysitter run started using preferred agent ${preferredAgent}${recoveryMode ? " (recovery)" : ""}`, {
         phase: "run",
-        metadata: { preferredAgent },
+        metadata: { preferredAgent, recoveryMode },
       });
+      await updateRunRecord({ phase: "run.sync" });
 
       let pr = await this.syncFeedbackForPR(prId, {
         runId,
@@ -801,7 +928,10 @@ export class PRBabysitter {
         phase: "sync",
       });
       const config = await this.storage.getConfig();
-      const agent = await this.runtime.resolveAgent(preferredAgent);
+      const agent = forcedResolvedAgent || (await this.runtime.resolveAgent(preferredAgent));
+      await updateRunRecord({
+        resolvedAgent: agent,
+      });
       const parsedRepo = parseRepoSlug(pr.repo);
 
       if (!parsedRepo) {
@@ -820,6 +950,16 @@ export class PRBabysitter {
       };
 
       const pullSummary = await this.github.fetchPullSummary(octokit, parsedPr);
+      if (forcedFixPrompt && replayInitialHeadSha && pullSummary.headSha !== replayInitialHeadSha) {
+        skipForcedReplay = true;
+        await queueLog(pr.id, "warn", `Skipping forced prompt replay because PR head moved (${replayInitialHeadSha.slice(0, 7)} -> ${pullSummary.headSha.slice(0, 7)})`, {
+          phase: "run.replay",
+          metadata: {
+            replayInitialHeadSha,
+            currentHeadSha: pullSummary.headSha,
+          },
+        });
+      }
       const failingStatuses = await this.github.listFailingStatuses(octokit, parsedRepo, pullSummary.headSha);
 
       // Track status reply comments so we can update them with progress.
@@ -1014,16 +1154,30 @@ export class PRBabysitter {
       const commentTasks = pr.feedbackItems.filter(
         (item) => item.status === "queued" && item.decision === "accept",
       );
+      const replayCommentTasks = forcedFixPrompt
+        ? pr.feedbackItems.filter(
+            (item) => (item.status === "queued" || item.status === "in_progress") && item.decision === "accept",
+          )
+        : [];
+      const effectiveCommentTasks = replayCommentTasks.length > 0 ? replayCommentTasks : commentTasks;
       followUpTasks = collectGitHubFollowUpTasks(pr);
       const hasConflicts = pullSummary.mergeable === false;
+      const shouldRunForcedReplay = Boolean(forcedFixPrompt && !skipForcedReplay);
+      const disableAgentExecution = Boolean(forcedFixPrompt && skipForcedReplay);
+      const hasAgentWork = !disableAgentExecution && (effectiveCommentTasks.length > 0 || statusTasks.length > 0 || shouldRunForcedReplay);
 
-      if (commentTasks.length === 0 && statusTasks.length === 0 && followUpTasks.length === 0 && !hasConflicts) {
+      if (!hasAgentWork && followUpTasks.length === 0 && !hasConflicts) {
         await queueLog(pr.id, "info", `Babysitter checked PR #${pr.number}; no necessary fixes identified`, {
           phase: "run",
         });
         await this.storage.updatePR(pr.id, {
           status: "watching",
           lastChecked: new Date().toISOString(),
+        });
+        await updateRunRecord({
+          status: "completed",
+          phase: "run.completed",
+          lastError: null,
         });
         return;
       }
@@ -1040,18 +1194,19 @@ export class PRBabysitter {
         });
       }
 
-      if (commentTasks.length > 0 || statusTasks.length > 0 || hasConflicts) {
+      if (hasAgentWork || hasConflicts) {
         await queueLog(
           pr.id,
           "info",
-          `Babysitter preparing fix run with ${commentTasks.length} comment task(s), ${statusTasks.length} status task(s), and ${followUpTasks.length} GitHub follow-up task(s)${hasConflicts ? ", plus merge conflict resolution" : ""} using ${agent}`,
+          `Babysitter preparing fix run with ${effectiveCommentTasks.length} comment task(s), ${statusTasks.length} status task(s), and ${followUpTasks.length} GitHub follow-up task(s)${hasConflicts ? ", plus merge conflict resolution" : ""}${shouldRunForcedReplay ? ", with forced prompt replay" : ""} using ${agent}`,
           {
             phase: "run",
             metadata: {
-              commentTasks: commentTasks.length,
+              commentTasks: effectiveCommentTasks.length,
               statusTasks: statusTasks.length,
               followUpTasks: followUpTasks.length,
               hasConflicts,
+              shouldRunForcedReplay,
               agent,
             },
           },
@@ -1222,8 +1377,8 @@ export class PRBabysitter {
             }
           }
 
-          if (commentTasks.length > 0) {
-            const inProgressIds = new Set(commentTasks.map((item) => item.id));
+          if (effectiveCommentTasks.length > 0) {
+            const inProgressIds = new Set(effectiveCommentTasks.map((item) => item.id));
             const inProgressItems = pr.feedbackItems.map((item) =>
               inProgressIds.has(item.id) ? markInProgress(item) : item,
             );
@@ -1239,7 +1394,7 @@ export class PRBabysitter {
             }
           }
 
-          if (commentTasks.length > 0 || statusTasks.length > 0) {
+          if (shouldRunForcedReplay || effectiveCommentTasks.length > 0 || statusTasks.length > 0) {
             const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
             const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
             const githubToken = await this.github.resolveGitHubAuthToken(config);
@@ -1251,17 +1406,26 @@ export class PRBabysitter {
                 }
               : undefined;
 
-            const fixPrompt = buildAgentFixPrompt({
+            const fixPrompt = shouldRunForcedReplay && forcedFixPrompt ? forcedFixPrompt : buildAgentFixPrompt({
               pr,
               pullSummary,
               remoteName,
-              commentTasks,
+              commentTasks: effectiveCommentTasks,
               statusTasks,
+            });
+
+            await updateRunRecord({
+              phase: "run.prompt-prepared",
+              prompt: fixPrompt,
+              initialHeadSha: replayInitialHeadSha || pullSummary.headSha,
             });
 
             await queueLog(pr.id, "info", `Launching ${agent} in autonomous mode`, {
               phase: "agent",
               metadata: { githubAuth: Boolean(githubToken), prompt: fixPrompt },
+            });
+            await updateRunRecord({
+              phase: "run.agent-running",
             });
 
             // Post agent command to GitHub PR as a comment for debugging visibility.
@@ -1269,7 +1433,7 @@ export class PRBabysitter {
 
             // Update status replies: agent is starting.
             const agentRunningStatus = STATUS_MESSAGES.agentRunning(agent);
-            await Promise.all(commentTasks.map((task) => updateItemStatus(task.id, agentRunningStatus)));
+            await Promise.all(effectiveCommentTasks.map((task) => updateItemStatus(task.id, agentRunningStatus)));
 
             const applyResult = await this.runtime.applyFixesWithAgent({
               agent,
@@ -1284,12 +1448,12 @@ export class PRBabysitter {
 
             if (applyResult.code !== 0) {
               // Update status replies on failure.
-              await Promise.all(commentTasks.map((task) => updateItemStatus(task.id, STATUS_MESSAGES.agentFailed)));
+              await Promise.all(effectiveCommentTasks.map((task) => updateItemStatus(task.id, STATUS_MESSAGES.agentFailed)));
               throw new Error(`Agent apply failed (${applyResult.code}): ${applyResult.stderr || applyResult.stdout}`);
             }
 
             // Update status replies: agent succeeded.
-            await Promise.all(commentTasks.map((task) => updateItemStatus(task.id, STATUS_MESSAGES.agentCompleted)));
+            await Promise.all(effectiveCommentTasks.map((task) => updateItemStatus(task.id, STATUS_MESSAGES.agentCompleted)));
 
             // Extract per-feedback-item summaries from agent output.
             agentSummaries = extractAgentSummaries(applyResult.stdout);
@@ -1297,6 +1461,9 @@ export class PRBabysitter {
             await queueLog(pr.id, "info", `${agent} completed successfully`, {
               phase: "agent",
               metadata: { code: applyResult.code, extractedSummaries: agentSummaries.size },
+            });
+            await updateRunRecord({
+              phase: "run.agent-finished",
             });
           }
 
@@ -1422,6 +1589,10 @@ export class PRBabysitter {
         );
       }
 
+      await updateRunRecord({
+        phase: "run.reconcile",
+      });
+
       for (const item of followUpTasks) {
         const shouldPostFollowUp = !hasAuditTrail(item, pr.feedbackItems);
         const shouldResolveThread = item.replyKind === "review_thread" && !item.threadResolved;
@@ -1510,9 +1681,19 @@ export class PRBabysitter {
         phase: "run",
         metadata: { remoteName: remoteNameForLogs, branchMoved },
       });
+      await updateRunRecord({
+        status: "completed",
+        phase: "run.completed",
+        lastError: null,
+      });
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      await updateRunRecord({
+        status: "failed",
+        phase: "run.failed",
+        lastError: message,
+      });
       const currentPr = await this.storage.getPR(prId);
       if (currentPr) {
         await queueLog(currentPr.id, "error", `Babysitter error: ${message}`, {

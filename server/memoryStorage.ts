@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { PR, LogEntry, Config } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, RuntimeState } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
 
@@ -7,6 +7,12 @@ export class MemStorage implements IStorage {
   private prs: Map<string, PR> = new Map();
   private logs: LogEntry[] = [];
   private config: Config = { ...DEFAULT_CONFIG };
+  private runtimeState: RuntimeState = {
+    drainMode: false,
+    drainRequestedAt: null,
+    drainReason: null,
+  };
+  private agentRuns: Map<string, AgentRun> = new Map();
 
   async getPRs(): Promise<PR[]> {
     return Array.from(this.prs.values())
@@ -97,5 +103,40 @@ export class MemStorage implements IStorage {
   async updateConfig(updates: Partial<Config>): Promise<Config> {
     this.config = { ...this.config, ...updates };
     return { ...this.config };
+  }
+
+  async getRuntimeState(): Promise<RuntimeState> {
+    return { ...this.runtimeState };
+  }
+
+  async updateRuntimeState(updates: Partial<RuntimeState>): Promise<RuntimeState> {
+    this.runtimeState = {
+      ...this.runtimeState,
+      ...updates,
+    };
+
+    return { ...this.runtimeState };
+  }
+
+  async getAgentRun(id: string): Promise<AgentRun | undefined> {
+    const run = this.agentRuns.get(id);
+    return run ? { ...run } : undefined;
+  }
+
+  async listAgentRuns(filters?: { status?: AgentRunStatus; prId?: string }): Promise<AgentRun[]> {
+    const runs = Array.from(this.agentRuns.values())
+      .filter((run) => {
+        if (filters?.status && run.status !== filters.status) return false;
+        if (filters?.prId && run.prId !== filters.prId) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    return runs.map((run) => ({ ...run }));
+  }
+
+  async upsertAgentRun(run: AgentRun): Promise<AgentRun> {
+    this.agentRuns.set(run.id, { ...run });
+    return { ...run };
   }
 }

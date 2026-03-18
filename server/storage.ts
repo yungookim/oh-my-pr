@@ -1,4 +1,4 @@
-import type { PR, LogEntry, Config } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, RuntimeState } from "@shared/schema";
 export { MemStorage } from "./memoryStorage";
 import { SqliteStorage } from "./sqliteStorage";
 
@@ -29,6 +29,18 @@ export interface IStorage {
   // Config
   getConfig(): Promise<Config>;
   updateConfig(updates: Partial<Config>): Promise<Config>;
+
+  // Runtime lifecycle
+  getRuntimeState(): Promise<RuntimeState>;
+  updateRuntimeState(updates: Partial<RuntimeState>): Promise<RuntimeState>;
+
+  // Durable agent run journal
+  getAgentRun(id: string): Promise<AgentRun | undefined>;
+  listAgentRuns(filters?: {
+    status?: AgentRunStatus;
+    prId?: string;
+  }): Promise<AgentRun[]>;
+  upsertAgentRun(run: AgentRun): Promise<AgentRun>;
 }
 
 export const storage = new SqliteStorage();

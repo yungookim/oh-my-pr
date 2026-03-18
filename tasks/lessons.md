@@ -122,3 +122,12 @@
   - Treat "push to a branch" and "open a PR" as separate requirements, and satisfy both.
   - If the current worktree contains unrelated changes, isolate the task in a fresh worktree before creating the PR.
   - Call out any explicit user instruction to skip PR creation in the final handoff.
+
+## 2026-03-18 - Never implement directly on local `main`
+- Pattern: I started implementation work while checked out on local `main`.
+- Rule: Before any non-trivial edit, verify branch context and move to a dedicated worktree branch if currently on `main`.
+- Prevention checklist:
+  - Run `git rev-parse --abbrev-ref HEAD` at task start.
+  - If on `main`, create a fresh worktree and `codex/*` branch before editing.
+  - Keep docs/planning and implementation changes in that isolated worktree.
+  - Do not proceed with code changes until branch/worktree isolation is confirmed.
