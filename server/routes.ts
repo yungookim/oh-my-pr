@@ -4,7 +4,7 @@ import { z } from "zod";
 import { addPRSchema, configSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { PRBabysitter } from "./babysitter";
-import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
+import { applyEvaluationDecision, applyFlagDecision, applyManualDecision, markRetry } from "./feedbackLifecycle";
 import { createWatcherScheduler } from "./watcherScheduler";
 import {
   buildOctokit,
@@ -313,6 +313,34 @@ export async function registerRoutes(
     const flagged = feedbackItems.filter((i) => i.decision === "flag").length;
 
     const updated = await storage.updatePR(pr.id, { feedbackItems, accepted, rejected, flagged });
+    res.json(updated);
+  });
+
+  app.post("/api/prs/:id/feedback/:feedbackId/retry", async (req, res) => {
+    const pr = await storage.getPR(req.params.id);
+    if (!pr) return res.status(404).json({ error: "PR not found" });
+
+    const item = pr.feedbackItems.find((i) => i.id === req.params.feedbackId);
+    if (!item) return res.status(404).json({ error: "Feedback item not found" });
+
+    if (item.status !== "failed" && item.status !== "warning") {
+      return res.status(400).json({ error: "Only failed or warning items can be retried" });
+    }
+
+    const feedbackItems = pr.feedbackItems.map((i) =>
+      i.id === req.params.feedbackId ? markRetry(i) : i,
+    );
+
+    const accepted = feedbackItems.filter((i) => i.decision === "accept").length;
+    const rejected = feedbackItems.filter((i) => i.decision === "reject").length;
+    const flagged = feedbackItems.filter((i) => i.decision === "flag").length;
+
+    const updated = await storage.updatePR(pr.id, { feedbackItems, accepted, rejected, flagged });
+    await storage.addLog(pr.id, "info", `Feedback item ${req.params.feedbackId} queued for retry`);
+
+    const config = await storage.getConfig();
+    void babysitter.babysitPR(pr.id, config.codingAgent);
+
     res.json(updated);
   });
 

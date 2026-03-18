@@ -804,7 +804,7 @@ test("babysitPR marks accepted pending items as resolved after a successful run"
   delete process.env.CODEFACTORY_HOME;
 });
 
-test("babysitPR marks claimed items as failed when audit trail verification fails", async () => {
+test("babysitPR marks claimed items as warning when audit trail verification fails but branch moved", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem({ status: "pending", decision: null });
   const pr = await storage.addPR({
@@ -854,9 +854,12 @@ test("babysitPR marks claimed items as failed when audit trail verification fail
   await babysitter.babysitPR(pr.id, "codex");
 
   const updated = await storage.getPR(pr.id);
-  const failedItem = updated?.feedbackItems.find((i) => i.id === existingItem.id);
-  assert.equal(failedItem?.status, "failed");
-  assert.ok(failedItem?.statusReason?.includes("audit trail"));
+  const warnedItem = updated?.feedbackItems.find((i) => i.id === existingItem.id);
+  // When the branch was moved (agent pushed code) but audit trail verification
+  // fails (GitHub comment posting issue), items should be marked as "warning"
+  // not "failed" since the actual fix was applied successfully.
+  assert.equal(warnedItem?.status, "warning");
+  assert.ok(warnedItem?.statusReason?.includes("GitHub comment could not be posted"));
 
   delete process.env.CODEFACTORY_HOME;
 });

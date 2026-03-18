@@ -14,6 +14,7 @@ import {
   fetchFeedbackItemsForPR,
   fetchPullSummary,
   formatRepoSlug,
+  GitHubIntegrationError,
   listFailingStatuses,
   listOpenPullsForRepo,
   parseRepoSlug,
@@ -29,7 +30,7 @@ import {
 } from "./github";
 import { getCodeFactoryPaths } from "./paths";
 import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
-import { applyEvaluationDecision, markInProgress, markResolved, markFailed } from "./feedbackLifecycle";
+import { applyEvaluationDecision, markInProgress, markResolved, markFailed, markWarning } from "./feedbackLifecycle";
 
 const DEFAULT_GIT_USER_NAME = "PR Babysitter";
 const DEFAULT_GIT_USER_EMAIL = "pr-babysitter@local";
@@ -784,6 +785,7 @@ export class PRBabysitter {
     };
 
     let followUpTasks: FeedbackItem[] = [];
+    let branchMoved = false;
 
     try {
       await this.storage.updatePR(prId, {
@@ -1029,7 +1031,8 @@ export class PRBabysitter {
       }
 
       let headShaForFollowUp = pullSummary.headSha;
-      let branchMoved = false;
+      // branchMoved is declared in the outer scope so it's accessible in the catch block
+      branchMoved = false;
       let remoteNameForLogs: string | null = null;
       let agentSummaries = new Map<string, string>();
 
@@ -1515,26 +1518,48 @@ export class PRBabysitter {
       const message = error instanceof Error ? error.message : String(error);
       const currentPr = await this.storage.getPR(prId);
       if (currentPr) {
-        await queueLog(currentPr.id, "error", `Babysitter error: ${message}`, {
+        // Determine if this is a non-critical GitHub integration failure
+        // (e.g. couldn't post a comment or resolve a thread) vs a real
+        // agent/processing failure. GitHub errors that happen *after* the
+        // agent successfully pushed code are warnings, not failures.
+        const isGitHubError =
+          error instanceof GitHubIntegrationError ||
+          message.includes("could not determine the review thread") ||
+          message.includes("GitHub audit trail verification failed") ||
+          message.includes("Failed to post status reply") ||
+          message.includes("Failed to update status reply");
+
+        const isNonCritical = isGitHubError && branchMoved;
+        const logLevel = isNonCritical ? "warn" : "error";
+        const logPrefix = isNonCritical ? "Babysitter warning" : "Babysitter error";
+
+        await queueLog(currentPr.id, logLevel, `${logPrefix}: ${message}`, {
           phase: "run",
         });
 
         if (followUpTasks.length > 0) {
-          const failedIds = new Set(followUpTasks.map((item) => item.id));
-          const failedItems = currentPr.feedbackItems.map((item) =>
-            failedIds.has(item.id) ? markFailed(item, message) : item,
-          );
-          const failedCounters = countDecisions(failedItems);
+          const affectedIds = new Set(followUpTasks.map((item) => item.id));
+          const updatedItems = currentPr.feedbackItems.map((item) => {
+            if (!affectedIds.has(item.id)) return item;
+            if (isNonCritical) {
+              return markWarning(item, `GitHub comment could not be posted: ${message}`);
+            }
+            return markFailed(item, message);
+          });
+          const updatedCounters = countDecisions(updatedItems);
           await this.storage.updatePR(currentPr.id, {
-            feedbackItems: failedItems,
-            accepted: failedCounters.accepted,
-            rejected: failedCounters.rejected,
-            flagged: failedCounters.flagged,
-            status: "error",
+            feedbackItems: updatedItems,
+            accepted: updatedCounters.accepted,
+            rejected: updatedCounters.rejected,
+            flagged: updatedCounters.flagged,
+            status: isNonCritical ? "watching" : "error",
             lastChecked: new Date().toISOString(),
           });
         } else {
-          await this.storage.updatePR(currentPr.id, { status: "error", lastChecked: new Date().toISOString() });
+          await this.storage.updatePR(currentPr.id, {
+            status: isNonCritical ? "watching" : "error",
+            lastChecked: new Date().toISOString(),
+          });
         }
       }
       console.error("Babysitter failure", error);
