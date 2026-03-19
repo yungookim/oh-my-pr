@@ -198,6 +198,19 @@ docs/plans/      Design and implementation planning documents
 tasks/           Project lessons and working notes
 ```
 
+## Best with Multiple Reviewers
+
+Code Factory shines when your pull requests have **multiple coding agents and humans reviewing them**. Rather than relying on a single reviewer's judgment, Code Factory's auto-triage compares feedback from several sources and decides which suggestions to accept, reject, or flag for your attention.
+
+The author runs Code Factory with **Gemini, Codex, and Claude Code** all reviewing his PRs. Each agent brings a different perspective — catching different classes of issues, suggesting different improvements — and Code Factory's triage engine evaluates all of their feedback to determine which changes to apply. This multi-reviewer setup means:
+
+- **Broader coverage** — different agents catch different issues (style, logic, performance, security)
+- **Built-in second opinions** — no single agent's hallucination or bad suggestion goes unchallenged
+- **Faster iteration** — human reviewers can focus on high-level design while agents handle the detailed feedback loop
+- **Smarter auto-triage** — with more signal from multiple reviewers, Code Factory makes better accept/reject decisions
+
+You can configure trusted reviewers (both human and bot) in the dashboard, and Code Factory will weight their feedback accordingly during triage.
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
