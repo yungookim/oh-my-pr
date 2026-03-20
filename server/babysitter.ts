@@ -419,7 +419,7 @@ function collectGitHubFollowUpTasks(pr: PR): FeedbackItem[] {
   return pr.feedbackItems.filter((item) => needsGitHubFollowUp(item, pr.feedbackItems));
 }
 
-function buildFeedbackFollowUpBody(headSha: string, auditToken: string, agentSummary?: string): string {
+function buildFeedbackFollowUpBody(headSha: string, item: FeedbackItem, agentSummary?: string): string {
   const shortSha = headSha.trim() ? headSha.trim().slice(0, 7) : "";
   const headline = shortSha
     ? `Addressed in commit \`${shortSha}\` by the latest babysitter run.`
@@ -427,11 +427,24 @@ function buildFeedbackFollowUpBody(headSha: string, auditToken: string, agentSum
 
   const parts = [headline];
 
+  // For non-review-thread items the follow-up is posted as a top-level PR
+  // comment, so include a reference to the original comment for a clear audit
+  // trail linking the fix back to the feedback.
+  if (item.replyKind !== "review_thread" && item.sourceUrl) {
+    const firstLine = (item.body || "").split("\n")[0] || "";
+    const preview = firstLine.length > 120 ? firstLine.slice(0, 120) + "…" : firstLine;
+    parts.push(
+      "",
+      `> Responding to [comment by @${item.author}](${item.sourceUrl}):`,
+      `> ${preview}`,
+    );
+  }
+
   if (agentSummary) {
     parts.push("", agentSummary);
   }
 
-  parts.push("", auditToken);
+  parts.push("", item.auditToken);
 
   return parts.join("\n");
 }
@@ -1675,19 +1688,21 @@ export class PRBabysitter {
         const shouldResolveThread = item.replyKind === "review_thread" && !item.threadResolved;
 
         if (shouldPostFollowUp) {
-          await queueLog(pr.id, "info", `Posting GitHub follow-up for ${item.id}`, {
+          await queueLog(pr.id, "info", `Posting GitHub follow-up for ${item.id}${shouldResolveThread ? " and resolving conversation" : ""}`, {
             phase: "github.followup",
             metadata: {
               feedbackId: item.id,
               replyKind: item.replyKind,
+              resolve: shouldResolveThread,
             },
           });
 
-          const body = buildFeedbackFollowUpBody(headShaForFollowUp, item.auditToken, agentSummaries.get(item.auditToken));
-          await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body);
-        }
-
-        if (shouldResolveThread) {
+          const body = buildFeedbackFollowUpBody(headShaForFollowUp, item, agentSummaries.get(item.auditToken));
+          await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body, { resolve: shouldResolveThread });
+        } else if (shouldResolveThread) {
+          // Reply already exists but the conversation thread was not resolved
+          // yet (e.g. previous run posted the reply but failed before
+          // resolving). Resolve it now to keep conversations tidy.
           if (!item.threadId) {
             throw new Error(`Missing review thread metadata for ${item.id}`);
           }

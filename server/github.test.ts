@@ -372,6 +372,67 @@ test("postFollowUpForFeedbackItem replies to review threads and resolveReviewThr
   assert.equal(vars1?.threadId, "THREAD_node_123");
 });
 
+test("postFollowUpForFeedbackItem replies and resolves review thread in one call when resolve option is set", async () => {
+  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+
+  const octokit = {
+    request: async (route: string, params: Record<string, unknown>) => {
+      requests.push({ route, params });
+      return {
+        data: {
+          ok: true,
+        },
+      };
+    },
+    issues: {
+      createComment: async () => {
+        throw new Error("unexpected issue comment");
+      },
+    },
+  };
+
+  await postFollowUpForFeedbackItem(
+    octokit as never,
+    { owner: "octo", repo: "example", number: 42 },
+    makeFeedbackItem(),
+    "Addressed in commit `abc1234`.\n\ncodefactory-feedback:gh-review-comment-1",
+    { resolve: true },
+  );
+
+  assert.equal(requests.length, 2, "expected both a reply and a resolve request");
+  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
+  assert.match(String(requests[1]?.params.query || ""), /resolveReviewThread/);
+  const vars1 = requests[1]?.params.variables as { threadId?: string } | undefined;
+  assert.equal(vars1?.threadId, "THREAD_node_123");
+});
+
+test("postFollowUpForFeedbackItem does not resolve when resolve option is false", async () => {
+  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+
+  const octokit = {
+    request: async (route: string, params: Record<string, unknown>) => {
+      requests.push({ route, params });
+      return { data: { ok: true } };
+    },
+    issues: {
+      createComment: async () => {
+        throw new Error("unexpected issue comment");
+      },
+    },
+  };
+
+  await postFollowUpForFeedbackItem(
+    octokit as never,
+    { owner: "octo", repo: "example", number: 42 },
+    makeFeedbackItem(),
+    "Addressed.\n\ncodefactory-feedback:gh-review-comment-1",
+    { resolve: false },
+  );
+
+  assert.equal(requests.length, 1, "expected only a reply, no resolve");
+  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
+});
+
 test("postFollowUpForFeedbackItem routes review and general comments to PR comments", async () => {
   const comments: Array<Record<string, unknown>> = [];
 

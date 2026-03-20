@@ -575,6 +575,7 @@ export async function postFollowUpForFeedbackItem(
   parsed: ParsedPRUrl,
   item: FeedbackItem,
   body: string,
+  options?: { resolve?: boolean },
 ): Promise<void> {
   if (item.replyKind === "review_thread") {
     if (!item.threadId) {
@@ -585,6 +586,10 @@ export async function postFollowUpForFeedbackItem(
     }
 
     await replyToReviewThread(octokit, parsed, item.threadId, body);
+
+    if (options?.resolve) {
+      await resolveReviewThread(octokit, parsed, item.threadId);
+    }
     return;
   }
 

@@ -341,8 +341,11 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],
-      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body) => {
+      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
+        if (options?.resolve && item.threadId) {
+          resolvedThreads.push(item.threadId);
+        }
       },
       resolveReviewThread: async (_octokit, _parsed, threadId) => {
         resolvedThreads.push(threadId);
@@ -1285,8 +1288,11 @@ test("babysitPR retries accepted in-progress feedback items that still need GitH
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],
-      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body) => {
+      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
+        if (options?.resolve && item.threadId) {
+          resolvedThreads.push(item.threadId);
+        }
       },
       resolveReviewThread: async (_octokit, _parsed, threadId) => {
         resolvedThreads.push(threadId);
@@ -1613,8 +1619,11 @@ test("babysitPR resolves lingering review threads without reposting an existing 
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],
-      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body) => {
+      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
+        if (options?.resolve && item.threadId) {
+          resolvedThreads.push(item.threadId);
+        }
       },
       resolveReviewThread: async (_octokit, _parsed, threadId) => {
         resolvedThreads.push(threadId);
@@ -1740,8 +1749,11 @@ test("babysitPR reposts GitHub follow-up when an earlier audit trail used the wr
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
       listOpenPullsForRepo: async () => [],
-      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body) => {
+      postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
+        if (options?.resolve && item.threadId) {
+          resolvedThreads.push(item.threadId);
+        }
       },
       resolveReviewThread: async (_octokit, _parsed, threadId) => {
         resolvedThreads.push(threadId);
