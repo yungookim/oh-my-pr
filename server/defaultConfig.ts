@@ -2,8 +2,8 @@ import type { Config } from "@shared/schema";
 
 export const DEFAULT_CONFIG: Config = {
   githubToken: "",
-  codingAgent: "codex",
-  model: "sonnet",
+  codingAgent: "claude",
+  model: "opus",
   maxTurns: 15,
   batchWindowMs: 300000,
   pollIntervalMs: 120000,

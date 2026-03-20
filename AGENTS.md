@@ -12,5 +12,14 @@ Use strict TypeScript, 2-space indentation, double quotes, and semicolons to mat
 ## Testing Guidelines
 Tests use the Node test runner with `tsx` and are currently colocated in `server/`. Add focused regression coverage for changes to storage, GitHub sync, repo workspace isolation, or babysitter flows. For filesystem behavior, prefer temp directories over repo-local fixtures so tests remain isolated and repeatable.
 
+## Agent Defaults
+When agents are used, default to `codingAgent: "claude"` and `model: "opus"`. There is no separate "thinking"/reasoning-effort configuration flag in this app today; agent reasoning behavior follows the selected model/runtime defaults. These defaults are set in `server/defaultConfig.ts` and can be changed at runtime via the dashboard model selector or the `/api/config` endpoint.
+
 ## Commit & Pull Request Guidelines
 Recent commits favor short imperative summaries, usually with prefixes like `feat:`, `fix:`, and `docs:`. Keep PRs narrow, explain the behavior change, and list the commands you ran to verify it. Include screenshots for dashboard UI changes. Always start work in a git worktree created from a freshly updated `main`, then push to a branch instead of `main` unless the user explicitly asks for a direct push. Always open a PR when completed work is ready unless the user explicitly instructs otherwise.
+
+## Post-Merge Maintenance
+After every 5 PR merges, audit `AGENTS.md` for brevity: remove duplicate instructions, consolidate overlapping sections, and trim stale guidance. Submit the cleanup as its own PR so reviewers can approve the changes.
+
+## Pre-Commit Quality Check
+When creating a fresh PR with the `claude` agent available locally, run `/simplify` on all changed files before committing. This catches unnecessary complexity, code duplication, and quality issues early.
