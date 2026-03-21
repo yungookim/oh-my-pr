@@ -1,6 +1,6 @@
 # Code Factory
 
-<img src="docs/assets/sdlc-bottleneck.png" alt="SDLC Bottleneck Shift" />
+<img src="https://github.com/yungookim/codefactory/blob/claude/add-sdlc-diagram-6NnDD/docs/assets/sdlc-bottleneck.png?raw=true" alt="SDLC Bottleneck Shift" width="1408" height="768" />
 
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
 
