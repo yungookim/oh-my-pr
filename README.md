@@ -1,7 +1,5 @@
 # Code Factory
 
-<img src="https://github.com/yungookim/codefactory/blob/claude/add-sdlc-diagram-6NnDD/docs/assets/sdlc-bottleneck.png?raw=true" alt="SDLC Bottleneck Shift" width="1408" height="768" />
-
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
 
 [![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
