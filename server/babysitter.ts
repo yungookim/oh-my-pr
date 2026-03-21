@@ -813,7 +813,7 @@ export class PRBabysitter {
 
     // Social changelog trigger: after every 5 PRs merged to main today, generate a post.
     if (reposWithNewlyArchivedPRs.length > 0 && this.github.listMergedPullsToday) {
-      void this.maybeTriggerSocialChangelog(
+      await this.maybeTriggerSocialChangelog(
         octokit,
         reposWithNewlyArchivedPRs,
         config.codingAgent as CodingAgent,
@@ -838,7 +838,8 @@ export class PRBabysitter {
         const merged = await this.github.listMergedPullsToday(octokit, repo);
         allMerged.push(...merged);
       } catch (err) {
-        console.error(`social-changelog: failed to list merged PRs for ${formatRepoSlug(repo)}`, err);
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`social-changelog: failed to list merged PRs for ${formatRepoSlug(repo)}: ${message}`, err);
       }
     }
 
@@ -881,6 +882,9 @@ export class PRBabysitter {
       prSummaries,
       date: today,
       preferredAgent,
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`social-changelog: failed to generate post for id=${changelog.id}: ${message}`, err);
     });
   }
 

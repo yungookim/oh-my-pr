@@ -3,6 +3,9 @@ import type { SocialChangelogPRSummary } from "@shared/schema";
 import type { CodingAgent } from "./agentRunner";
 import { resolveAgent, runCommand } from "./agentRunner";
 
+const DEFAULT_SOCIAL_CHANGELOG_TIMEOUT_MS = 120_000;
+const SOCIAL_CHANGELOG_ERROR_SUMMARY_MAX_CHARS = 2_000;
+
 /**
  * Generates a social media changelog from a list of merged PR summaries.
  *
@@ -19,8 +22,10 @@ export async function generateSocialChangelog(params: {
   prSummaries: SocialChangelogPRSummary[];
   date: string;
   preferredAgent: CodingAgent;
+  timeoutMs?: number;
 }): Promise<void> {
-  const { storage, changelogId, prSummaries, date, preferredAgent } = params;
+  const { storage, changelogId, prSummaries, date, preferredAgent, timeoutMs } = params;
+  const commandTimeoutMs = resolveTimeoutMs(timeoutMs);
 
   try {
     const agent = await resolveAgent(preferredAgent);
@@ -31,14 +36,18 @@ export async function generateSocialChangelog(params: {
       agent === "claude"
         ? ["-p", "--output-format", "text", prompt]
         : ["exec", "--skip-git-repo-check", "--sandbox", "read-only", prompt],
-      { timeoutMs: 120_000 },
+      { timeoutMs: commandTimeoutMs },
     );
 
     if (result.code !== 0) {
       const errorMsg = result.stderr || result.stdout || `Agent exited with code ${result.code}`;
+      console.error(`social-changelog: generation command failed for ${changelogId} (code=${result.code})`, {
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
       await storage.updateSocialChangelog(changelogId, {
         status: "error",
-        error: errorMsg.slice(0, 2000),
+        error: summarizeError(errorMsg),
         completedAt: new Date().toISOString(),
       });
       return;
@@ -52,12 +61,36 @@ export async function generateSocialChangelog(params: {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`social-changelog: generation failed for ${changelogId}: ${message}`, err);
     await storage.updateSocialChangelog(changelogId, {
       status: "error",
-      error: message.slice(0, 2000),
+      error: summarizeError(message),
       completedAt: new Date().toISOString(),
     });
   }
+}
+
+function resolveTimeoutMs(timeoutMs: number | undefined): number {
+  if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return Math.floor(timeoutMs);
+  }
+
+  const envTimeout = Number(process.env.SOCIAL_CHANGELOG_AGENT_TIMEOUT_MS);
+  if (Number.isFinite(envTimeout) && envTimeout > 0) {
+    return Math.floor(envTimeout);
+  }
+
+  return DEFAULT_SOCIAL_CHANGELOG_TIMEOUT_MS;
+}
+
+function summarizeError(message: string): string {
+  const trimmed = (message || "Unknown error").trim();
+  if (trimmed.length <= SOCIAL_CHANGELOG_ERROR_SUMMARY_MAX_CHARS) {
+    return trimmed;
+  }
+
+  const maxPrefix = SOCIAL_CHANGELOG_ERROR_SUMMARY_MAX_CHARS - "... (truncated)".length;
+  return `${trimmed.slice(0, maxPrefix)}... (truncated)`;
 }
 
 function buildPrompt(prSummaries: SocialChangelogPRSummary[], date: string): string {
