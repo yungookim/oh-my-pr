@@ -163,7 +163,7 @@ test("pollForCICompletion tolerates transient status API errors and eventually s
     },
   );
 
-  const result = await (babysitter as any).pollForCICompletion(
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
     {} as never,
     { owner: "octo", repo: "example" },
     { owner: "octo", repo: "example", number: 42 },
@@ -223,7 +223,7 @@ test("pollForCICompletion returns timeout when status API keeps failing, includi
     },
   );
 
-  const result = await (babysitter as any).pollForCICompletion(
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
     {} as never,
     { owner: "octo", repo: "example" },
     { owner: "octo", repo: "example", number: 42 },
