@@ -8,6 +8,7 @@ on:
       - docs/**
       - package.json
       - package-lock.json
+      - script/build-public-docs.ts
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -42,6 +43,9 @@ jobs:
 
       - name: Build landing page CSS
         run: npm run build:docs
+
+      - name: Build public documentation (MD → HTML)
+        run: npm run build:public-docs
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

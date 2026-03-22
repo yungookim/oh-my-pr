@@ -1,0 +1,138 @@
+name: Documentation Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed source files
+        id: changes
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+
+          # Files that could affect user-facing features
+          SOURCE_CHANGES=$(git diff --name-only "$BASE" "$HEAD" -- \
+            'server/' 'client/' 'shared/' | head -200)
+
+          DOC_CHANGES=$(git diff --name-only "$BASE" "$HEAD" -- \
+            'docs/public/' | head -50)
+
+          if [ -n "$SOURCE_CHANGES" ]; then
+            echo "source_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "source_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$DOC_CHANGES" ]; then
+            echo "docs_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Save changed files for the comment
+          echo "SOURCE_FILES<<EOF" >> "$GITHUB_ENV"
+          echo "$SOURCE_CHANGES" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "DOC_FILES<<EOF" >> "$GITHUB_ENV"
+          echo "$DOC_CHANGES" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - name: Build documentation (validate MD → HTML)
+        if: steps.changes.outputs.docs_changed == 'true'
+        run: |
+          npm ci
+          npm run build:public-docs
+
+      - name: Post documentation reminder
+        if: steps.changes.outputs.source_changed == 'true' && steps.changes.outputs.docs_changed == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `### 📄 Documentation Review Reminder
+
+            This PR changes source files but does not update any public documentation.
+
+            **Changed source files:**
+            \`\`\`
+            ${process.env.SOURCE_FILES}
+            \`\`\`
+
+            **Please check if documentation in \`docs/public/\` needs to be updated:**
+            - [ ] No documentation update needed
+            - [ ] Documentation updated in this PR
+            - [ ] Follow-up documentation issue created
+
+            > Public docs are Markdown files in \`docs/public/\`. They are automatically
+            > rendered to HTML and deployed to GitHub Pages when merged to main.
+
+            *Available docs: getting-started.md, pr-babysitter.md, agent-dispatch.md, configuration.md, pr-questions.md*`;
+
+            // Check if we already left a comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.data.find(c =>
+              c.body.includes('Documentation Review Reminder') &&
+              c.user.type === 'Bot'
+            );
+
+            if (!existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Post docs updated confirmation
+        if: steps.changes.outputs.docs_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `### ✅ Documentation Updated
+
+            This PR includes documentation changes:
+
+            \`\`\`
+            ${process.env.DOC_FILES}
+            \`\`\`
+
+            The docs build succeeded. Changes will be deployed to GitHub Pages when merged to main.`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.data.find(c =>
+              c.body.includes('Documentation Updated') &&
+              c.user.type === 'Bot'
+            );
+
+            if (!existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

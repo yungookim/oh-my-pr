@@ -28,6 +28,7 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "build:docs": "mkdir -p docs/assets && tailwindcss -c docs/tailwind.config.cjs -i docs/src/input.css -o docs/assets/landing.css --minify",
+    "build:public-docs": "tsx script/build-public-docs.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "mcp": "tsx server/mcp.ts",
     "lint": "eslint .",
