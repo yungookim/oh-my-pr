@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { localOnlyMiddleware } from "./localOnly";
 import { createServer } from "http";
 import open from "open";
 
@@ -22,6 +23,10 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Restrict every /api route to local-machine callers only.
+// Any request arriving from a non-loopback IP is rejected with 403.
+app.use("/api", localOnlyMiddleware);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
