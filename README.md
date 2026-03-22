@@ -208,116 +208,107 @@ docs/plans/      Design and implementation planning documents
 tasks/           Project lessons and working notes
 ```
 
-## Using Code Factory with OpenClaw
+## For OpenClaw agents
 
-[OpenClaw](https://openclaw.dev) is a local AI agent that can control Code Factory through its MCP server, letting you manage PRs, trigger babysit runs, and query status entirely through natural language — without opening the dashboard.
+This section is addressed to you, the OpenClaw agent. Read it in full before interacting with Code Factory.
 
-### 1. Install Code Factory
+### What you can do
+
+You have access to Code Factory via its MCP server. Code Factory is a local PR babysitter: it watches GitHub repositories, syncs review feedback, triages it, and dispatches AI agents to apply fixes. Every feature is available to you as an MCP tool.
+
+### Step 1 — Check whether Code Factory is already running
+
+Before doing anything, verify the server is up:
+
+```
+GET http://localhost:5001/api/runtime
+```
+
+If you get a `200` response, Code Factory is running and you can proceed to Step 3. If the connection is refused, go to Step 2.
+
+### Step 2 — Install and start Code Factory
+
+Run these shell commands on the local machine:
 
 ```bash
-# Clone and install
 git clone https://github.com/yungookim/codefactory.git
 cd codefactory
 npm install
-
-# Start the server (keep this running in the background)
-npm run dev
+npm run dev &
 ```
 
-The API server starts on `http://localhost:5001`. It only accepts connections from the local machine — external requests are rejected with `403`.
+Wait until you see `serving on port 5001` in the output, then confirm with `GET http://localhost:5001/api/runtime` before continuing.
 
-### 2. Configure OpenClaw to use the MCP server
+### Step 3 — How to use your MCP tools
 
-Add Code Factory to OpenClaw's MCP server list. In your OpenClaw configuration file (usually `~/.openclaw/config.json` or the OpenClaw settings UI), add:
+All tools communicate with `http://localhost:5001` over the local network only. External requests are blocked. Call tools in this order for common workflows:
 
-```json
-{
-  "mcpServers": {
-    "codefactory": {
-      "command": "npx",
-      "args": ["tsx", "/absolute/path/to/codefactory/server/mcp.ts"],
-      "env": {
-        "CODEFACTORY_PORT": "5001"
-      }
-    }
-  }
-}
-```
+**Watch a new repository and process its PRs**
+1. `add_repo` — add the repo slug (e.g. `"owner/repo"`)
+2. `sync_repos` — trigger an immediate fetch from GitHub
+3. `list_prs` — inspect what was found
 
-Replace `/absolute/path/to/codefactory` with the actual path where you cloned the repo (e.g. `/home/alice/codefactory`).
+**Handle a specific PR end-to-end**
+1. `get_pr` — read current state and feedback items
+2. `triage_pr` — auto-classify all un-triaged feedback
+3. `apply_pr_fixes` — dispatch the AI agent to apply accepted items
+   — or use `babysit_pr` to do all three in one call
 
-> **Tip:** If you have already run `npm run build`, you can use the compiled binary instead and skip the `tsx` dependency:
-> ```json
-> {
->   "command": "node",
->   "args": ["/absolute/path/to/codefactory/dist/mcp.cjs"]
-> }
-> ```
+**Investigate a PR**
+1. `fetch_pr_feedback` — force a fresh pull from GitHub
+2. `get_logs` with `pr_id` — read the full activity history
+3. `ask_pr_question` — ask a natural-language question; poll the returned question `id` via `list_pr_questions` until `status` is `"answered"`
 
-### 3. Restart OpenClaw
+**Override a triage decision**
+- `set_feedback_decision` with `decision: "accept" | "reject" | "flag"`
 
-After saving the config, restart OpenClaw. It will spawn the Code Factory MCP process automatically on startup. You should see `codefactory` listed as a connected tool source.
+**Graceful shutdown before a deploy**
+1. `set_drain_mode` with `enabled: true, wait_for_idle: true`
+2. Wait for `activeRuns: 0` in the response
+3. Perform your deploy, then call `set_drain_mode` with `enabled: false`
 
-### 4. Example prompts
+### Available tools
 
-Once connected, you can talk to OpenClaw naturally:
-
-| What you say | What happens |
-|---|---|
-| *"Watch the repo yungookim/myapp"* | Calls `add_repo` → `sync_repos` |
-| *"Show me all open PRs"* | Calls `list_prs` and summarises the results |
-| *"Triage PR abc123 and apply the fixes"* | Calls `triage_pr` then `apply_pr_fixes` |
-| *"Why is the linter failing on PR abc123?"* | Calls `ask_pr_question` with your question |
-| *"Reject the first feedback item on PR abc123"* | Calls `set_feedback_decision` with `"reject"` |
-| *"Put Code Factory in drain mode — I'm deploying"* | Calls `set_drain_mode` with `enabled: true` |
-| *"Show me the last 20 log entries for PR abc123"* | Calls `get_logs` with the PR filter |
-
-### 5. All available MCP tools
-
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `list_repos` | List all watched repositories |
-| `add_repo` | Add a repo to the watch list |
-| `sync_repos` | Force an immediate sync across all repos |
-| `list_prs` | List actively tracked pull requests |
+| `add_repo` | Add a repo (`owner/repo` or full URL) to the watch list |
+| `sync_repos` | Force an immediate sync cycle across all repos |
+| `list_prs` | List all actively tracked PRs |
 | `list_archived_prs` | List archived (closed/merged) PRs |
-| `get_pr` | Get full PR details including all feedback |
-| `add_pr` | Register a PR by GitHub URL |
+| `get_pr` | Get full PR details including every feedback item |
+| `add_pr` | Register a PR by its full GitHub URL |
 | `remove_pr` | Remove a PR from tracking |
-| `fetch_pr_feedback` | Force-refresh GitHub comments for a PR |
-| `triage_pr` | Auto-triage all un-triaged feedback |
-| `apply_pr_fixes` | Dispatch AI agent to apply accepted fixes |
-| `babysit_pr` | Run a full sync → triage → apply cycle |
-| `set_feedback_decision` | Manually accept / reject / flag a feedback item |
-| `retry_feedback_item` | Retry a failed or warned feedback item |
+| `fetch_pr_feedback` | Force-refresh GitHub comments and reviews for a PR |
+| `triage_pr` | Auto-triage all un-triaged feedback on a PR |
+| `apply_pr_fixes` | Dispatch AI agent to apply accepted feedback |
+| `babysit_pr` | Full cycle: sync → triage → apply in one call |
+| `set_feedback_decision` | Manually set `accept`, `reject`, or `flag` on a feedback item |
+| `retry_feedback_item` | Re-queue a failed or warned feedback item |
 | `list_pr_questions` | List Q&A history for a PR |
-| `ask_pr_question` | Ask the AI agent a question about a PR |
-| `get_logs` | Get activity logs (optional PR filter) |
-| `get_config` | Read current configuration |
+| `ask_pr_question` | Ask the AI agent a question about a PR (async — poll for answer) |
+| `get_logs` | Get activity logs; pass `pr_id` to filter to one PR |
+| `get_config` | Read current configuration (token is redacted) |
 | `update_config` | Partially update configuration |
-| `get_agent_models` | List available AI models |
+| `get_agent_models` | List available AI models for each agent type |
 | `refresh_agent_models` | Re-discover installed agent models |
-| `get_runtime` | Get runtime state (drain mode, active runs) |
-| `set_drain_mode` | Enable / disable drain mode |
+| `get_runtime` | Get runtime state: drain mode status and active run count |
+| `set_drain_mode` | Enable or disable drain mode |
 | `list_changelogs` | List generated social-media changelogs |
 | `get_changelog` | Get one changelog by ID |
-| `get_onboarding_status` | Check repo onboarding status |
-| `install_review_workflow` | Install GitHub Actions review workflow on a repo |
+| `get_onboarding_status` | Check GitHub Actions workflow status for watched repos |
+| `install_review_workflow` | Install the Code Factory review workflow on a repo |
 
-For full parameter details see [LOCAL_API.md](LOCAL_API.md).
+Full parameter schemas are in [LOCAL_API.md](LOCAL_API.md).
 
-### Troubleshooting
+### Error conditions you must handle
 
-**MCP server not connecting**
-- Make sure `npm run dev` is running before you open OpenClaw.
-- Check that the path in the MCP config is absolute and correct.
-- Run `CODEFACTORY_PORT=5001 npx tsx /path/to/codefactory/server/mcp.ts` manually to see any startup errors.
-
-**`403 Forbidden` errors**
-- All API calls must come from the local machine. If OpenClaw runs inside a container or VM, adjust its networking so outbound requests use `127.0.0.1`.
-
-**Wrong port**
-- The default port is `5001`. If you changed it with `PORT=XXXX npm run dev`, set the same value as `CODEFACTORY_PORT` in the MCP config.
+| Error | Meaning | Action |
+|-------|---------|--------|
+| Connection refused on port 5001 | Server is not running | Run `npm run dev` in the codefactory directory |
+| `403 Forbidden` | Request did not come from localhost | Ensure you are calling `127.0.0.1`, not a hostname that resolves externally |
+| `409 Conflict` | Drain mode is active | Call `set_drain_mode` with `enabled: false` first, or wait for the drain to complete |
+| `404 Not Found` | PR or feedback item ID is wrong | Call `list_prs` to get valid IDs before acting on them |
 
 ---
 
