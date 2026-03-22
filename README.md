@@ -13,13 +13,20 @@
 
 > Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude Code CLI or Codex agents to fix everything — all running on your machine.
 
-> **Note:** This project is intended only for those who want to move at maximum development speed.
+> **Note:** This project is intended for those obsessed with development speed
 
 ---
 
 <img width="1365" height="686" alt="SCR-20260318-qsva-2" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
 ## Why Code Factory?
+
+This is what Code Factory is good at:
+1. Watch the PR to check for PR feedback from humans, agents, failing lint/tests, etc and auto fixes them
+2. Automatically generate lacking tests for all open PR
+3. Auto-generate and update user-facing documents
+
+Code Factory runs locally and uses the CLI coding agents that are already installed in your machine. No need to add OPEN_API_KEY or any such. Just install & have it running and let it do its thing.
 
 Managing PR feedback across multiple repositories is tedious. Review comments pile up, context-switching kills productivity, and small fixes sit idle for hours. Code Factory automates the entire feedback loop:
 
