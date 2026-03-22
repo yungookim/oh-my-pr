@@ -126,6 +126,16 @@ export const askQuestionSchema = z.object({
   question: z.string().min(1).max(2000),
 });
 
+export const AGENT_MODELS: Record<"codex" | "claude", string[]> = {
+  codex: ["o3", "o4-mini", "gpt-4.1"],
+  claude: ["opus", "sonnet", "haiku"],
+};
+
+export const DEFAULT_AGENT_MODEL: Record<"codex" | "claude", string> = {
+  codex: "o3",
+  claude: "opus",
+};
+
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),
