@@ -11,6 +11,8 @@
 
 > Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude Code CLI or Codex agents to fix everything — all running on your machine.
 
+> **Note:** This project is intended only for those who want to move at maximum development speed.
+
 ---
 
 <img width="1365" height="686" alt="SCR-20260318-qsva-2" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
