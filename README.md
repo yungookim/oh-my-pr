@@ -208,6 +208,125 @@ docs/plans/      Design and implementation planning documents
 tasks/           Project lessons and working notes
 ```
 
+## For OpenClaw agents
+
+This section is addressed to you, the OpenClaw agent. Read it in full before interacting with Code Factory.
+
+### What you can do
+
+You have access to Code Factory via its MCP server. Code Factory is a local PR babysitter: it watches GitHub repositories, syncs review feedback, triages it, and dispatches AI agents to apply fixes. Every feature is available to you as an MCP tool.
+
+### Step 1 — Check whether Code Factory is already running
+
+Before doing anything, verify the server is up:
+
+```
+GET http://localhost:5001/api/runtime
+```
+
+If you get a `200` response, Code Factory is running and you can proceed to Step 3. If the connection is refused, go to Step 2.
+
+### Step 2 — Install and start Code Factory
+
+Run these shell commands on the local machine:
+
+```bash
+git clone https://github.com/yungookim/codefactory.git
+cd codefactory
+npm install
+npm run dev &
+```
+
+Wait until you see `serving on port 5001` in the output, then confirm with `GET http://localhost:5001/api/runtime` before continuing.
+
+### Step 3 — How to use your MCP tools
+
+All tools communicate with `http://localhost:5001` over the local network only. External requests are blocked. Call tools in this order for common workflows:
+
+**Watch a new repository and process its PRs**
+1. `add_repo` — add the repo slug (e.g. `"owner/repo"`)
+2. `sync_repos` — trigger an immediate fetch from GitHub
+3. `list_prs` — inspect what was found
+
+**Handle a specific PR end-to-end**
+1. `get_pr` — read current state and feedback items
+2. `triage_pr` — auto-classify all un-triaged feedback
+3. `apply_pr_fixes` — dispatch the AI agent to apply accepted items
+   — or use `babysit_pr` to do all three in one call
+
+**Investigate a PR**
+1. `fetch_pr_feedback` — force a fresh pull from GitHub
+2. `get_logs` with `pr_id` — read the full activity history
+3. `ask_pr_question` — ask a natural-language question; poll the returned question `id` via `list_pr_questions` until `status` is `"answered"`
+
+**Override a triage decision**
+- `set_feedback_decision` with `decision: "accept" | "reject" | "flag"`
+
+**Graceful shutdown before a deploy**
+1. `set_drain_mode` with `enabled: true, wait_for_idle: true`
+2. Wait for `activeRuns: 0` in the response
+3. Perform your deploy, then call `set_drain_mode` with `enabled: false`
+
+### Available tools
+
+| Tool | What it does |
+|------|-------------|
+| `list_repos` | List all watched repositories |
+| `add_repo` | Add a repo (`owner/repo` or full URL) to the watch list |
+| `sync_repos` | Force an immediate sync cycle across all repos |
+| `list_prs` | List all actively tracked PRs |
+| `list_archived_prs` | List archived (closed/merged) PRs |
+| `get_pr` | Get full PR details including every feedback item |
+| `add_pr` | Register a PR by its full GitHub URL |
+| `remove_pr` | Remove a PR from tracking |
+| `fetch_pr_feedback` | Force-refresh GitHub comments and reviews for a PR |
+| `triage_pr` | Auto-triage all un-triaged feedback on a PR |
+| `apply_pr_fixes` | Dispatch AI agent to apply accepted feedback |
+| `babysit_pr` | Full cycle: sync → triage → apply in one call |
+| `set_feedback_decision` | Manually set `accept`, `reject`, or `flag` on a feedback item |
+| `retry_feedback_item` | Re-queue a failed or warned feedback item |
+| `list_pr_questions` | List Q&A history for a PR |
+| `ask_pr_question` | Ask the AI agent a question about a PR (async — poll for answer) |
+| `get_logs` | Get activity logs; pass `pr_id` to filter to one PR |
+| `get_config` | Read current configuration (token is redacted) |
+| `update_config` | Partially update configuration |
+| `get_agent_models` | List available AI models for each agent type |
+| `refresh_agent_models` | Re-discover installed agent models |
+| `get_runtime` | Get runtime state: drain mode status and active run count |
+| `set_drain_mode` | Enable or disable drain mode |
+| `list_changelogs` | List generated social-media changelogs |
+| `get_changelog` | Get one changelog by ID |
+| `get_onboarding_status` | Check GitHub Actions workflow status for watched repos |
+| `install_review_workflow` | Install the Code Factory review workflow on a repo |
+
+Full parameter schemas are in [LOCAL_API.md](LOCAL_API.md).
+
+### Error conditions you must handle
+
+| Error | Meaning | Action |
+|-------|---------|--------|
+| Connection refused on port 5001 | Server is not running | Run `npm run dev` in the codefactory directory |
+| `403 Forbidden` | Request did not come from localhost | Ensure you are calling `127.0.0.1`, not a hostname that resolves externally |
+| `409 Conflict` | Drain mode is active | Call `set_drain_mode` with `enabled: false` first, or wait for the drain to complete |
+| `404 Not Found` | PR or feedback item ID is wrong | Call `list_prs` to get valid IDs before acting on them |
+
+### If something is broken or missing, file a GitHub issue
+
+If you encounter a bug, an unexpected error response, a missing tool, or behaviour that does not match this documentation, create a GitHub issue so the maintainers can fix it.
+
+**Issue URL:** `https://github.com/yungookim/codefactory/issues/new`
+
+Include the following in the issue body:
+- What you were trying to do (the goal)
+- Which tool or endpoint you called and with what parameters
+- The exact error or unexpected response you received
+- The output of `get_logs` filtered to the relevant PR (if applicable)
+- The output of `get_runtime` at the time of the failure
+
+Use a clear title such as `[OpenClaw] <tool_name> returns unexpected 500 when X`.
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

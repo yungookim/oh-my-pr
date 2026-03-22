@@ -29,6 +29,7 @@
     "build": "tsx script/build.ts",
     "build:docs": "mkdir -p docs/assets && tailwindcss -c docs/tailwind.config.cjs -i docs/src/input.css -o docs/assets/landing.css --minify",
     "start": "NODE_ENV=production node dist/index.cjs",
+    "mcp": "tsx server/mcp.ts",
     "lint": "eslint .",
     "test": "node --import tsx --test server/*.test.ts",
     "check": "tsc",
@@ -39,6 +40,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@octokit/rest": "^22.0.1",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
