@@ -15,7 +15,7 @@ import {
   parsePRUrl,
   parseRepoSlug,
 } from "./github";
-import { getAgentModels, startModelDiscoveryJob, stopModelDiscoveryJob } from "./modelDiscovery";
+import { getAgentModels, discoverModels, startModelDiscoveryJob, stopModelDiscoveryJob } from "./modelDiscovery";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -457,6 +457,16 @@ export async function registerRoutes(
 
   app.get("/api/agent-models", (_req, res) => {
     res.json(getAgentModels());
+  });
+
+  app.post("/api/agent-models/refresh", async (_req, res) => {
+    try {
+      const models = await discoverModels();
+      res.json(models);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
   });
 
   // ── Config ─────────────────────────────────────────────────

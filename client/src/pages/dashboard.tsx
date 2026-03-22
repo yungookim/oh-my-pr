@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
 import { FALLBACK_AGENT_MODELS, DEFAULT_AGENT_MODEL } from "@shared/schema";
@@ -731,6 +732,12 @@ export default function Dashboard() {
               ),
             )}
           </select>
+          <Link
+            href="/settings"
+            className="border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            settings
+          </Link>
         </div>
       </header>
 
