@@ -913,25 +913,38 @@ export class PRBabysitter {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await wait(pollIntervalMs);
 
-      const settled = await this.github.checkCISettled(octokit, repo, headSha);
-      const failures = await this.github.listFailingStatuses(octokit, repo, headSha);
+      try {
+        const settled = await this.github.checkCISettled(octokit, repo, headSha);
+        const failures = await this.github.listFailingStatuses(octokit, repo, headSha);
 
-      await queueLog(prId, "info", `CI poll attempt ${attempt}/${MAX_ATTEMPTS}: ${failures.length} failure(s), settled=${settled}`, {
-        phase: "verify.ci",
-        metadata: { attempt, failures: failures.length, settled },
-      });
+        await queueLog(prId, "info", `CI poll attempt ${attempt}/${MAX_ATTEMPTS}: ${failures.length} failure(s), settled=${settled}`, {
+          phase: "verify.ci",
+          metadata: { attempt, failures: failures.length, settled },
+        });
 
-      if (settled) {
-        return failures.length > 0
-          ? { status: "failure", failures }
-          : { status: "success", failures: [] };
+        if (settled) {
+          return failures.length > 0
+            ? { status: "failure", failures }
+            : { status: "success", failures: [] };
+        }
+      } catch (error) {
+        await queueLog(prId, "warn", `CI poll attempt ${attempt} failed: ${summarizeUnknownError(error)}`, {
+          phase: "verify.ci",
+          metadata: { attempt },
+        });
       }
     }
 
     // Final check after timeout.
-    const finalFailures = await this.github.listFailingStatuses(octokit, repo, headSha);
-    if (finalFailures.length > 0) {
-      return { status: "failure", failures: finalFailures };
+    try {
+      const finalFailures = await this.github.listFailingStatuses(octokit, repo, headSha);
+      if (finalFailures.length > 0) {
+        return { status: "failure", failures: finalFailures };
+      }
+    } catch (error) {
+      await queueLog(prId, "warn", `Final CI status check after timeout failed: ${summarizeUnknownError(error)}`, {
+        phase: "verify.ci",
+      });
     }
     return { status: "timeout", failures: [] };
   }

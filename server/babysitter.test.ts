@@ -120,6 +120,130 @@ function makeGitRunCommand(params?: {
   };
 }
 
+test("pollForCICompletion tolerates transient status API errors and eventually succeeds", async () => {
+  const storage = new MemStorage();
+  const logs: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
+  let settledChecks = 0;
+  let statusChecks = 0;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => {
+        throw new Error("unused");
+      },
+      listFailingStatuses: async () => {
+        statusChecks += 1;
+        if (statusChecks === 1) {
+          throw new Error("transient GitHub API error");
+        }
+        return [];
+      },
+      checkCISettled: async () => {
+        settledChecks += 1;
+        return settledChecks >= 2;
+      },
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => undefined,
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => undefined,
+      postPRComment: async () => undefined,
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  const result = await (babysitter as any).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async (
+      _prId: string,
+      level: "info" | "warn" | "error",
+      message: string,
+    ) => {
+      logs.push({ level, message });
+    },
+  );
+
+  assert.deepEqual(result, { status: "success", failures: [] });
+  assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("CI poll attempt 1 failed")));
+  assert.ok(logs.some((log) => log.level === "info" && log.message.includes("CI poll attempt 2/10")));
+});
+
+test("pollForCICompletion returns timeout when status API keeps failing, including final check", async () => {
+  const storage = new MemStorage();
+  const logs: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
+  let settledChecks = 0;
+  let statusChecks = 0;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => {
+        throw new Error("unused");
+      },
+      listFailingStatuses: async () => {
+        statusChecks += 1;
+        throw new Error(`still flaky (${statusChecks})`);
+      },
+      checkCISettled: async () => {
+        settledChecks += 1;
+        return false;
+      },
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => undefined,
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => undefined,
+      postPRComment: async () => undefined,
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  const result = await (babysitter as any).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async (
+      _prId: string,
+      level: "info" | "warn" | "error",
+      message: string,
+    ) => {
+      logs.push({ level, message });
+    },
+  );
+
+  assert.deepEqual(result, { status: "timeout", failures: [] });
+  assert.equal(settledChecks, 10);
+  assert.equal(statusChecks, 11);
+  assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("Final CI status check after timeout failed")));
+});
+
 test("syncFeedbackForPR logs completion even when no new feedback items arrive", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem();
