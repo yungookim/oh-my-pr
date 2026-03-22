@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import type { Config, FeedbackItem } from "@shared/schema";
 import {
   GitHubIntegrationError,
+  buildFeedbackAuditToken,
   fetchFeedbackItemsForPR,
+  formatRepoSlug,
+  parsePRUrl,
+  parseRepoSlug,
   postFollowUpForFeedbackItem,
   postStatusReplyForFeedbackItem,
   resolveReviewThread,
@@ -709,4 +713,118 @@ test("postStatusReplyForFeedbackItem rejects malformed review-thread reply paylo
       return true;
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// parsePRUrl
+// ---------------------------------------------------------------------------
+
+test("parsePRUrl parses a valid GitHub PR URL", () => {
+  const result = parsePRUrl("https://github.com/owner/repo/pull/123");
+  assert.deepEqual(result, { owner: "owner", repo: "repo", number: 123 });
+});
+
+test("parsePRUrl handles trailing hash fragment", () => {
+  const result = parsePRUrl("https://github.com/o/r/pull/1#discussion");
+  assert.deepEqual(result, { owner: "o", repo: "r", number: 1 });
+});
+
+test("parsePRUrl handles trailing query string", () => {
+  const result = parsePRUrl("https://github.com/o/r/pull/7?diff=split");
+  assert.deepEqual(result, { owner: "o", repo: "r", number: 7 });
+});
+
+test("parsePRUrl handles trailing slash", () => {
+  const result = parsePRUrl("https://github.com/o/r/pull/3/files");
+  assert.deepEqual(result, { owner: "o", repo: "r", number: 3 });
+});
+
+test("parsePRUrl returns null for a repo URL without /pull/", () => {
+  assert.equal(parsePRUrl("https://github.com/owner/repo"), null);
+});
+
+test("parsePRUrl returns null for a non-GitHub URL", () => {
+  assert.equal(parsePRUrl("https://not-github.com/o/r/pull/1"), null);
+});
+
+test("parsePRUrl returns null for an empty string", () => {
+  assert.equal(parsePRUrl(""), null);
+});
+
+test("parsePRUrl is case insensitive for the hostname", () => {
+  const result = parsePRUrl("HTTPS://GitHub.COM/owner/repo/pull/5");
+  assert.deepEqual(result, { owner: "owner", repo: "repo", number: 5 });
+});
+
+test("parsePRUrl trims surrounding whitespace", () => {
+  const result = parsePRUrl("  https://github.com/owner/repo/pull/10  ");
+  assert.deepEqual(result, { owner: "owner", repo: "repo", number: 10 });
+});
+
+// ---------------------------------------------------------------------------
+// parseRepoSlug
+// ---------------------------------------------------------------------------
+
+test("parseRepoSlug parses a simple owner/repo slug", () => {
+  assert.deepEqual(parseRepoSlug("owner/repo"), { owner: "owner", repo: "repo" });
+});
+
+test("parseRepoSlug parses a GitHub repo URL", () => {
+  assert.deepEqual(parseRepoSlug("https://github.com/owner/repo"), { owner: "owner", repo: "repo" });
+});
+
+test("parseRepoSlug parses a GitHub repo URL with trailing path", () => {
+  assert.deepEqual(parseRepoSlug("https://github.com/owner/repo/tree/main"), { owner: "owner", repo: "repo" });
+});
+
+test("parseRepoSlug returns null for a bare owner without repo", () => {
+  assert.equal(parseRepoSlug("justowner"), null);
+});
+
+test("parseRepoSlug returns null for an empty string", () => {
+  assert.equal(parseRepoSlug(""), null);
+});
+
+test("parseRepoSlug trims surrounding whitespace", () => {
+  assert.deepEqual(parseRepoSlug("  owner/repo  "), { owner: "owner", repo: "repo" });
+});
+
+// ---------------------------------------------------------------------------
+// formatRepoSlug
+// ---------------------------------------------------------------------------
+
+test("formatRepoSlug returns owner/repo string", () => {
+  assert.equal(formatRepoSlug({ owner: "owner", repo: "repo" }), "owner/repo");
+});
+
+// ---------------------------------------------------------------------------
+// buildFeedbackAuditToken
+// ---------------------------------------------------------------------------
+
+test("buildFeedbackAuditToken returns the expected prefixed token", () => {
+  assert.equal(buildFeedbackAuditToken("my-id"), "codefactory-feedback:my-id");
+});
+
+// ---------------------------------------------------------------------------
+// GitHubIntegrationError
+// ---------------------------------------------------------------------------
+
+test("GitHubIntegrationError defaults statusCode to 502", () => {
+  const error = new GitHubIntegrationError("something broke");
+  assert.equal(error.statusCode, 502);
+});
+
+test("GitHubIntegrationError preserves a custom statusCode", () => {
+  const error = new GitHubIntegrationError("not found", 404);
+  assert.equal(error.statusCode, 404);
+});
+
+test("GitHubIntegrationError has name set to GitHubIntegrationError", () => {
+  const error = new GitHubIntegrationError("msg");
+  assert.equal(error.name, "GitHubIntegrationError");
+});
+
+test("GitHubIntegrationError is an instance of Error", () => {
+  const error = new GitHubIntegrationError("msg");
+  assert.ok(error instanceof Error);
 });
