@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import Settings from "@/pages/settings";
+import Changelogs from "@/pages/changelogs";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -13,6 +14,7 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/settings" component={Settings} />
+      <Route path="/changelogs" component={Changelogs} />
       <Route component={NotFound} />
     </Switch>
   );

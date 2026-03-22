@@ -1,4 +1,4 @@
-import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, PRQuestion, RuntimeState } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, PRQuestion, RuntimeState, SocialChangelog } from "@shared/schema";
 export { MemStorage } from "./memoryStorage";
 import { SqliteStorage } from "./sqliteStorage";
 
@@ -38,6 +38,13 @@ export interface IStorage {
   // Runtime lifecycle
   getRuntimeState(): Promise<RuntimeState>;
   updateRuntimeState(updates: Partial<RuntimeState>): Promise<RuntimeState>;
+
+  // Social media changelogs
+  getSocialChangelogs(): Promise<SocialChangelog[]>;
+  getSocialChangelog(id: string): Promise<SocialChangelog | undefined>;
+  getSocialChangelogForDateAndCount(date: string, triggerCount: number): Promise<SocialChangelog | undefined>;
+  createSocialChangelog(data: Omit<SocialChangelog, "id" | "createdAt">): Promise<SocialChangelog>;
+  updateSocialChangelog(id: string, updates: Partial<SocialChangelog>): Promise<SocialChangelog | undefined>;
 
   // Durable agent run journal
   getAgentRun(id: string): Promise<AgentRun | undefined>;

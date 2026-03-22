@@ -9,7 +9,7 @@
 
 ---
 
-> Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude or Codex agents to prepare fixes — all running on your machine.
+> Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude Code CLI or Codex agents to fix everything — all running on your machine.
 
 ---
 

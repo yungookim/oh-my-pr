@@ -924,3 +924,46 @@ export async function listFailingStatuses(
       targetUrl: status.target_url || null,
     }));
 }
+
+export type MergedPRSummary = {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  repo: string;
+};
+
+/**
+ * Returns pull requests that were merged to the given base branch today (UTC).
+ * Used to determine whether the social changelog trigger threshold has been reached.
+ */
+export async function listMergedPullsToday(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+  baseRef = "main",
+): Promise<MergedPRSummary[]> {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const repoSlug = formatRepoSlug(repo);
+
+  const pulls = await withGitHubErrorHandling("merged pull requests", repo, () =>
+    octokit.paginate(octokit.pulls.list, {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "closed",
+      base: baseRef,
+      sort: "updated",
+      direction: "desc",
+      per_page: 100,
+    }),
+  );
+
+  return pulls
+    .filter((p) => p.merged_at != null && p.merged_at.startsWith(today))
+    .map((p) => ({
+      number: p.number,
+      title: p.title || `PR #${p.number}`,
+      url: p.html_url || `https://github.com/${repo.owner}/${repo.repo}/pull/${p.number}`,
+      author: p.user?.login ?? "unknown",
+      repo: repoSlug,
+    }));
+}
