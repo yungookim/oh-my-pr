@@ -120,6 +120,130 @@ function makeGitRunCommand(params?: {
   };
 }
 
+test("pollForCICompletion tolerates transient status API errors and eventually succeeds", async () => {
+  const storage = new MemStorage();
+  const logs: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
+  let settledChecks = 0;
+  let statusChecks = 0;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => {
+        throw new Error("unused");
+      },
+      listFailingStatuses: async () => {
+        statusChecks += 1;
+        if (statusChecks === 1) {
+          throw new Error("transient GitHub API error");
+        }
+        return [];
+      },
+      checkCISettled: async () => {
+        settledChecks += 1;
+        return settledChecks >= 2;
+      },
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => undefined,
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => undefined,
+      postPRComment: async () => undefined,
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async (
+      _prId: string,
+      level: "info" | "warn" | "error",
+      message: string,
+    ) => {
+      logs.push({ level, message });
+    },
+  );
+
+  assert.deepEqual(result, { status: "success", failures: [] });
+  assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("CI poll attempt 1 failed")));
+  assert.ok(logs.some((log) => log.level === "info" && log.message.includes("CI poll attempt 2/10")));
+});
+
+test("pollForCICompletion returns timeout when status API keeps failing, including final check", async () => {
+  const storage = new MemStorage();
+  const logs: Array<{ level: "info" | "warn" | "error"; message: string }> = [];
+  let settledChecks = 0;
+  let statusChecks = 0;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => {
+        throw new Error("unused");
+      },
+      listFailingStatuses: async () => {
+        statusChecks += 1;
+        throw new Error(`still flaky (${statusChecks})`);
+      },
+      checkCISettled: async () => {
+        settledChecks += 1;
+        return false;
+      },
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => undefined,
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => undefined,
+      postPRComment: async () => undefined,
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async (
+      _prId: string,
+      level: "info" | "warn" | "error",
+      message: string,
+    ) => {
+      logs.push({ level, message });
+    },
+  );
+
+  assert.deepEqual(result, { status: "timeout", failures: [] });
+  assert.equal(settledChecks, 10);
+  assert.equal(statusChecks, 11);
+  assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("Final CI status check after timeout failed")));
+});
+
 test("syncFeedbackForPR logs completion even when no new feedback items arrive", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem();
@@ -148,6 +272,9 @@ test("syncFeedbackForPR logs completion even when no new feedback items arrive",
       throw new Error("unused in this test");
     },
     listFailingStatuses: async () => {
+      throw new Error("unused in this test");
+    },
+    checkCISettled: async () => {
       throw new Error("unused in this test");
     },
     listOpenPullsForRepo: async () => {
@@ -205,6 +332,7 @@ test("babysitPR skips new runs while drain mode is enabled", async () => {
       throw new Error("unused");
     },
     listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
     listOpenPullsForRepo: async () => [],
     postFollowUpForFeedbackItem: async () => undefined,
     resolveReviewThread: async () => undefined,
@@ -340,6 +468,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
@@ -357,6 +486,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: true,
         reason: "Comment requires a code change",
@@ -520,6 +650,7 @@ test("babysitPR centralizes status replies, logs best-effort failures, and updat
         },
         fetchPullSummary: async () => pullSummary,
         listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
         listOpenPullsForRepo: async () => [],
         postFollowUpForFeedbackItem: async () => undefined,
         resolveReviewThread: async () => undefined,
@@ -547,6 +678,7 @@ test("babysitPR centralizes status replies, logs best-effort failures, and updat
       },
       {
         resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
         evaluateFixNecessityWithAgent: async () => ({
           needsFix: true,
           reason: "Comment requires a code change",
@@ -624,6 +756,7 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
       fetchFeedbackItemsForPR: async () => [existingItem],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => {
         throw new Error("GitHub follow-up failed");
@@ -636,6 +769,7 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: true,
         reason: "Comment requires a code change",
@@ -718,6 +852,7 @@ test("babysitPR treats audit-trail replies as non-actionable follow-up comments"
       fetchFeedbackItemsForPR: async () => [originalItem, auditReply],
       fetchPullSummary: async () => makePullSummary(pr),
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -728,6 +863,7 @@ test("babysitPR treats audit-trail replies as non-actionable follow-up comments"
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => {
         throw new Error("automation audit-trail follow-up should not be sent back to the coding agent");
       },
@@ -803,6 +939,7 @@ test("babysitPR does not auto-ignore audit-trail replies when referenced timesta
       fetchFeedbackItemsForPR: async () => [originalItem, auditReply],
       fetchPullSummary: async () => makePullSummary(pr),
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -813,6 +950,7 @@ test("babysitPR does not auto-ignore audit-trail replies when referenced timesta
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => {
         evaluateCallCount += 1;
         return {
@@ -895,6 +1033,7 @@ test("babysitPR marks accepted pending items as resolved after a successful run"
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -905,6 +1044,7 @@ test("babysitPR marks accepted pending items as resolved after a successful run"
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: true, reason: "Code change needed" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
       runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
@@ -951,6 +1091,7 @@ test("babysitPR marks claimed items as warning when audit trail verification fai
       fetchFeedbackItemsForPR: async () => [existingItem],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -961,6 +1102,7 @@ test("babysitPR marks claimed items as warning when audit trail verification fai
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: true, reason: "Code change needed" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
       runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
@@ -1039,6 +1181,7 @@ test("babysitPR picks up manually-queued items and resolves them without re-eval
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1049,6 +1192,7 @@ test("babysitPR picks up manually-queued items and resolves them without re-eval
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => {
         evaluateCallCount += 1;
         return { needsFix: true, reason: "Should not be called" };
@@ -1137,6 +1281,7 @@ test("babysitPR does not pull rejected or resolved items into in_progress", asyn
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1147,6 +1292,7 @@ test("babysitPR does not pull rejected or resolved items into in_progress", asyn
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async (_params) => ({ needsFix: true, reason: "Code change needed" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
       runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
@@ -1193,6 +1339,7 @@ test("babysitPR skips run when no items are pending or queued", async () => {
       fetchFeedbackItemsForPR: async () => [rejectedItem],
       fetchPullSummary: async () => makePullSummary(pr),
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1203,6 +1350,7 @@ test("babysitPR skips run when no items are pending or queued", async () => {
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => {
         evaluateCallCount += 1;
         return { needsFix: true, reason: "Should not be called" };
@@ -1287,6 +1435,7 @@ test("babysitPR retries accepted in-progress feedback items that still need GitH
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
@@ -1304,6 +1453,7 @@ test("babysitPR retries accepted in-progress feedback items that still need GitH
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No new code change required",
@@ -1415,6 +1565,7 @@ test("resumeInterruptedRuns replays the persisted prompt when the PR head has no
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1426,6 +1577,7 @@ test("resumeInterruptedRuns replays the persisted prompt when the PR head has no
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "No new evaluation needed" }),
       applyFixesWithAgent: async ({ prompt }) => {
         capturedPrompt = prompt;
@@ -1521,6 +1673,7 @@ test("resumeInterruptedRuns skips prompt replay when the PR head already moved",
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1532,6 +1685,7 @@ test("resumeInterruptedRuns skips prompt replay when the PR head already moved",
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "No new evaluation needed" }),
       applyFixesWithAgent: async () => {
         applyCalled = true;
@@ -1618,6 +1772,7 @@ test("babysitPR resolves lingering review threads without reposting an existing 
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
@@ -1635,6 +1790,7 @@ test("babysitPR resolves lingering review threads without reposting an existing 
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No new code change required",
@@ -1748,6 +1904,7 @@ test("babysitPR reposts GitHub follow-up when an earlier audit trail used the wr
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async (_octokit, _parsed, item, body, options) => {
         postedFollowUps.push({ id: item.id, body });
@@ -1765,6 +1922,7 @@ test("babysitPR reposts GitHub follow-up when an earlier audit trail used the wr
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No new code change required",
@@ -1837,6 +1995,7 @@ test("babysitPR resolves merge conflicts when PR is not mergeable", async () => 
       fetchFeedbackItemsForPR: async () => [],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1847,6 +2006,7 @@ test("babysitPR resolves merge conflicts when PR is not mergeable", async () => 
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No fix needed",
@@ -1926,6 +2086,7 @@ test("babysitPR pushes a clean base merge when GitHub mergeability is stale", as
       fetchFeedbackItemsForPR: async () => [],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -1936,6 +2097,7 @@ test("babysitPR pushes a clean base merge when GitHub mergeability is stale", as
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No fix needed",
@@ -2025,6 +2187,7 @@ test("babysitPR skips conflict resolution when PR is mergeable", async () => {
       },
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -2035,6 +2198,7 @@ test("babysitPR skips conflict resolution when PR is mergeable", async () => {
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: true,
         reason: "Comment requires a code change",
@@ -2100,6 +2264,7 @@ test("babysitPR errors when conflict resolution agent fails", async () => {
       fetchFeedbackItemsForPR: async () => [],
       fetchPullSummary: async () => pullSummary,
       listFailingStatuses: async () => [],
+    checkCISettled: async () => true,
       listOpenPullsForRepo: async () => [],
       postFollowUpForFeedbackItem: async () => undefined,
       resolveReviewThread: async () => undefined,
@@ -2110,6 +2275,7 @@ test("babysitPR errors when conflict resolution agent fails", async () => {
     },
     {
       resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({
         needsFix: false,
         reason: "No fix needed",

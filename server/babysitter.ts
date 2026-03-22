@@ -11,6 +11,7 @@ import {
 import {
   addReactionToComment,
   buildOctokit,
+  checkCISettled,
   fetchFeedbackItemsForPR,
   fetchPullSummary,
   formatRepoSlug,
@@ -26,8 +27,10 @@ import {
   resolveGitHubAuthToken,
   updateStatusReply,
   type GitHubPullSummary,
+  type GitHubStatusFailure,
   type MergedPRSummary,
   type ParsedPRUrl,
+  type ParsedRepoSlug,
   type StatusReplyRef,
 } from "./github";
 import { generateSocialChangelog } from "./socialChangelogAgent";
@@ -49,6 +52,7 @@ const AUDIT_TOKEN_PATTERN = /\bcodefactory-feedback:[^\s<>()[\]{}"']+/g;
 type GitHubService = {
   addReactionToComment: typeof addReactionToComment;
   buildOctokit: typeof buildOctokit;
+  checkCISettled: typeof checkCISettled;
   fetchFeedbackItemsForPR: typeof fetchFeedbackItemsForPR;
   fetchPullSummary: typeof fetchPullSummary;
   listFailingStatuses: typeof listFailingStatuses;
@@ -67,11 +71,13 @@ type BabysitterRuntime = {
   evaluateFixNecessityWithAgent: typeof evaluateFixNecessityWithAgent;
   resolveAgent: typeof resolveAgent;
   runCommand: typeof runCommand;
+  ciPollIntervalMs?: number;
 };
 
 const defaultGitHubService: GitHubService = {
   addReactionToComment,
   buildOctokit,
+  checkCISettled,
   fetchFeedbackItemsForPR,
   fetchPullSummary,
   listFailingStatuses,
@@ -886,6 +892,61 @@ export class PRBabysitter {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`social-changelog: failed to generate post for id=${changelog.id}: ${message}`, err);
     });
+  }
+
+  /**
+   * Poll for CI/CD completion on a given commit SHA, then return the
+   * aggregate result. Gives CI up to ~5 minutes to finish (30s intervals,
+   * 10 attempts). Returns early as soon as all checks settle.
+   */
+  private async pollForCICompletion(
+    octokit: Awaited<ReturnType<typeof buildOctokit>>,
+    repo: ParsedRepoSlug,
+    _pr: ParsedPRUrl,
+    headSha: string,
+    prId: string,
+    queueLog: (prId: string, level: "info" | "warn" | "error", message: string, opts?: { phase?: string | null; metadata?: Record<string, unknown> | null }) => Promise<void>,
+  ): Promise<{ status: "success" | "failure" | "timeout"; failures: GitHubStatusFailure[] }> {
+    const MAX_ATTEMPTS = 10;
+    const pollIntervalMs = this.runtime.ciPollIntervalMs ?? 30_000;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      await wait(pollIntervalMs);
+
+      try {
+        const settled = await this.github.checkCISettled(octokit, repo, headSha);
+        const failures = await this.github.listFailingStatuses(octokit, repo, headSha);
+
+        await queueLog(prId, "info", `CI poll attempt ${attempt}/${MAX_ATTEMPTS}: ${failures.length} failure(s), settled=${settled}`, {
+          phase: "verify.ci",
+          metadata: { attempt, failures: failures.length, settled },
+        });
+
+        if (settled) {
+          return failures.length > 0
+            ? { status: "failure", failures }
+            : { status: "success", failures: [] };
+        }
+      } catch (error) {
+        await queueLog(prId, "warn", `CI poll attempt ${attempt} failed: ${summarizeUnknownError(error)}`, {
+          phase: "verify.ci",
+          metadata: { attempt },
+        });
+      }
+    }
+
+    // Final check after timeout.
+    try {
+      const finalFailures = await this.github.listFailingStatuses(octokit, repo, headSha);
+      if (finalFailures.length > 0) {
+        return { status: "failure", failures: finalFailures };
+      }
+    } catch (error) {
+      await queueLog(prId, "warn", `Final CI status check after timeout failed: ${summarizeUnknownError(error)}`, {
+        phase: "verify.ci",
+      });
+    }
+    return { status: "timeout", failures: [] };
   }
 
   async babysitPR(
@@ -1870,6 +1931,72 @@ export class PRBabysitter {
         });
         if (resolvedPR) {
           pr = resolvedPR;
+        }
+      }
+
+      // Post-push CI monitoring: if the agent pushed changes, poll for CI
+      // results on the new commit and alert the user if failures persist.
+      if (branchMoved && headShaForFollowUp) {
+        await queueLog(pr.id, "info", "Waiting for CI/CD checks on new commit...", {
+          phase: "verify.ci",
+          metadata: { headSha: headShaForFollowUp },
+        });
+
+        const ciResult = await this.pollForCICompletion(
+          octokit,
+          parsedRepo,
+          parsedPr,
+          headShaForFollowUp,
+          pr.id,
+          queueLog,
+        );
+
+        if (ciResult.status === "failure") {
+          const failureDetails = ciResult.failures.map((f) => `${f.context}: ${f.description}`).join("; ");
+          await queueLog(pr.id, "warn", `CI/CD still failing after agent fix: ${failureDetails}`, {
+            phase: "verify.ci",
+            metadata: { failures: ciResult.failures },
+          });
+
+          // Alert the user by posting a comment on the PR.
+          try {
+            const alertBody = [
+              "## \u26a0\ufe0f CodeFactory CI Alert",
+              "",
+              `The agent pushed changes (commit \`${headShaForFollowUp.slice(0, 7)}\`), but CI/CD checks are still failing:`,
+              "",
+              ...ciResult.failures.map((f) => `- **${f.context}**: ${f.description}${f.targetUrl ? ` ([details](${f.targetUrl}))` : ""}`),
+              "",
+              "Manual investigation may be required.",
+            ].join("\n");
+            await this.github.postPRComment(octokit, parsedPr, alertBody);
+          } catch (error) {
+            await logBestEffortFailure(
+              pr.id,
+              "verify.ci",
+              `Failed to post CI failure alert comment: ${summarizeUnknownError(error)}`,
+            );
+          }
+
+          await this.storage.updatePR(pr.id, {
+            testsPassed: false,
+            lastChecked: new Date().toISOString(),
+          });
+        } else if (ciResult.status === "success") {
+          await queueLog(pr.id, "info", "All CI/CD checks passed on new commit", {
+            phase: "verify.ci",
+            metadata: { headSha: headShaForFollowUp },
+          });
+          await this.storage.updatePR(pr.id, {
+            testsPassed: true,
+            lastChecked: new Date().toISOString(),
+          });
+        } else {
+          // Timed out waiting for CI — log it and move on.
+          await queueLog(pr.id, "info", "CI/CD checks did not complete within polling window; will re-check on next cycle", {
+            phase: "verify.ci",
+            metadata: { headSha: headShaForFollowUp },
+          });
         }
       }
 

@@ -57,3 +57,50 @@ test("evaluateFixNecessityWithAgent throws a clear error when codex writes no ou
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// runCommand basic behavior
+// ---------------------------------------------------------------------------
+
+test("runCommand with echo returns code 0 and stdout", async () => {
+  const result = await runCommand("echo", ["hello"]);
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /hello/);
+});
+
+test("runCommand with non-zero exit returns the exit code", async () => {
+  const result = await runCommand(process.execPath, ["-e", "process.exit(42)"]);
+  assert.equal(result.code, 42);
+});
+
+test("runCommand captures stderr", async () => {
+  const result = await runCommand(process.execPath, [
+    "-e",
+    "console.error('oops')",
+  ]);
+  assert.equal(result.code, 0);
+  assert.match(result.stderr, /oops/);
+});
+
+test("runCommand onStdoutChunk callback fires with output", async () => {
+  const chunks: string[] = [];
+  const result = await runCommand(process.execPath, ["-e", "console.log('chunk-test')"], {
+    onStdoutChunk: (chunk) => chunks.push(chunk),
+  });
+  assert.equal(result.code, 0);
+  assert.ok(chunks.length > 0, "expected at least one stdout chunk");
+  assert.match(chunks.join(""), /chunk-test/);
+});
+
+test("runCommand with nonexistent command returns code 1 and error in stderr", async () => {
+  const result = await runCommand("__nonexistent_command_xyz__", []);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /ENOENT|not found/i);
+});
+
+test("runCommand cwd option works", async () => {
+  const result = await runCommand("pwd", [], { cwd: "/tmp" });
+  assert.equal(result.code, 0);
+  // Resolve symlinks: /tmp may be a symlink to /private/tmp on macOS
+  assert.match(result.stdout.trim(), /\/tmp/);
+});

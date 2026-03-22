@@ -18,8 +18,8 @@ export async function answerPRQuestion(params: {
   await storage.updateQuestion(questionId, { status: "answering" });
 
   try {
-    const agent = await resolveAgent(preferredAgent);
     const context = await buildPRContext(storage, prId);
+    const agent = await resolveAgent(preferredAgent);
     const prompt = buildPrompt(context, question);
 
     const result = await runCommand(
