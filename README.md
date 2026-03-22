@@ -1,5 +1,7 @@
 # Code Factory
 
+**Mission: get to unsupervised software development. Remove the human bottleneck.**
+
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
 
 [![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
@@ -10,6 +12,8 @@
 ---
 
 > Stop babysitting pull requests manually. Code Factory watches your GitHub repos, syncs review comments into a local dashboard, auto-triages feedback, and launches Claude Code CLI or Codex agents to fix everything — all running on your machine.
+
+> **Note:** This project is intended only for those who want to move at maximum development speed.
 
 ---
 
