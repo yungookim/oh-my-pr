@@ -22,7 +22,7 @@
 ## Why Code Factory?
 
 This is what Code Factory is good at:
-1. Watch the PR to check for PR feedback from humans, agents, failing lint/tests, etc and auto fixes them
+1. Watch the PR to check for PR feedback from humans, agents, failing lint/tests, conflicts etc and auto-fix them
 2. Automatically generate lacking tests for all open PR
 3. Auto-generate and update user-facing documents
 
