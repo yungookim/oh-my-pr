@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
 import { feedbackStatusEnum } from "@shared/schema";
-import type { AgentRun, AgentRunStatus, Config, FeedbackItem, LogEntry, PR, PRQuestion, RuntimeState } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, FeedbackItem, LogEntry, PR, PRQuestion, RuntimeState, SocialChangelog } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { getCodeFactoryPaths } from "./paths";
 import { DEFAULT_CONFIG } from "./defaultConfig";
@@ -103,6 +103,18 @@ type QuestionRow = {
   error: string | null;
   created_at: string;
   answered_at: string | null;
+};
+
+type SocialChangelogRow = {
+  id: string;
+  date: string;
+  trigger_count: number;
+  pr_summaries_json: string;
+  content: string | null;
+  status: SocialChangelog["status"];
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
 };
 
 export class SqliteStorage implements IStorage {
@@ -233,10 +245,24 @@ export class SqliteStorage implements IStorage {
         FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS social_changelogs (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        trigger_count INTEGER NOT NULL,
+        pr_summaries_json TEXT NOT NULL,
+        content TEXT,
+        status TEXT NOT NULL DEFAULT 'generating',
+        error TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT,
+        UNIQUE(date, trigger_count)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_feedback_items_pr_id ON feedback_items(pr_id);
       CREATE INDEX IF NOT EXISTS idx_logs_pr_id_timestamp ON logs(pr_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_agent_runs_status_updated_at ON agent_runs(status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pr_questions_pr_id ON pr_questions(pr_id);
+      CREATE INDEX IF NOT EXISTS idx_social_changelogs_date ON social_changelogs(date);
     `);
 
     this.ensureColumn("feedback_items", "reply_kind", "TEXT NOT NULL DEFAULT 'general_comment'");
@@ -884,6 +910,91 @@ export class SqliteStorage implements IStorage {
     );
 
     return run;
+  }
+
+  // ── Social changelogs ───────────────────────────────────────────────────
+
+  async getSocialChangelogs(): Promise<SocialChangelog[]> {
+    const rows = this.db.prepare(`
+      SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
+      FROM social_changelogs
+      ORDER BY datetime(created_at) DESC
+    `).all() as SocialChangelogRow[];
+    return rows.map((row) => this.parseSocialChangelogRow(row));
+  }
+
+  async getSocialChangelog(id: string): Promise<SocialChangelog | undefined> {
+    const row = this.db.prepare(`
+      SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
+      FROM social_changelogs
+      WHERE id = ?
+    `).get(id) as SocialChangelogRow | undefined;
+    return row ? this.parseSocialChangelogRow(row) : undefined;
+  }
+
+  async getSocialChangelogForDateAndCount(date: string, triggerCount: number): Promise<SocialChangelog | undefined> {
+    const row = this.db.prepare(`
+      SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
+      FROM social_changelogs
+      WHERE date = ? AND trigger_count = ?
+    `).get(date, triggerCount) as SocialChangelogRow | undefined;
+    return row ? this.parseSocialChangelogRow(row) : undefined;
+  }
+
+  async createSocialChangelog(data: Omit<SocialChangelog, "id" | "createdAt">): Promise<SocialChangelog> {
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO social_changelogs (id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.date,
+      data.triggerCount,
+      JSON.stringify(data.prSummaries),
+      data.content,
+      data.status,
+      data.error,
+      createdAt,
+      data.completedAt,
+    );
+    return { ...data, id, createdAt };
+  }
+
+  async updateSocialChangelog(id: string, updates: Partial<SocialChangelog>): Promise<SocialChangelog | undefined> {
+    const existing = await this.getSocialChangelog(id);
+    if (!existing) return undefined;
+    const next = { ...existing, ...updates };
+    this.db.prepare(`
+      UPDATE social_changelogs
+      SET date = ?, trigger_count = ?, pr_summaries_json = ?, content = ?, status = ?, error = ?, created_at = ?, completed_at = ?
+      WHERE id = ?
+    `).run(
+      next.date,
+      next.triggerCount,
+      JSON.stringify(next.prSummaries),
+      next.content,
+      next.status,
+      next.error,
+      next.createdAt,
+      next.completedAt,
+      id,
+    );
+    return next;
+  }
+
+  private parseSocialChangelogRow(row: SocialChangelogRow): SocialChangelog {
+    return {
+      id: row.id,
+      date: row.date,
+      triggerCount: row.trigger_count,
+      prSummaries: JSON.parse(row.pr_summaries_json) as SocialChangelog["prSummaries"],
+      content: row.content,
+      status: row.status,
+      error: row.error,
+      createdAt: row.created_at,
+      completedAt: row.completed_at,
+    };
   }
 
   close(): void {

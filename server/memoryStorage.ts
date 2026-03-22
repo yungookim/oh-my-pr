@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, PRQuestion, RuntimeState } from "@shared/schema";
+import type { AgentRun, AgentRunStatus, Config, LogEntry, PR, PRQuestion, RuntimeState, SocialChangelog } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
 
@@ -14,6 +14,7 @@ export class MemStorage implements IStorage {
     drainReason: null,
   };
   private agentRuns: Map<string, AgentRun> = new Map();
+  private socialChangelogs: Map<string, SocialChangelog> = new Map();
 
   async getPRs(): Promise<PR[]> {
     return Array.from(this.prs.values())
@@ -168,5 +169,35 @@ export class MemStorage implements IStorage {
   async upsertAgentRun(run: AgentRun): Promise<AgentRun> {
     this.agentRuns.set(run.id, { ...run });
     return { ...run };
+  }
+
+  async getSocialChangelogs(): Promise<SocialChangelog[]> {
+    return Array.from(this.socialChangelogs.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
+
+  async getSocialChangelog(id: string): Promise<SocialChangelog | undefined> {
+    return this.socialChangelogs.get(id);
+  }
+
+  async getSocialChangelogForDateAndCount(date: string, triggerCount: number): Promise<SocialChangelog | undefined> {
+    return Array.from(this.socialChangelogs.values()).find(
+      (c) => c.date === date && c.triggerCount === triggerCount,
+    );
+  }
+
+  async createSocialChangelog(data: Omit<SocialChangelog, "id" | "createdAt">): Promise<SocialChangelog> {
+    const entry: SocialChangelog = { ...data, id: randomUUID(), createdAt: new Date().toISOString() };
+    this.socialChangelogs.set(entry.id, entry);
+    return entry;
+  }
+
+  async updateSocialChangelog(id: string, updates: Partial<SocialChangelog>): Promise<SocialChangelog | undefined> {
+    const existing = this.socialChangelogs.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates };
+    this.socialChangelogs.set(id, updated);
+    return updated;
   }
 }

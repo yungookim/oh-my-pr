@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -678,6 +679,12 @@ export default function Dashboard() {
           <span className="text-[11px] text-muted-foreground">
             poll {formatPollInterval(config?.pollIntervalMs)}
           </span>
+          <Link
+            href="/changelogs"
+            className="text-[11px] text-muted-foreground hover:text-foreground focus:outline-none"
+          >
+            changelogs
+          </Link>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-muted-foreground">

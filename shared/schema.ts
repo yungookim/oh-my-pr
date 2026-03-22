@@ -126,6 +126,31 @@ export const askQuestionSchema = z.object({
   question: z.string().min(1).max(2000),
 });
 
+export const socialChangelogStatusEnum = z.enum(["generating", "done", "error"]);
+export type SocialChangelogStatus = z.infer<typeof socialChangelogStatusEnum>;
+
+export const socialChangelogPRSummarySchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  url: z.string(),
+  author: z.string(),
+  repo: z.string(),
+});
+export type SocialChangelogPRSummary = z.infer<typeof socialChangelogPRSummarySchema>;
+
+export const socialChangelogSchema = z.object({
+  id: z.string(),
+  date: z.string(),               // YYYY-MM-DD UTC
+  triggerCount: z.number(),       // The nth merge that triggered this (5, 10, 15…)
+  prSummaries: z.array(socialChangelogPRSummarySchema),
+  content: z.string().nullable(), // Generated social media post
+  status: socialChangelogStatusEnum,
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+export type SocialChangelog = z.infer<typeof socialChangelogSchema>;
+
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),
