@@ -910,17 +910,73 @@ export async function listFailingStatuses(
 ): Promise<GitHubStatusFailure[]> {
   if (!headSha) return [];
 
-  const response = await withGitHubErrorHandling("commit statuses", repo, () => octokit.repos.getCombinedStatusForRef({
-    owner: repo.owner,
-    repo: repo.repo,
-    ref: headSha,
-  }));
+  // Fetch both commit statuses AND check runs in parallel.
+  // GitHub Actions CI/CD reports results as check runs (Checks API),
+  // while some integrations use the older commit status API.
+  const [statusResponse, checkRunsResponse] = await Promise.all([
+    withGitHubErrorHandling("commit statuses", repo, () => octokit.repos.getCombinedStatusForRef({
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: headSha,
+    })),
+    withGitHubErrorHandling("check runs", repo, () => octokit.checks.listForRef({
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: headSha,
+    })),
+  ]);
 
-  return response.data.statuses
+  const fromStatuses: GitHubStatusFailure[] = statusResponse.data.statuses
     .filter((status) => status.state === "failure" || status.state === "error")
     .map((status) => ({
       context: status.context || "status-check",
       description: status.description || "Failed status check",
       targetUrl: status.target_url || null,
     }));
+
+  const fromCheckRuns: GitHubStatusFailure[] = checkRunsResponse.data.check_runs
+    .filter((run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "cancelled")
+    .map((run) => ({
+      context: run.name,
+      description: run.output?.summary || run.output?.title || `Check run ${run.conclusion}`,
+      targetUrl: run.html_url || null,
+    }));
+
+  return [...fromStatuses, ...fromCheckRuns];
+}
+
+/**
+ * Returns whether all CI checks and commit statuses for a ref have settled
+ * (i.e., none are still pending/in-progress). Returns false if no checks
+ * exist yet or if the API call fails.
+ */
+export async function checkCISettled(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+  headSha: string,
+): Promise<boolean> {
+  if (!headSha) return false;
+
+  try {
+    const [statusResp, checkResp] = await Promise.all([
+      withGitHubErrorHandling("commit statuses (settled check)", repo, () => octokit.repos.getCombinedStatusForRef({
+        owner: repo.owner,
+        repo: repo.repo,
+        ref: headSha,
+      })),
+      withGitHubErrorHandling("check runs (settled check)", repo, () => octokit.checks.listForRef({
+        owner: repo.owner,
+        repo: repo.repo,
+        ref: headSha,
+      })),
+    ]);
+
+    const hasPendingStatus = statusResp.data.statuses.some((s) => s.state === "pending");
+    const hasPendingCheck = checkResp.data.check_runs.some((r) => r.status !== "completed");
+    const hasAnyChecks = statusResp.data.statuses.length > 0 || checkResp.data.check_runs.length > 0;
+
+    return hasAnyChecks && !hasPendingStatus && !hasPendingCheck;
+  } catch {
+    return false;
+  }
 }
