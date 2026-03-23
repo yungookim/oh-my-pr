@@ -1,6 +1,8 @@
 # Code Factory - get to unsupervised software development
 
-<img width="409" height="409" alt="image__7_-removebg-preview" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+<p align="center">
+  <img width="409" height="409" alt="image__7_-removebg-preview" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+</p>
 
 
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
