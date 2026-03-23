@@ -1,5 +1,7 @@
 # Code Factory - get to unsupervised software development
 
+<img width="784" height="1168" alt="image" src="https://github.com/user-attachments/assets/1eb96f4d-56ef-43b7-a473-761f089c978e" />
+
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, and dispatches AI agents to fix code.**
 
 [![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
