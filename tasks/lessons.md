@@ -131,3 +131,51 @@
   - If on `main`, create a fresh worktree and `codex/*` branch before editing.
   - Keep docs/planning and implementation changes in that isolated worktree.
   - Do not proceed with code changes until branch/worktree isolation is confirmed.
+
+## 2026-03-23 - Confirm visual tone early for creative assets
+- Pattern: I delivered an initial robot icon that read as too mechanical, and the user requested a friendlier direction.
+- Rule: For style-sensitive assets, lock tone up front (for example: friendly, playful, minimal, industrial) and reflect it in the first draft.
+- Prevention checklist:
+  - Capture 2-3 tone adjectives before drawing or coding the asset.
+  - Default to round shapes and softer contrast when the request implies "friendly."
+  - Present the first version with a short stated style intent so mismatches are easy to spot quickly.
+
+## 2026-03-23 - Start icon drafts with minimal geometry
+- Pattern: My friendlier revision still had too much visual detail, and the user asked for a simpler icon.
+- Rule: For requested app icons, start with a minimal silhouette-first draft and only add detail if explicitly requested.
+- Prevention checklist:
+  - Keep first pass to <= 6 visible primitives when "simple" is requested.
+  - Use at most 2-3 colors in the base draft.
+  - Remove decorative elements (cheeks, highlights, side caps) unless the user asks for them.
+
+## 2026-03-23 - Tune visual detail in small increments
+- Pattern: After simplifying the icon, the next correction requested a modest increase in polish rather than another full style shift.
+- Rule: For iterative visual feedback, adjust one notch at a time (minimal -> slightly polished -> stylized) and preserve the accepted base silhouette.
+- Prevention checklist:
+  - Keep the core geometry stable between revisions unless the user asks to rework the shape.
+  - Add at most 2-3 new decorative elements per revision.
+  - Describe the exact detail delta before editing so the scope stays controlled.
+
+## 2026-03-23 - Obey explicit style constraints literally
+- Pattern: The user explicitly requested a silhouette-only black-and-white line icon after prior stylized passes.
+- Rule: When a user provides strict visual constraints (for example: silhouette-only, monochrome, simple lines), implement those constraints exactly with no extra styling.
+- Prevention checklist:
+  - Convert explicit constraints into a short checklist before editing and verify each item in the output.
+  - Remove fills, gradients, and decorative details when the request says line-only.
+  - Keep the palette literal (black strokes on transparent/white) unless the user asks otherwise.
+
+## 2026-03-23 - When user provides a source asset, stop redesigning and propagate it
+- Pattern: The user provided an explicit icon image and wanted it used everywhere with resizing, replacing prior iterative redesign direction.
+- Rule: If a source asset is supplied, treat it as canonical and regenerate all target formats from it instead of continuing custom design edits.
+- Prevention checklist:
+  - Detect and use newly provided files/images as the authoritative source of truth.
+  - Enumerate every icon target in the repo and regenerate each from the same source.
+  - Verify dimensions and formats after generation to confirm consistent propagation.
+
+## 2026-03-23 - Overwrite asset paths on explicit replacement requests
+- Pattern: I added an initial hero image, then the user corrected it with a direct replacement request.
+- Rule: When a user says to replace an uploaded asset, overwrite the existing target file path unless they explicitly ask for versioned copies.
+- Prevention checklist:
+  - Keep the destination filename stable for replacement requests.
+  - Verify the replacement by checking file type and dimensions after writing.
+  - State clearly in handoff that the asset was replaced, not added as a second variant.
