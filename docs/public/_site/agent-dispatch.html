@@ -1,58 +1,13 @@
-/**
- * Converts Markdown files in docs/public/ to beautifully styled HTML pages.
- *
- * Each .md file becomes a standalone .html file in docs/public/_site/.
- * An index.html is also generated listing all available documents.
- *
- * Usage: npx tsx script/build-public-docs.ts
- */
-
-import fs from "node:fs";
-import path from "node:path";
-import { marked } from "marked";
-
-const DOCS_DIR = path.resolve(import.meta.dirname, "../docs/public");
-const OUT_DIR = path.join(DOCS_DIR, "_site");
-
-/** HTML template that wraps rendered markdown content */
-function htmlTemplate(title: string, content: string, isIndex: boolean): string {
-  const navBackLink = isIndex
-    ? `<a href="../../index.html" class="nav-back">← Back to CodeFactory</a>`
-    : `<a href="./index.html" class="nav-back">← All Documentation</a>`;
-
-  return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CodeFactory Documentation — ${title}" />
-  <title>${title} | CodeFactory Docs</title>
+  <meta name="description" content="CodeFactory Documentation — Agent Dispatch" />
+  <title>Agent Dispatch | CodeFactory Docs</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <style>${getStyles()}</style>
-</head>
-<body>
-  <nav class="top-nav">
-    <div class="nav-inner">
-      <a href="../../index.html" class="brand">CodeFactory</a>
-      <span class="nav-separator">/</span>
-      <span class="nav-section">Documentation</span>
-    </div>
-  </nav>
-  <div class="layout">
-    <main class="content">
-      <div class="breadcrumb">${navBackLink}</div>
-      <article class="prose">
-        ${content}
-      </article>
-    </main>
-  </div>
-</body>
-</html>`;
-}
-
-function getStyles(): string {
-  return `
+  <style>
     :root {
       --bg: #0e0e0e;
       --bg-elevated: #1a1919;
@@ -287,116 +242,96 @@ function getStyles(): string {
       .prose h2 { font-size: 1.25rem; }
       .doc-grid { grid-template-columns: 1fr; }
     }
-  `;
-}
-
-interface DocMeta {
-  slug: string;
-  title: string;
-  description: string;
-  htmlFile: string;
-}
-
-/** Extract the first H1 and first paragraph from markdown as title and description */
-function extractMeta(markdown: string, filename: string): { title: string; description: string } {
-  const titleMatch = markdown.match(/^#\s+(.+)$/m);
-  const title = titleMatch ? titleMatch[1].trim() : filename.replace(/\.md$/, "");
-
-  // Get first paragraph after the title
-  const lines = markdown.split("\n");
-  let description = "";
-  let pastTitle = false;
-  for (const line of lines) {
-    if (!pastTitle) {
-      if (titleMatch && line.startsWith("# ")) {
-        pastTitle = true;
-      }
-      continue;
-    }
-    const trimmed = line.trim();
-    if (trimmed === "") continue;
-    if (trimmed.startsWith("#") || trimmed.startsWith("```") || trimmed.startsWith("|") || trimmed.startsWith("-")) break;
-    description = trimmed;
-    break;
-  }
-
-  return { title, description };
-}
-
-function generateIndexPage(docs: DocMeta[]): string {
-  const cards = docs
-    .map(
-      (doc) => `
-      <a href="./${doc.htmlFile}" class="doc-card">
-        <h3>${doc.title}</h3>
-        <p>${doc.description}</p>
-      </a>`
-    )
-    .join("\n");
-
-  const content = `
-    <h1>Documentation</h1>
-    <p>Everything you need to know about using CodeFactory to automate your PR review workflow.</p>
-    <div class="doc-grid">
-      ${cards}
+  </style>
+</head>
+<body>
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="../../index.html" class="brand">CodeFactory</a>
+      <span class="nav-separator">/</span>
+      <span class="nav-section">Documentation</span>
     </div>
-  `;
+  </nav>
+  <div class="layout">
+    <main class="content">
+      <div class="breadcrumb"><a href="./index.html" class="nav-back">← All Documentation</a></div>
+      <article class="prose">
+        <h1>Agent Dispatch</h1>
+<p>CodeFactory dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.</p>
+<h2>Supported Agents</h2>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>CLI Tool</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Claude Code</strong></td>
+<td><code>claude</code></td>
+<td>Complex reasoning, multi-file refactors, architectural changes</td>
+</tr>
+<tr>
+<td><strong>OpenAI Codex</strong></td>
+<td><code>codex</code></td>
+<td>Quick fixes, single-file edits, style corrections</td>
+</tr>
+</tbody></table>
+<p>CodeFactory automatically detects which CLI tools are available on your system and selects the most appropriate agent for each task.</p>
+<h2>How Dispatch Works</h2>
+<h3>1. Worktree Isolation</h3>
+<p>Before an agent runs, CodeFactory creates a <strong>temporary git worktree</strong>:</p>
+<pre><code>/tmp/pr-babysitter/&lt;repo&gt;/&lt;pr-number&gt;/
+</code></pre>
+<p>This ensures:</p>
+<ul>
+<li>The agent works on an <strong>isolated copy</strong> of the branch.</li>
+<li>Your local working directory is <strong>never touched</strong>.</li>
+<li>Multiple agents can run <strong>in parallel</strong> on different PRs.</li>
+</ul>
+<h3>2. Agent Execution</h3>
+<p>The agent receives:</p>
+<ul>
+<li>The <strong>review feedback</strong> to address.</li>
+<li>The <strong>file context</strong> (relevant source files).</li>
+<li>The <strong>PR description</strong> for broader understanding.</li>
+<li>Any <strong>previous agent attempts</strong> (to avoid repeating failed approaches).</li>
+</ul>
+<h3>3. Validation</h3>
+<p>After the agent completes:</p>
+<ul>
+<li>Changes are <strong>diffed</strong> against the original branch.</li>
+<li>If configured, <strong>tests are run</strong> to validate the fix.</li>
+<li>The diff is <strong>logged</strong> for human review in the dashboard.</li>
+</ul>
+<h3>4. Commit &amp; Push</h3>
+<p>If validation passes, CodeFactory:</p>
+<ul>
+<li>Creates a <strong>descriptive commit message</strong> explaining what was fixed.</li>
+<li>Pushes the commit to the <strong>PR branch</strong> on GitHub.</li>
+<li>Updates the <strong>feedback status</strong> to resolved.</li>
+</ul>
+<h2>Agent Runs in the Dashboard</h2>
+<p>Every agent run is tracked in the CodeFactory dashboard:</p>
+<ul>
+<li><strong>Status</strong> — Running, succeeded, or failed.</li>
+<li><strong>Duration</strong> — How long the agent took.</li>
+<li><strong>Diff</strong> — Exact changes the agent made.</li>
+<li><strong>Logs</strong> — Full agent output for debugging.</li>
+</ul>
+<h2>Model Discovery</h2>
+<p>CodeFactory discovers available models from your local CLI installations. You can view and refresh available models from the <strong>Settings</strong> page in the dashboard.</p>
+<h2>Customization</h2>
+<p>Override the default agent per repository or globally:</p>
+<ul>
+<li>Set <code>CODEFACTORY_AGENT=claude</code> or <code>CODEFACTORY_AGENT=codex</code> as an environment variable.</li>
+<li>Configure per-repo preferences in the dashboard under repository settings.</li>
+</ul>
+<p>See <a href="./configuration.html">Configuration</a> for all options.</p>
 
-  return htmlTemplate("Documentation", content, true);
-}
-
-// Rewrite .md links to .html links in the rendered HTML
-function rewriteLinks(html: string): string {
-  return html.replace(/href="\.\/([^"]+)\.md"/g, 'href="./$1.html"');
-}
-
-async function main() {
-  // Clean output directory
-  if (fs.existsSync(OUT_DIR)) {
-    fs.rmSync(OUT_DIR, { recursive: true });
-  }
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-
-  // Find all .md files
-  const files = fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"));
-
-  if (files.length === 0) {
-    console.log("No markdown files found in docs/public/");
-    return;
-  }
-
-  const docs: DocMeta[] = [];
-
-  // Ordered list for the index (getting-started first)
-  const orderedFiles = [
-    "getting-started.md",
-    ...files.filter((f) => f !== "getting-started.md").sort(),
-  ].filter((f) => files.includes(f));
-
-  for (const file of orderedFiles) {
-    const markdown = fs.readFileSync(path.join(DOCS_DIR, file), "utf-8");
-    const { title, description } = extractMeta(markdown, file);
-    const slug = file.replace(/\.md$/, "");
-    const htmlFile = `${slug}.html`;
-
-    const rendered = rewriteLinks(await marked.parse(markdown));
-    const html = htmlTemplate(title, rendered, false);
-
-    fs.writeFileSync(path.join(OUT_DIR, htmlFile), html);
-    docs.push({ slug, title, description, htmlFile });
-
-    console.log(`  ✓ ${file} → ${htmlFile}`);
-  }
-
-  // Generate index
-  const indexHtml = generateIndexPage(docs);
-  fs.writeFileSync(path.join(OUT_DIR, "index.html"), indexHtml);
-  console.log(`  ✓ index.html (${docs.length} documents)`);
-
-  console.log(`\nBuilt ${docs.length} docs → ${OUT_DIR}`);
-}
-
-main().catch((err) => {
-  console.error("Failed to build public docs:", err);
-  process.exit(1);
-});
+      </article>
+    </main>
+  </div>
+</body>
+</html>

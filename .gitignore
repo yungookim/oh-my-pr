@@ -5,4 +5,4 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .worktrees
-docs/public/_site
+

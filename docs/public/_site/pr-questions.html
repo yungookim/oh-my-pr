@@ -1,58 +1,13 @@
-/**
- * Converts Markdown files in docs/public/ to beautifully styled HTML pages.
- *
- * Each .md file becomes a standalone .html file in docs/public/_site/.
- * An index.html is also generated listing all available documents.
- *
- * Usage: npx tsx script/build-public-docs.ts
- */
-
-import fs from "node:fs";
-import path from "node:path";
-import { marked } from "marked";
-
-const DOCS_DIR = path.resolve(import.meta.dirname, "../docs/public");
-const OUT_DIR = path.join(DOCS_DIR, "_site");
-
-/** HTML template that wraps rendered markdown content */
-function htmlTemplate(title: string, content: string, isIndex: boolean): string {
-  const navBackLink = isIndex
-    ? `<a href="../../index.html" class="nav-back">← Back to CodeFactory</a>`
-    : `<a href="./index.html" class="nav-back">← All Documentation</a>`;
-
-  return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CodeFactory Documentation — ${title}" />
-  <title>${title} | CodeFactory Docs</title>
+  <meta name="description" content="CodeFactory Documentation — PR Q&A" />
+  <title>PR Q&A | CodeFactory Docs</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <style>${getStyles()}</style>
-</head>
-<body>
-  <nav class="top-nav">
-    <div class="nav-inner">
-      <a href="../../index.html" class="brand">CodeFactory</a>
-      <span class="nav-separator">/</span>
-      <span class="nav-section">Documentation</span>
-    </div>
-  </nav>
-  <div class="layout">
-    <main class="content">
-      <div class="breadcrumb">${navBackLink}</div>
-      <article class="prose">
-        ${content}
-      </article>
-    </main>
-  </div>
-</body>
-</html>`;
-}
-
-function getStyles(): string {
-  return `
+  <style>
     :root {
       --bg: #0e0e0e;
       --bg-elevated: #1a1919;
@@ -287,116 +242,72 @@ function getStyles(): string {
       .prose h2 { font-size: 1.25rem; }
       .doc-grid { grid-template-columns: 1fr; }
     }
-  `;
-}
-
-interface DocMeta {
-  slug: string;
-  title: string;
-  description: string;
-  htmlFile: string;
-}
-
-/** Extract the first H1 and first paragraph from markdown as title and description */
-function extractMeta(markdown: string, filename: string): { title: string; description: string } {
-  const titleMatch = markdown.match(/^#\s+(.+)$/m);
-  const title = titleMatch ? titleMatch[1].trim() : filename.replace(/\.md$/, "");
-
-  // Get first paragraph after the title
-  const lines = markdown.split("\n");
-  let description = "";
-  let pastTitle = false;
-  for (const line of lines) {
-    if (!pastTitle) {
-      if (titleMatch && line.startsWith("# ")) {
-        pastTitle = true;
-      }
-      continue;
-    }
-    const trimmed = line.trim();
-    if (trimmed === "") continue;
-    if (trimmed.startsWith("#") || trimmed.startsWith("```") || trimmed.startsWith("|") || trimmed.startsWith("-")) break;
-    description = trimmed;
-    break;
-  }
-
-  return { title, description };
-}
-
-function generateIndexPage(docs: DocMeta[]): string {
-  const cards = docs
-    .map(
-      (doc) => `
-      <a href="./${doc.htmlFile}" class="doc-card">
-        <h3>${doc.title}</h3>
-        <p>${doc.description}</p>
-      </a>`
-    )
-    .join("\n");
-
-  const content = `
-    <h1>Documentation</h1>
-    <p>Everything you need to know about using CodeFactory to automate your PR review workflow.</p>
-    <div class="doc-grid">
-      ${cards}
+  </style>
+</head>
+<body>
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="../../index.html" class="brand">CodeFactory</a>
+      <span class="nav-separator">/</span>
+      <span class="nav-section">Documentation</span>
     </div>
-  `;
+  </nav>
+  <div class="layout">
+    <main class="content">
+      <div class="breadcrumb"><a href="./index.html" class="nav-back">← All Documentation</a></div>
+      <article class="prose">
+        <h1>PR Q&amp;A</h1>
+<p>CodeFactory includes a built-in PR question-answering system that lets you interrogate your pull requests using natural language.</p>
+<h2>Overview</h2>
+<p>Instead of manually reading through large diffs, you can ask questions like:</p>
+<ul>
+<li>&quot;What does this PR change?&quot;</li>
+<li>&quot;Why did the tests fail?&quot;</li>
+<li>&quot;What are the architectural implications of this change?&quot;</li>
+<li>&quot;Does this PR introduce any security concerns?&quot;</li>
+</ul>
+<p>CodeFactory uses an AI agent to analyze the PR diff, review comments, and commit history to provide accurate answers.</p>
+<h2>How to Use</h2>
+<ol>
+<li>Open a PR in the CodeFactory dashboard.</li>
+<li>Navigate to the <strong>Q&amp;A</strong> tab.</li>
+<li>Type your question and press Enter.</li>
+</ol>
+<p>The agent will analyze the PR context and return a detailed answer within seconds.</p>
+<h2>What the Agent Sees</h2>
+<p>When answering a question, the agent has access to:</p>
+<ul>
+<li>The <strong>full diff</strong> of the PR.</li>
+<li>All <strong>review comments</strong> and threads.</li>
+<li>The <strong>PR description</strong> and title.</li>
+<li>The <strong>commit history</strong> on the branch.</li>
+<li>The <strong>surrounding code context</strong> in affected files.</li>
+</ul>
+<h2>Use Cases</h2>
+<h3>Code Review Assistance</h3>
+<p>Ask the agent to summarize changes before you start reviewing:</p>
+<blockquote>
+<p>&quot;Summarize the key changes in this PR and flag anything that needs careful review.&quot;</p>
+</blockquote>
+<h3>Debugging Failed Checks</h3>
+<p>When CI fails, ask the agent to diagnose:</p>
+<blockquote>
+<p>&quot;The lint check is failing — what&#39;s causing it and how should it be fixed?&quot;</p>
+</blockquote>
+<h3>Architecture Review</h3>
+<p>For larger PRs, get a high-level understanding:</p>
+<blockquote>
+<p>&quot;Does this PR change any public API surfaces? What are the breaking changes?&quot;</p>
+</blockquote>
+<h2>Limitations</h2>
+<ul>
+<li>The agent only sees the PR context — it does not have access to external documentation or issue trackers.</li>
+<li>Answers are generated by AI and should be verified for critical decisions.</li>
+<li>Very large PRs (1000+ changed files) may exceed context limits.</li>
+</ul>
 
-  return htmlTemplate("Documentation", content, true);
-}
-
-// Rewrite .md links to .html links in the rendered HTML
-function rewriteLinks(html: string): string {
-  return html.replace(/href="\.\/([^"]+)\.md"/g, 'href="./$1.html"');
-}
-
-async function main() {
-  // Clean output directory
-  if (fs.existsSync(OUT_DIR)) {
-    fs.rmSync(OUT_DIR, { recursive: true });
-  }
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-
-  // Find all .md files
-  const files = fs.readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"));
-
-  if (files.length === 0) {
-    console.log("No markdown files found in docs/public/");
-    return;
-  }
-
-  const docs: DocMeta[] = [];
-
-  // Ordered list for the index (getting-started first)
-  const orderedFiles = [
-    "getting-started.md",
-    ...files.filter((f) => f !== "getting-started.md").sort(),
-  ].filter((f) => files.includes(f));
-
-  for (const file of orderedFiles) {
-    const markdown = fs.readFileSync(path.join(DOCS_DIR, file), "utf-8");
-    const { title, description } = extractMeta(markdown, file);
-    const slug = file.replace(/\.md$/, "");
-    const htmlFile = `${slug}.html`;
-
-    const rendered = rewriteLinks(await marked.parse(markdown));
-    const html = htmlTemplate(title, rendered, false);
-
-    fs.writeFileSync(path.join(OUT_DIR, htmlFile), html);
-    docs.push({ slug, title, description, htmlFile });
-
-    console.log(`  ✓ ${file} → ${htmlFile}`);
-  }
-
-  // Generate index
-  const indexHtml = generateIndexPage(docs);
-  fs.writeFileSync(path.join(OUT_DIR, "index.html"), indexHtml);
-  console.log(`  ✓ index.html (${docs.length} documents)`);
-
-  console.log(`\nBuilt ${docs.length} docs → ${OUT_DIR}`);
-}
-
-main().catch((err) => {
-  console.error("Failed to build public docs:", err);
-  process.exit(1);
-});
+      </article>
+    </main>
+  </div>
+</body>
+</html>
