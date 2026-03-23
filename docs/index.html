@@ -5,273 +5,986 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <meta
       name="description"
-      content="CodeFactory is an autonomous PR babysitter that watches repositories, triages review feedback, and dispatches agents to fix code."
+      content="CodeFactory documentation — the autonomous PR babysitter that watches repositories, triages review feedback, and dispatches agents to fix code."
     />
-    <title>CodeFactory | The Autonomous PR Babysitter</title>
-    <link href="./assets/landing.css" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet" />
+    <title>CodeFactory Docs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
       rel="stylesheet"
     />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg: #0a0a0a;
+        --bg-secondary: #111111;
+        --bg-tertiary: #161616;
+        --bg-elevated: #1a1a1a;
+        --bg-hover: #1f1f1f;
+        --border: #1e1e1e;
+        --border-hover: #2a2a2a;
+        --text-primary: #ececec;
+        --text-secondary: #a0a0a0;
+        --text-tertiary: #6b6b6b;
+        --accent: #9ba8ff;
+        --accent-dim: #7b8ae6;
+        --accent-bg: rgba(155, 168, 255, 0.08);
+        --accent-bg-hover: rgba(155, 168, 255, 0.12);
+        --accent-border: rgba(155, 168, 255, 0.2);
+        --green: #4ade80;
+        --green-bg: rgba(74, 222, 128, 0.08);
+        --purple: #a78bfa;
+        --purple-bg: rgba(167, 139, 250, 0.08);
+        --orange: #fb923c;
+        --orange-bg: rgba(251, 146, 60, 0.08);
+        --pink: #f472b6;
+        --pink-bg: rgba(244, 114, 182, 0.08);
+        --sidebar-w: 260px;
+        --header-h: 56px;
+      }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--text-primary);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      a { color: inherit; text-decoration: none; }
+
+      /* ── Header ── */
+      .doc-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--header-h);
+        background: rgba(10, 10, 10, 0.8);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--border);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        padding: 0 24px;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: var(--sidebar-w);
+        flex-shrink: 0;
+      }
+
+      .header-logo {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        letter-spacing: -0.02em;
+      }
+
+      .header-logo .logo-icon {
+        width: 24px;
+        height: 24px;
+        background: linear-gradient(135deg, #4963ff, #9ba8ff);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .header-logo .logo-icon span {
+        font-size: 14px;
+        color: #fff;
+      }
+
+      .header-badge {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--accent);
+        background: var(--accent-bg);
+        border: 1px solid var(--accent-border);
+        padding: 2px 8px;
+        border-radius: 9999px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .header-center {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 24px;
+      }
+
+      .search-trigger {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        max-width: 480px;
+        padding: 7px 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text-tertiary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+
+      .search-trigger:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-tertiary);
+      }
+
+      .search-trigger .material-symbols-outlined {
+        font-size: 16px;
+      }
+
+      .search-trigger .shortcut {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+      }
+
+      .search-trigger .shortcut kbd {
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        color: var(--text-tertiary);
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .header-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        transition: color 0.15s, background 0.15s;
+      }
+
+      .header-link:hover {
+        color: var(--text-primary);
+        background: var(--bg-hover);
+      }
+
+      .header-link .material-symbols-outlined {
+        font-size: 18px;
+      }
+
+      /* ── Sidebar ── */
+      .doc-sidebar {
+        position: fixed;
+        top: var(--header-h);
+        left: 0;
+        bottom: 0;
+        width: var(--sidebar-w);
+        background: var(--bg);
+        border-right: 1px solid var(--border);
+        overflow-y: auto;
+        padding: 16px 12px 32px;
+        z-index: 50;
+      }
+
+      .doc-sidebar::-webkit-scrollbar { width: 4px; }
+      .doc-sidebar::-webkit-scrollbar-track { background: transparent; }
+      .doc-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+      .sidebar-section {
+        margin-bottom: 24px;
+      }
+
+      .sidebar-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 0 12px;
+        margin-bottom: 6px;
+      }
+
+      .sidebar-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 450;
+        color: var(--text-secondary);
+        transition: all 0.12s;
+        line-height: 1.4;
+      }
+
+      .sidebar-link:hover {
+        color: var(--text-primary);
+        background: var(--bg-hover);
+      }
+
+      .sidebar-link.active {
+        color: var(--accent);
+        background: var(--accent-bg);
+      }
+
+      .sidebar-link .material-symbols-outlined {
+        font-size: 18px;
+        font-variation-settings: 'FILL' 0, 'wght' 300;
+        opacity: 0.7;
+      }
+
+      .sidebar-link.active .material-symbols-outlined {
+        opacity: 1;
+      }
+
+      /* ── Main Content ── */
+      .doc-main {
+        margin-left: var(--sidebar-w);
+        margin-top: var(--header-h);
+        min-height: calc(100vh - var(--header-h));
+      }
+
+      .doc-content {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 48px 48px 96px;
+      }
+
+      /* ── Hero Section ── */
+      .doc-hero {
+        margin-bottom: 48px;
+      }
+
+      .doc-hero-overline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 12px;
+      }
+
+      .doc-hero-overline .material-symbols-outlined {
+        font-size: 16px;
+      }
+
+      .doc-hero h1 {
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
+        color: var(--text-primary);
+        margin-bottom: 12px;
+      }
+
+      .doc-hero p {
+        font-size: 16px;
+        color: var(--text-secondary);
+        max-width: 600px;
+        line-height: 1.7;
+      }
+
+      /* ── Quick Start Cards ── */
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+        margin-bottom: 48px;
+      }
+
+      .doc-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        background: var(--bg);
+        transition: all 0.2s;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .doc-card:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-secondary);
+        transform: translateY(-1px);
+      }
+
+      .doc-card-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .doc-card-icon .material-symbols-outlined {
+        font-size: 20px;
+      }
+
+      .doc-card-icon.green { background: var(--green-bg); color: var(--green); }
+      .doc-card-icon.purple { background: var(--purple-bg); color: var(--purple); }
+      .doc-card-icon.accent { background: var(--accent-bg); color: var(--accent); }
+      .doc-card-icon.orange { background: var(--orange-bg); color: var(--orange); }
+      .doc-card-icon.pink { background: var(--pink-bg); color: var(--pink); }
+
+      .doc-card h3 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
+      }
+
+      .doc-card p {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+
+      .doc-card-arrow {
+        margin-top: auto;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        opacity: 0;
+        transform: translateX(-4px);
+        transition: all 0.2s;
+      }
+
+      .doc-card:hover .doc-card-arrow {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .doc-card-arrow .material-symbols-outlined {
+        font-size: 16px;
+      }
+
+      /* ── Section Headings ── */
+      .section-heading {
+        font-size: 22px;
+        font-weight: 650;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .section-subtext {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 20px;
+        line-height: 1.7;
+      }
+
+      /* ── Code Block ── */
+      .code-block {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 32px;
+      }
+
+      .code-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-tertiary);
+      }
+
+      .code-header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .code-header .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .code-header .dot.red { background: #f87171; opacity: 0.6; }
+      .code-header .dot.yellow { background: #fbbf24; opacity: 0.6; }
+      .code-header .dot.green { background: #4ade80; opacity: 0.6; }
+
+      .code-lang {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .code-copy {
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: var(--text-tertiary);
+        font-size: 12px;
+        padding: 3px 10px;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+        transition: all 0.15s;
+      }
+
+      .code-copy:hover {
+        color: var(--text-secondary);
+        border-color: var(--border-hover);
+        background: var(--bg-hover);
+      }
+
+      .code-body {
+        padding: 16px 20px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--text-secondary);
+        overflow-x: auto;
+      }
+
+      .code-body .comment { color: var(--text-tertiary); }
+      .code-body .command { color: var(--green); }
+      .code-body .arg { color: var(--accent); }
+      .code-body .url { color: var(--orange); }
+
+      /* ── Feature List ── */
+      .feature-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-bottom: 48px;
+      }
+
+      .feature-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 8px;
+        transition: background 0.15s;
+      }
+
+      .feature-item:hover {
+        background: var(--bg-secondary);
+      }
+
+      .feature-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .feature-icon .material-symbols-outlined {
+        font-size: 16px;
+      }
+
+      .feature-text h4 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+
+      .feature-text p {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+
+      /* ── Divider ── */
+      .doc-divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+      }
+
+      /* ── Footer Nav ── */
+      .footer-nav {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 48px;
+        padding-top: 32px;
+        border-top: 1px solid var(--border);
+      }
+
+      .footer-nav-card {
+        flex: 1;
+        padding: 16px 20px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        transition: all 0.15s;
+      }
+
+      .footer-nav-card:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-secondary);
+      }
+
+      .footer-nav-card.next {
+        text-align: right;
+      }
+
+      .footer-nav-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+      }
+
+      .footer-nav-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent);
+      }
+
+      /* ── Info Callout ── */
+      .callout {
+        display: flex;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 10px;
+        border: 1px solid var(--accent-border);
+        background: var(--accent-bg);
+        margin-bottom: 32px;
+      }
+
+      .callout .material-symbols-outlined {
+        font-size: 18px;
+        color: var(--accent);
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .callout p {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+
+      .callout a {
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      /* ── Tech Stack Badge ── */
+      .tech-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 32px;
+      }
+
+      .tech-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 900px) {
+        .doc-sidebar { display: none; }
+        .doc-main { margin-left: 0; }
+        .header-left { width: auto; }
+        .cards-grid { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 600px) {
+        .doc-content { padding: 32px 20px 64px; }
+        .doc-hero h1 { font-size: 28px; }
+        .header-center { display: none; }
+        .footer-nav { flex-direction: column; }
+      }
+
+      /* ── Material Symbols ── */
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+      }
+
+      /* ── Scrollbar (global) ── */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+    </style>
   </head>
-  <body class="selection:bg-primary-container selection:text-on-primary-container">
-    <nav class="fixed top-0 z-50 w-full bg-[#0e0e0e]/80 shadow-[0_0_40px_rgba(155,168,255,0.06)] backdrop-blur-xl">
-      <div class="mx-auto flex max-w-7xl items-center justify-between px-8 py-4">
-        <div class="text-xl font-bold tracking-tighter text-[#9ba8ff]">CodeFactory</div>
-        <div class="hidden items-center gap-8 md:flex">
-          <a class="tracking-tight text-[#adaaaa] antialiased transition-colors hover:text-white" href="https://github.com/yungookim/codefactory" rel="noreferrer" target="_blank">GitHub</a>
-          <a class="tracking-tight text-[#adaaaa] antialiased transition-colors hover:text-white" href="#features">Features</a>
-          <a class="tracking-tight text-[#adaaaa] antialiased transition-colors hover:text-white" href="#workflow">How It Works</a>
-          <a class="tracking-tight text-[#adaaaa] antialiased transition-colors hover:text-white" href="./public/_site/index.html">Docs</a>
-          <a class="tracking-tight text-[#adaaaa] antialiased transition-colors hover:text-white" href="https://github.com/yungookim/codefactory/discussions" rel="noreferrer" target="_blank">Community</a>
-        </div>
-        <div class="flex items-center gap-4">
-          <a class="hidden items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-high px-4 py-2 text-sm font-medium text-[#adaaaa] transition-colors hover:text-white lg:flex" href="https://github.com/yungookim/codefactory/stargazers" rel="noreferrer" target="_blank">
-            <span class="material-symbols-outlined text-sm">star</span>
-            <span>Star on GitHub</span>
-          </a>
-          <a class="primary-gradient rounded-full px-6 py-2.5 text-sm font-bold text-black transition-all hover:opacity-90 active:scale-95" href="https://github.com/yungookim/codefactory.git" rel="noreferrer" target="_blank">Clone Repository</a>
+  <body>
+
+    <!-- ── Header ── -->
+    <header class="doc-header">
+      <div class="header-left">
+        <a href="./index.html" class="header-logo">
+          <div class="logo-icon">
+            <span class="material-symbols-outlined" style="font-size:14px;font-variation-settings:'FILL' 1,'wght' 600">bolt</span>
+          </div>
+          CodeFactory
+        </a>
+        <span class="header-badge">Docs</span>
+      </div>
+
+      <div class="header-center">
+        <div class="search-trigger" tabindex="0" role="button">
+          <span class="material-symbols-outlined">search</span>
+          <span>Search documentation...</span>
+          <span class="shortcut">
+            <kbd>Ctrl</kbd>
+            <kbd>K</kbd>
+          </span>
         </div>
       </div>
-    </nav>
 
-    <main>
-      <section class="relative flex min-h-screen items-center justify-center overflow-hidden pt-20">
-        <div class="absolute inset-0 z-0">
-          <div class="absolute inset-0 bg-gradient-to-b from-transparent via-background to-background"></div>
-          <div class="absolute left-1/2 top-1/2 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[120px]"></div>
-          <img
-            alt="Cinematic high-fidelity visualization of an AI entity in a dark cyberspace void"
-            class="h-full w-full object-cover opacity-30 mix-blend-luminosity"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9kaYnYVAvjY3ae3rCVmZCvZZOQSj3e9iqIsQdLrCdymPypgYTRJXrH6PmqyPKGS-GG-1L-c8mQEGqA_fPg0CU0te0Ilm3xnsrPLFBswFCIg6YuKW03eHd1UMerpoNhoht1d06Q4CHsfEDqZB04meZd3RMXRzIuZaPT8K-M1BbhhVu45DTHckaQuA0oHY65gAEdZjhYmEcvm7jbEagwe7mC1Z1GEbbkF0eMCL0EKkRdogACAMwbvzrdltzj3dGGPExoYv4QYTEwBY"
-          />
+      <div class="header-right">
+        <a class="header-link" href="https://github.com/yungookim/codefactory" target="_blank" rel="noreferrer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          <span>GitHub</span>
+        </a>
+        <a class="header-link" href="https://github.com/yungookim/codefactory/discussions" target="_blank" rel="noreferrer">
+          <span class="material-symbols-outlined">forum</span>
+          <span>Community</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- ── Sidebar ── -->
+    <aside class="doc-sidebar">
+      <nav>
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Getting Started</div>
+          <a class="sidebar-link active" href="./index.html">
+            <span class="material-symbols-outlined">home</span>
+            Introduction
+          </a>
+          <a class="sidebar-link" href="./public/getting-started.md">
+            <span class="material-symbols-outlined">rocket_launch</span>
+            Quickstart
+          </a>
+          <a class="sidebar-link" href="./public/configuration.md">
+            <span class="material-symbols-outlined">settings</span>
+            Configuration
+          </a>
         </div>
-        <div class="relative z-10 mx-auto max-w-5xl px-8 text-center">
-          <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-outline-variant/15 bg-surface-container-high px-3 py-1">
-            <span class="h-2 w-2 animate-pulse rounded-full bg-primary"></span>
-            <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">The Open Source PR Babysitter</span>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Core Concepts</div>
+          <a class="sidebar-link" href="./public/pr-babysitter.md">
+            <span class="material-symbols-outlined">visibility</span>
+            PR Babysitter
+          </a>
+          <a class="sidebar-link" href="./public/agent-dispatch.md">
+            <span class="material-symbols-outlined">smart_toy</span>
+            Agent Dispatch
+          </a>
+          <a class="sidebar-link" href="./public/pr-questions.md">
+            <span class="material-symbols-outlined">chat_bubble</span>
+            PR Q&amp;A
+          </a>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Guides</div>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory/blob/main/CONTRIBUTING.md" target="_blank">
+            <span class="material-symbols-outlined">handshake</span>
+            Contributing
+          </a>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory/blob/main/LOCAL_API.md" target="_blank">
+            <span class="material-symbols-outlined">api</span>
+            API Reference
+          </a>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory/blob/main/AGENTS.md" target="_blank">
+            <span class="material-symbols-outlined">tune</span>
+            Agent Config
+          </a>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Resources</div>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory/releases" target="_blank">
+            <span class="material-symbols-outlined">new_releases</span>
+            Changelog
+          </a>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory/issues" target="_blank">
+            <span class="material-symbols-outlined">bug_report</span>
+            Report an Issue
+          </a>
+          <a class="sidebar-link" href="https://github.com/yungookim/codefactory" target="_blank">
+            <span class="material-symbols-outlined">code</span>
+            Source Code
+          </a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- ── Main ── -->
+    <main class="doc-main">
+      <div class="doc-content">
+
+        <!-- Hero -->
+        <div class="doc-hero">
+          <div class="doc-hero-overline">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            Welcome to CodeFactory
           </div>
-          <div class="mb-8 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5">
-            <span class="material-symbols-outlined text-sm text-primary">terminal</span>
-            <span class="text-[11px] font-bold uppercase tracking-[0.15em] text-primary">Powered by Local Claude Code &amp; OpenAI Codex</span>
-          </div>
-          <h1 class="text-luminal-gradient mb-8 text-6xl font-black leading-[0.9] tracking-tighter md:text-8xl">
-            Stop babysitting PRs manually. Code Factory handles the toil.
-          </h1>
-          <p class="mx-auto mb-12 max-w-2xl text-xl leading-relaxed text-on-surface-variant">
-            A community-driven engine that watches repos, triages review feedback, and dispatches <strong class="text-on-surface">local Claude Code &amp; OpenAI Codex agents</strong> to fix code — right on your machine.
+          <h1>The Autonomous PR Babysitter</h1>
+          <p>
+            CodeFactory watches your GitHub repositories, triages review feedback,
+            and dispatches local AI agents to fix code — so you can focus on
+            building, not babysitting pull requests.
           </p>
-          <div class="flex flex-col items-center justify-center gap-6 sm:flex-row">
-            <a class="primary-gradient flex items-center gap-3 rounded-xl px-8 py-4 text-lg font-black text-black transition-all hover:shadow-[0_0_30px_rgba(155,168,255,0.3)]" href="https://github.com/yungookim/codefactory" rel="noreferrer" target="_blank">
-              View on GitHub <span class="material-symbols-outlined">terminal</span>
-            </a>
-            <a class="rounded-xl border border-outline-variant/15 bg-surface-container-high px-8 py-4 text-lg font-bold text-on-surface transition-all hover:bg-surface-variant" href="https://github.com/yungookim/codefactory#quick-start" rel="noreferrer" target="_blank">
-              Getting Started
-            </a>
-          </div>
         </div>
-      </section>
 
-      <section class="bg-surface px-8 py-32" id="workflow">
-        <div class="mx-auto max-w-7xl">
-          <div class="mb-20 text-center">
-            <h2 class="mb-4 text-4xl font-bold tracking-tight">Autonomous CI/CD Workflow</h2>
-            <p class="mx-auto max-w-xl text-on-surface-variant">From community feedback to commit, automated at every step.</p>
-          </div>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">01</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">visibility</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Watch Repos</h3>
-              <p class="text-xs text-on-surface-variant">Real-time monitoring across your repositories.</p>
-            </div>
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">02</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">sync_alt</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Sync Reviews</h3>
-              <p class="text-xs text-on-surface-variant">Capture threaded comments and change requests instantly.</p>
-            </div>
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">03</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">assignment_turned_in</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Triage</h3>
-              <p class="text-xs text-on-surface-variant">Classify feedback into actionable tasks for agents.</p>
-            </div>
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">04</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">smart_toy</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Agent Runs</h3>
-              <p class="text-xs text-on-surface-variant">Local Claude Code &amp; OpenAI Codex agents iterate on isolated worktrees.</p>
-            </div>
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">05</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">call_merge</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Resolutions</h3>
-              <p class="text-xs text-on-surface-variant">Automated merge conflict handling and rebase.</p>
-            </div>
-            <div class="group rounded-xl border border-outline-variant/5 bg-surface-container-low p-6 transition-all hover:border-primary/20">
-              <div class="mb-4 text-3xl font-black text-primary opacity-50">06</div>
-              <div class="material-symbols-outlined mb-4 text-primary" style="font-variation-settings: 'opsz' 40">publish</div>
-              <h3 class="mb-2 text-sm font-bold uppercase tracking-widest">Commit &amp; Push</h3>
-              <p class="text-xs text-on-surface-variant">Push signed commits back to the remote branch.</p>
-            </div>
-          </div>
+        <!-- Tech Badges -->
+        <div class="tech-badges">
+          <span class="tech-badge">
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--green)">check_circle</span>
+            Open Source (MIT)
+          </span>
+          <span class="tech-badge">
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--accent)">terminal</span>
+            Runs Locally
+          </span>
+          <span class="tech-badge">
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--purple)">smart_toy</span>
+            Claude Code &amp; OpenAI Codex
+          </span>
+          <span class="tech-badge">
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--orange)">bolt</span>
+            Node.js 22+
+          </span>
         </div>
-      </section>
 
-      <section class="bg-surface-container-low px-8 py-32" id="features">
-        <div class="mx-auto max-w-7xl">
-          <div class="mb-16 flex flex-col items-end justify-between gap-8 md:flex-row">
-            <div class="max-w-xl">
-              <h2 class="mb-6 text-5xl font-black tracking-tighter">Built for Open Development.</h2>
-              <p class="text-on-surface-variant">CodeFactory is a transparent tool for managing pull request complexity. Built by contributors, for contributors.</p>
-            </div>
-            <div class="rounded-xl border border-outline-variant/10 bg-surface p-4">
-              <div class="flex items-center gap-4">
-                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                  <span class="material-symbols-outlined text-primary">diversity_3</span>
-                </div>
-                <div>
-                  <div class="text-sm font-bold">Free &amp; Open</div>
-                  <div class="text-[10px] uppercase tracking-wider text-on-surface-variant">MIT Licensed Core</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="grid h-auto grid-cols-1 gap-6 md:h-[600px] md:grid-cols-12">
-            <div class="group relative overflow-hidden rounded-3xl bg-surface-container p-10 md:col-span-8">
-              <div class="relative z-10 flex h-full flex-col justify-between">
-                <div>
-                  <h3 class="mb-4 text-3xl font-bold">Multi-repo watching</h3>
-                  <p class="max-w-md text-on-surface-variant">Connect any repository you manage. CodeFactory creates a centralized intelligence hub for all active pull requests in your ecosystem.</p>
-                </div>
-                <div class="mt-8 flex gap-4">
-                  <span class="rounded-full border border-outline-variant/20 bg-background px-4 py-2 text-xs font-mono">github.com/org/*</span>
-                  <span class="rounded-full border border-outline-variant/20 bg-background px-4 py-2 text-xs font-mono">gitlab.com/projects/*</span>
-                </div>
-              </div>
-              <div class="absolute bottom-0 right-0 h-2/3 w-1/2 opacity-20 transition-opacity group-hover:opacity-40">
-                <img
-                  alt="Abstract code terminal interface with glowing syntax"
-                  class="h-full w-full rounded-tl-3xl object-cover"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSIqGY3TH2tYW4-SfXKjX0oO1CP7cMzMEwL8exJBRNtzD2auaGYFS2TT1NpINIU00_ZyrZG9kqc9fbsHDV1r2zspBiP4YKKKHESGc_p2dYxk9wh2F1opCo-jPtOuj-sioHLd5ypTAgs6a0-nE_8pGSv5hCbFOfyNrKeITaX8HFaviwOyUxhgA0He18QPJhzlf5L5FPSXDPh2SAwI9xGhtOnlM9kp_tMBtMJzLXISnqGDzOwA3Suv3pJQ_6u1h1Rx_iOPhoq1oHeSE"
-                />
-              </div>
-            </div>
-            <div class="rounded-3xl bg-primary p-1 group md:col-span-4">
-              <div class="flex h-full w-full flex-col justify-between rounded-[1.4rem] bg-background p-8">
-                <span class="material-symbols-outlined text-4xl text-primary" data-weight="fill">chat_bubble</span>
-                <div>
-                  <h3 class="mb-2 text-xl font-bold">PR Q&amp;A</h3>
-                  <p class="text-sm text-on-surface-variant">Interrogate your pull requests. Ask &quot;Why did this fail?&quot; or &quot;Summarize architectural implications.&quot;</p>
-                </div>
-              </div>
-            </div>
-            <div class="flex flex-col justify-between rounded-3xl bg-surface-container-high p-8 transition-colors hover:bg-surface-container-highest md:col-span-4">
-              <div>
-                <div class="material-symbols-outlined mb-6 text-tertiary">account_tree</div>
-                <h3 class="mb-2 text-xl font-bold">Isolated Worktrees</h3>
-              </div>
-              <p class="text-sm text-on-surface-variant">Each agent run happens in a sterile, temporary environment. No state pollution, ever.</p>
-            </div>
-            <div class="flex flex-col justify-between rounded-3xl bg-surface-container-high p-8 transition-colors hover:bg-surface-container-highest md:col-span-4">
-              <div>
-                <div class="material-symbols-outlined mb-6 text-primary">psychology</div>
-                <h3 class="mb-2 text-xl font-bold">Runs Locally with Claude Code &amp; OpenAI Codex</h3>
-              </div>
-              <p class="text-sm text-on-surface-variant">Agents run on your machine via Claude Code CLI or OpenAI Codex. Your code never leaves your environment.</p>
-            </div>
-            <div class="flex flex-col justify-between rounded-3xl bg-surface-container-high p-8 transition-colors hover:bg-surface-container-highest md:col-span-4">
-              <div>
-                <div class="material-symbols-outlined mb-6 text-secondary">verified_user</div>
-                <h3 class="mb-2 text-xl font-bold">Smart Triage</h3>
-              </div>
-              <p class="text-sm text-on-surface-variant">Automated filtering that helps maintainers prioritize breaking concerns over nitpicks.</p>
-            </div>
-          </div>
+        <!-- Callout -->
+        <div class="callout">
+          <span class="material-symbols-outlined">info</span>
+          <p>
+            CodeFactory runs entirely on your machine. Your code never leaves your environment.
+            Get started in under 2 minutes with our <a href="./public/getting-started.md">quickstart guide</a>.
+          </p>
         </div>
-      </section>
 
-      <section class="bg-surface px-8 py-32">
-        <div class="mx-auto max-w-4xl">
-          <div class="overflow-hidden rounded-2xl border border-outline-variant/20 bg-black shadow-2xl">
-            <div class="flex items-center justify-between border-b border-outline-variant/20 bg-surface-container-high px-6 py-3">
-              <div class="flex gap-2">
-                <div class="h-3 w-3 rounded-full bg-error-dim/50"></div>
-                <div class="h-3 w-3 rounded-full bg-tertiary-dim/50"></div>
-                <div class="h-3 w-3 rounded-full bg-primary/50"></div>
-              </div>
-              <div class="text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">system_specs.yml</div>
-            </div>
-            <div class="p-10 font-mono text-sm leading-relaxed">
-              <div class="grid grid-cols-1 gap-8 md:grid-cols-2">
-                <div>
-                  <div class="mb-2 text-primary"># Core Runtime</div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">runtime:</span>
-                    <span class="text-on-surface">Node.js 22.x LTS</span>
-                  </div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">language:</span>
-                    <span class="text-on-surface">TypeScript 5.4</span>
-                  </div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">database:</span>
-                    <span class="text-on-surface">SQLite (Local-first)</span>
-                  </div>
-                </div>
-                <div>
-                  <div class="mb-2 text-tertiary"># Interface</div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">framework:</span>
-                    <span class="text-on-surface">React 18.3</span>
-                  </div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">styling:</span>
-                    <span class="text-on-surface">Tailwind CSS</span>
-                  </div>
-                  <div class="flex justify-between border-b border-outline-variant/10 py-2">
-                    <span class="text-on-surface-variant">license:</span>
-                    <span class="text-on-surface">MIT</span>
-                  </div>
-                </div>
-              </div>
-              <div class="mt-8 flex items-center gap-4 border-t border-outline-variant/20 pt-6">
-                <span class="animate-pulse text-primary">$</span>
-                <span class="text-on-surface-variant">git clone https://github.com/yungookim/codefactory.git</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        <!-- Quick Start Cards -->
+        <h2 class="section-heading">Get Started</h2>
+        <p class="section-subtext">Everything you need to set up CodeFactory and start automating your PR workflow.</p>
 
-      <section class="bg-surface px-8 py-32">
-        <div class="luminal-glow relative mx-auto max-w-5xl overflow-hidden rounded-[3rem] border border-outline-variant/15 bg-surface-container-high p-16 text-center">
-          <div class="absolute left-1/2 top-0 h-[1px] w-full -translate-x-1/2 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
-          <h2 class="mb-8 text-5xl font-black tracking-tight">Ready to automate your PR reviews?</h2>
-          <div class="flex flex-col justify-center gap-4 sm:flex-row">
-            <a class="primary-gradient rounded-2xl px-10 py-5 text-xl font-black text-black transition-transform hover:scale-[1.02]" href="https://github.com/yungookim/codefactory/releases" rel="noreferrer" target="_blank">Download Release</a>
-            <a class="rounded-2xl border border-outline-variant/20 bg-background px-10 py-5 text-xl font-bold text-on-surface transition-colors hover:bg-surface-variant" href="https://github.com/yungookim/codefactory" rel="noreferrer" target="_blank">View on GitHub</a>
+        <div class="cards-grid">
+          <a class="doc-card" href="./public/getting-started.md">
+            <div class="doc-card-icon green">
+              <span class="material-symbols-outlined">rocket_launch</span>
+            </div>
+            <h3>Quickstart</h3>
+            <p>Install CodeFactory, connect a repository, and let the agents handle your first PR in minutes.</p>
+            <div class="doc-card-arrow">
+              Get started <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+
+          <a class="doc-card" href="./public/configuration.md">
+            <div class="doc-card-icon purple">
+              <span class="material-symbols-outlined">settings</span>
+            </div>
+            <h3>Configuration</h3>
+            <p>Environment variables, storage options, database setup, and activity logging.</p>
+            <div class="doc-card-arrow">
+              Configure <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+
+          <a class="doc-card" href="./public/pr-babysitter.md">
+            <div class="doc-card-icon accent">
+              <span class="material-symbols-outlined">visibility</span>
+            </div>
+            <h3>PR Babysitter</h3>
+            <p>Autonomous monitoring, review sync, and feedback triage for your pull requests.</p>
+            <div class="doc-card-arrow">
+              Learn more <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+
+          <a class="doc-card" href="./public/agent-dispatch.md">
+            <div class="doc-card-icon orange">
+              <span class="material-symbols-outlined">smart_toy</span>
+            </div>
+            <h3>Agent Dispatch</h3>
+            <p>How CodeFactory dispatches Claude Code and OpenAI Codex agents in isolated worktrees.</p>
+            <div class="doc-card-arrow">
+              Explore <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+        </div>
+
+        <!-- Install -->
+        <h2 class="section-heading">Installation</h2>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-header-left">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="code-lang">bash</span>
+            </div>
+            <button class="code-copy" onclick="navigator.clipboard.writeText('git clone https://github.com/yungookim/codefactory.git\ncd codefactory\nnpm install\nnpm run dev')">Copy</button>
+          </div>
+          <div class="code-body">
+            <div><span class="comment"># Clone and install</span></div>
+            <div><span class="command">git clone</span> <span class="url">https://github.com/yungookim/codefactory.git</span></div>
+            <div><span class="command">cd</span> <span class="arg">codefactory</span></div>
+            <div><span class="command">npm install</span></div>
+            <div style="height:8px"></div>
+            <div><span class="comment"># Start the dashboard</span></div>
+            <div><span class="command">npm run</span> <span class="arg">dev</span></div>
           </div>
         </div>
-      </section>
+
+        <!-- How It Works -->
+        <h2 class="section-heading">How It Works</h2>
+        <p class="section-subtext">CodeFactory follows a six-step autonomous workflow to handle PR feedback end-to-end.</p>
+
+        <div class="feature-list">
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--accent-bg)">
+              <span class="material-symbols-outlined" style="color:var(--accent)">visibility</span>
+            </div>
+            <div class="feature-text">
+              <h4>1. Watch Repositories</h4>
+              <p>Add any GitHub repository. CodeFactory polls for open PRs and new review activity.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--purple-bg)">
+              <span class="material-symbols-outlined" style="color:var(--purple)">sync_alt</span>
+            </div>
+            <div class="feature-text">
+              <h4>2. Sync Reviews</h4>
+              <p>Review comments, inline feedback, and threaded conversations are captured and stored locally.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--green-bg)">
+              <span class="material-symbols-outlined" style="color:var(--green)">assignment_turned_in</span>
+            </div>
+            <div class="feature-text">
+              <h4>3. Triage Feedback</h4>
+              <p>Feedback is classified into blocking, suggestions, and nitpicks for prioritized action.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--orange-bg)">
+              <span class="material-symbols-outlined" style="color:var(--orange)">smart_toy</span>
+            </div>
+            <div class="feature-text">
+              <h4>4. Dispatch Agents</h4>
+              <p>Local AI agents (Claude Code or OpenAI Codex) work in isolated git worktrees to fix issues.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--pink-bg)">
+              <span class="material-symbols-outlined" style="color:var(--pink)">call_merge</span>
+            </div>
+            <div class="feature-text">
+              <h4>5. Resolve Conflicts</h4>
+              <p>Automated merge conflict handling and rebase to keep branches clean.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-icon" style="background:var(--green-bg)">
+              <span class="material-symbols-outlined" style="color:var(--green)">publish</span>
+            </div>
+            <div class="feature-text">
+              <h4>6. Commit &amp; Push</h4>
+              <p>Signed commits are pushed back to the PR branch automatically.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Explore More -->
+        <h2 class="section-heading">Explore</h2>
+
+        <div class="cards-grid">
+          <a class="doc-card" href="./public/pr-questions.md">
+            <div class="doc-card-icon pink">
+              <span class="material-symbols-outlined">chat_bubble</span>
+            </div>
+            <h3>PR Q&amp;A</h3>
+            <p>Ask natural-language questions about any pull request and get AI-powered answers.</p>
+            <div class="doc-card-arrow">
+              Learn more <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+
+          <a class="doc-card" href="https://github.com/yungookim/codefactory/blob/main/LOCAL_API.md" target="_blank">
+            <div class="doc-card-icon accent">
+              <span class="material-symbols-outlined">api</span>
+            </div>
+            <h3>API Reference</h3>
+            <p>Full REST API documentation for programmatic control of CodeFactory.</p>
+            <div class="doc-card-arrow">
+              View API <span class="material-symbols-outlined">arrow_forward</span>
+            </div>
+          </a>
+        </div>
+
+        <!-- Footer Nav -->
+        <div class="footer-nav">
+          <div></div>
+          <a class="footer-nav-card next" href="./public/getting-started.md">
+            <div class="footer-nav-label">Next</div>
+            <div class="footer-nav-title">Quickstart Guide &rarr;</div>
+          </a>
+        </div>
+
+      </div>
     </main>
 
-    <footer class="w-full border-t border-[#494847]/15 bg-[#0e0e0e]">
-      <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-8 py-12 md:flex-row">
-        <div class="flex flex-col gap-4">
-          <div class="text-lg font-black text-[#9ba8ff]">CodeFactory</div>
-          <p class="text-sm uppercase tracking-widest text-[#adaaaa]">© 2026 CodeFactory. Licensed under MIT. Community Powered.</p>
-        </div>
-        <div class="flex flex-wrap justify-center gap-8">
-          <a class="text-sm uppercase tracking-widest text-[#adaaaa] opacity-80 transition-colors hover:text-[#9ba8ff] hover:opacity-100" href="https://github.com/yungookim/codefactory/blob/main/CONTRIBUTING.md#code-of-conduct" rel="noreferrer" target="_blank">Code of Conduct</a>
-          <a class="text-sm uppercase tracking-widest text-[#adaaaa] opacity-80 transition-colors hover:text-[#9ba8ff] hover:opacity-100" href="https://github.com/yungookim/codefactory/blob/main/CONTRIBUTING.md" rel="noreferrer" target="_blank">Contributing</a>
-          <a class="text-sm uppercase tracking-widest text-[#adaaaa] opacity-80 transition-colors hover:text-[#9ba8ff] hover:opacity-100" href="https://github.com/yungookim/codefactory/security" rel="noreferrer" target="_blank">Security</a>
-          <a class="text-sm uppercase tracking-widest text-[#adaaaa] opacity-80 transition-colors hover:text-[#9ba8ff] hover:opacity-100" href="https://github.com/yungookim/codefactory/issues" rel="noreferrer" target="_blank">Issues</a>
-          <a class="text-sm uppercase tracking-widest text-[#adaaaa] opacity-80 transition-colors hover:text-[#9ba8ff] hover:opacity-100" href="https://github.com/yungookim/codefactory/releases" rel="noreferrer" target="_blank">Changelog</a>
-        </div>
-      </div>
-    </footer>
   </body>
 </html>
