@@ -326,7 +326,6 @@ describe("MemStorage", () => {
     it("returns default config initially", async () => {
       const config = await storage.getConfig();
       assert.equal(config.codingAgent, DEFAULT_CONFIG.codingAgent);
-      assert.equal(config.model, DEFAULT_CONFIG.model);
       assert.equal(config.maxTurns, DEFAULT_CONFIG.maxTurns);
       assert.deepEqual(config.watchedRepos, []);
     });
@@ -334,8 +333,7 @@ describe("MemStorage", () => {
 
   describe("updateConfig", () => {
     it("merges partial updates", async () => {
-      const updated = await storage.updateConfig({ model: "opus", maxTurns: 25 });
-      assert.equal(updated.model, "opus");
+      const updated = await storage.updateConfig({ maxTurns: 25 });
       assert.equal(updated.maxTurns, 25);
       // Other fields preserved
       assert.equal(updated.codingAgent, "claude");

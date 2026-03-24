@@ -126,16 +126,6 @@ export const askQuestionSchema = z.object({
   question: z.string().min(1).max(2000),
 });
 
-export const FALLBACK_AGENT_MODELS: Record<"codex" | "claude", string[]> = {
-  codex: ["codex-mini-latest", "gpt-4.1", "o3", "o4-mini"],
-  claude: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
-};
-
-export const DEFAULT_AGENT_MODEL: Record<"codex" | "claude", string> = {
-  codex: "codex-mini-latest",
-  claude: "claude-sonnet-4-6",
-};
-
 export const socialChangelogStatusEnum = z.enum(["generating", "done", "error"]);
 export type SocialChangelogStatus = z.infer<typeof socialChangelogStatusEnum>;
 
@@ -164,7 +154,6 @@ export type SocialChangelog = z.infer<typeof socialChangelogSchema>;
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),
-  model: z.string(),
   maxTurns: z.number(),
   batchWindowMs: z.number(),
   pollIntervalMs: z.number(),

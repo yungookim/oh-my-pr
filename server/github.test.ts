@@ -18,7 +18,6 @@ import {
 const config: Config = {
   githubToken: "",
   codingAgent: "claude",
-  model: "opus",
   maxTurns: 15,
   batchWindowMs: 300000,
   pollIntervalMs: 120000,

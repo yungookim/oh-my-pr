@@ -8,7 +8,6 @@ describe("DEFAULT_CONFIG", () => {
     const requiredFields = [
       "githubToken",
       "codingAgent",
-      "model",
       "maxTurns",
       "batchWindowMs",
       "pollIntervalMs",

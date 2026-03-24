@@ -21,6 +21,8 @@ type ConfigRow = {
   ignored_bots_json: string;
 };
 
+const LEGACY_CONFIG_MODEL_PLACEHOLDER = "cli-managed";
+
 type PRRow = {
   id: string;
   number: number;
@@ -306,7 +308,6 @@ export class SqliteStorage implements IStorage {
     return {
       githubToken: row.github_token,
       codingAgent: row.coding_agent,
-      model: row.model,
       maxTurns: row.max_turns,
       batchWindowMs: row.batch_window_ms,
       pollIntervalMs: row.poll_interval_ms,
@@ -319,6 +320,10 @@ export class SqliteStorage implements IStorage {
   }
 
   private writeConfig(config: Config): void {
+    const legacyModelValue = (
+      this.db.prepare("SELECT model FROM config WHERE id = 1").get() as { model?: string } | undefined
+    )?.model ?? LEGACY_CONFIG_MODEL_PLACEHOLDER;
+
     this.db.prepare(`
       INSERT INTO config (
         id,
@@ -348,7 +353,7 @@ export class SqliteStorage implements IStorage {
       1,
       config.githubToken,
       config.codingAgent,
-      config.model,
+      legacyModelValue,
       config.maxTurns,
       config.batchWindowMs,
       config.pollIntervalMs,

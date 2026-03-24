@@ -308,7 +308,7 @@ const TOOLS: Tool[] = [
     name: "update_config",
     description:
       "Partially update Code Factory configuration. All fields are optional; only provided " +
-      "fields are changed. Available fields: githubToken, codingAgent, model, maxTurns, " +
+      "fields are changed. Available fields: githubToken, codingAgent, maxTurns, " +
       "batchWindowMs, pollIntervalMs, maxChangesPerRun, autoResolveMergeConflicts, " +
       "watchedRepos, trustedReviewers, ignoredBots.",
     inputSchema: {
@@ -316,7 +316,6 @@ const TOOLS: Tool[] = [
       properties: {
         githubToken: { type: "string" },
         codingAgent: { type: "string", enum: ["claude", "codex"] },
-        model: { type: "string" },
         maxTurns: { type: "number" },
         batchWindowMs: { type: "number" },
         pollIntervalMs: { type: "number" },
@@ -328,19 +327,6 @@ const TOOLS: Tool[] = [
       },
       required: [],
     },
-  },
-
-  // ── Agent models ───────────────────────────────────────────────────────────
-  {
-    name: "get_agent_models",
-    description: "Get the list of AI agent models available for use.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-  },
-  {
-    name: "refresh_agent_models",
-    description:
-      "Trigger a fresh model discovery scan (runs claude / codex CLI to detect installed models).",
-    inputSchema: { type: "object", properties: {}, required: [] },
   },
 
   // ── Runtime ────────────────────────────────────────────────────────────────
@@ -481,12 +467,6 @@ async function callTool(name: string, args: ToolArgs): Promise<unknown> {
       return cfFetch("GET", "/api/config");
     case "update_config":
       return cfFetch("PATCH", "/api/config", args);
-
-    // Agent models
-    case "get_agent_models":
-      return cfFetch("GET", "/api/agent-models");
-    case "refresh_agent_models":
-      return cfFetch("POST", "/api/agent-models/refresh");
 
     // Runtime
     case "get_runtime":

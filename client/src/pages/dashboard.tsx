@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
-import { FALLBACK_AGENT_MODELS, DEFAULT_AGENT_MODEL } from "@shared/schema";
 import type { Config, FeedbackItem, LogEntry, PR, PRQuestion } from "@shared/schema";
 import { OnboardingPanel } from "@/components/OnboardingPanel";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -572,24 +571,10 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const { data: agentModels } = useQuery<Record<string, string[]>>({
-    queryKey: ["/api/agent-models"],
-    refetchInterval: 60000,
-  });
-
   const { data: repos = [] } = useQuery<string[]>({
     queryKey: ["/api/repos"],
     refetchInterval: 5000,
   });
-
-  const getModelsForAgent = (agent: Config["codingAgent"]) =>
-    agentModels?.[agent] ?? FALLBACK_AGENT_MODELS[agent];
-
-  const currentAgent = config?.codingAgent ?? "codex";
-  const modelsForCurrentAgent = useMemo(
-    () => getModelsForAgent(currentAgent),
-    [agentModels, currentAgent],
-  );
 
   const displayedPRs = viewMode === "active" ? prs : archivedPRs;
   const isArchived = viewMode === "archived";
@@ -711,14 +696,8 @@ export default function Dashboard() {
             value={config?.codingAgent ?? "codex"}
             onChange={(e) => {
               const newAgent = e.target.value as Config["codingAgent"];
-              const models = getModelsForAgent(newAgent);
-              const currentModel = config?.model;
-              const model = currentModel && models.includes(currentModel)
-                ? currentModel
-                : DEFAULT_AGENT_MODEL[newAgent];
               updateConfigMutation.mutate({
                 codingAgent: newAgent,
-                model,
               });
             }}
             disabled={updateConfigMutation.isPending}
@@ -727,24 +706,6 @@ export default function Dashboard() {
           >
             <option value="codex">codex</option>
             <option value="claude">claude</option>
-          </select>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Model</label>
-          <select
-            value={config?.model}
-            onChange={(e) => {
-              if (e.target.value !== config?.model) {
-                updateConfigMutation.mutate({ model: e.target.value });
-              }
-            }}
-            disabled={updateConfigMutation.isPending}
-            data-testid="select-model"
-            className="border border-border bg-transparent px-2 py-0.5 text-[11px] focus:border-foreground focus:outline-none disabled:opacity-50"
-          >
-            {modelsForCurrentAgent.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
           </select>
           <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <input

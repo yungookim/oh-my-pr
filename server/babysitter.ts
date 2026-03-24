@@ -1288,7 +1288,6 @@ export class PRBabysitter {
           agent,
           cwd: process.cwd(),
           prompt: evalPrompt,
-          model: config.model,
         });
 
         const updated = applyEvaluationDecision(item, evaluation.needsFix, evaluation.reason);
@@ -1359,7 +1358,6 @@ export class PRBabysitter {
           agent,
           cwd: process.cwd(),
           prompt: statusEvalPrompt,
-          model: config.model,
         });
 
         if (evaluation.needsFix) {
@@ -1580,7 +1578,6 @@ export class PRBabysitter {
                 agent,
                 cwd: worktreePath,
                 prompt: conflictPrompt,
-                model: config.model,
                 env: conflictAgentEnv,
                 onStdoutChunk: conflictStdout.onChunk,
                 onStderrChunk: conflictStderr.onChunk,
@@ -1690,7 +1687,6 @@ export class PRBabysitter {
               agent,
               cwd: worktreePath,
               prompt: fixPrompt,
-              model: config.model,
               env: agentEnv,
               onStdoutChunk: agentStdout.onChunk,
               onStderrChunk: agentStderr.onChunk,

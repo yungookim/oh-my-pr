@@ -3,7 +3,6 @@ import type { Config } from "@shared/schema";
 export const DEFAULT_CONFIG: Config = {
   githubToken: "",
   codingAgent: "claude",
-  model: "claude-sonnet-4-6",
   maxTurns: 15,
   batchWindowMs: 300000,
   pollIntervalMs: 120000,

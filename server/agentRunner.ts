@@ -20,10 +20,6 @@ export type CommandResult = {
 
 const AGENTS: CodingAgent[] = ["codex", "claude"];
 
-function modelArgs(model?: string): string[] {
-  return model ? ["--model", model] : [];
-}
-
 export async function commandExists(command: string): Promise<boolean> {
   const result = await runCommand("which", [command], {
     timeoutMs: 4000,
@@ -53,9 +49,8 @@ export async function evaluateFixNecessityWithAgent(params: {
   agent: CodingAgent;
   cwd: string;
   prompt: string;
-  model?: string;
 }): Promise<EvaluationResult> {
-  const { agent, cwd, prompt, model } = params;
+  const { agent, cwd, prompt } = params;
 
   const extractionPrompt = [
     "Respond with ONLY valid JSON and nothing else.",
@@ -109,7 +104,6 @@ export async function evaluateFixNecessityWithAgent(params: {
     "-p",
     "--output-format",
     "text",
-    ...modelArgs(model),
     extractionPrompt,
   ];
 
@@ -130,12 +124,11 @@ export async function applyFixesWithAgent(params: {
   agent: CodingAgent;
   cwd: string;
   prompt: string;
-  model?: string;
   env?: NodeJS.ProcessEnv;
   onStdoutChunk?: (chunk: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<CommandResult> {
-  const { agent, cwd, prompt, model, env, onStdoutChunk, onStderrChunk } = params;
+  const { agent, cwd, prompt, env, onStdoutChunk, onStderrChunk } = params;
 
   if (agent === "codex") {
     const result = await runCommand(
@@ -160,7 +153,6 @@ export async function applyFixesWithAgent(params: {
       "-p",
       "--permission-mode",
       "auto",
-      ...modelArgs(model),
       prompt,
     ],
     { cwd, env, timeoutMs: 900000, onStdoutChunk, onStderrChunk },
