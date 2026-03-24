@@ -84,9 +84,11 @@ describe("MemStorage", () => {
       assert.equal(prs[0].title, "Active");
     });
 
-    it("sorts by addedAt descending", async () => {
+    it("sorts by addedAt descending", async (t) => {
+      t.mock.timers.enable({ apis: ["Date"], now: new Date("2024-01-01T00:00:00.000Z") });
+
       await storage.addPR(makePRInput({ title: "First" }));
-      await new Promise((resolve) => setTimeout(resolve, 15));
+      t.mock.timers.tick(100);
       await storage.addPR(makePRInput({ title: "Second" }));
 
       const prs = await storage.getPRs();
