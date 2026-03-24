@@ -45,33 +45,34 @@ All of this happens locally on your machine. No hosted service, no data leaving 
 
 ## How It Works
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Watch Repos  │────▶│ Sync Reviews │────▶│ Triage Items │────▶│ Agent Runs   │
-│ & PRs        │     │ & Comments   │     │ accept/      │     │ codex or     │
-│              │     │              │     │ reject/flag  │     │ claude CLI   │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                                      │
-                                                                      ▼
-                                                               ┌──────────────┐
-                                                               │  Conflict    │
-                                                               │  Resolution  │
-                                                               └──────┬───────┘
-                                                                      │
-                                                                      ▼
-                                                               ┌──────────────┐
-                                                               │ Commit & Push│
-                                                               │ to PR branch │
-                                                               └──────────────┘
+On startup, Code Factory restores the watcher schedule, resumes interrupted runs, and starts a sync cycle immediately.
+
+```mermaid
+flowchart LR
+  intake["Watched repos<br/>or direct PR URL"] --> watch["Watcher polls GitHub,<br/>auto-registers open PRs,<br/>and queues babysitter runs"]
+  watch --> sync["Sync PR metadata and review feedback<br/>into local state"]
+  sync --> store[("SQLite state<br/>+ mirrored logs")]
+  sync --> eval["Evaluate pending comments<br/>and failing CI statuses<br/>with the configured agent"]
+  eval --> needed{"Anything actionable?"}
+  needed -->|No| done["Return PR to watching state"]
+  needed -->|Yes| prep["Prepare app-owned repo cache<br/>and isolated PR worktree<br/>under ~/.codefactory"]
+  prep --> conflicts{"Merge conflicts?"}
+  conflicts -->|Yes| merge["Resolve base-branch conflicts<br/>inside the worktree"]
+  conflicts -->|No| fix["Run Codex or Claude<br/>on accepted tasks"]
+  merge --> fix
+  fix --> push["Agent runs verification,<br/>commits, and pushes<br/>to the PR branch"]
+  push --> verify["Re-sync GitHub, post follow-ups,<br/>resolve review threads, verify audit trail,<br/>and poll CI on the new head SHA"]
+  verify --> store
+  verify --> done
 ```
 
 1. Add a repository to the watch list or register a PR directly by URL.
-2. The watcher polls GitHub on a configurable interval.
-3. Open PRs and their review feedback are fetched, normalized, and stored.
-4. The babysitter triages what needs action and what can be ignored.
-5. An agent run happens inside an isolated git worktree — your working copy stays untouched.
-6. If merge conflicts appear, the babysitter attempts conflict resolution in that worktree.
-7. Verification, commit, push, and detailed logs are recorded for the dashboard.
+2. The watcher polls GitHub, auto-registers open PRs, archives PRs that closed upstream, and queues babysitter runs.
+3. Each run syncs PR metadata and review feedback into SQLite and mirrored logs while preserving prior decisions and run state.
+4. The babysitter evaluates pending comments and failing CI statuses with the configured agent; accepted items become actionable tasks.
+5. If work is needed, Code Factory prepares an app-owned repo cache and isolated worktree under `~/.codefactory`, and resolves merge conflicts there when needed.
+6. The agent works inside that isolated worktree, runs verification, commits, and pushes directly to the PR branch.
+7. Code Factory re-syncs GitHub, posts follow-up comments, resolves review threads, polls CI on the new commit, and returns the PR to `watching`.
 
 ## Features
 
@@ -173,9 +174,10 @@ All configuration is managed through the dashboard or the API. Persisted setting
 |------|---------|
 | `~/.codefactory/state.sqlite` | Durable app state |
 | `~/.codefactory/log/` | Daily mirrored activity logs |
-| `/tmp/pr-babysitter` | PR worktrees for isolated agent runs |
+| `~/.codefactory/repos/` | App-owned repo caches used to create clean PR worktrees |
+| `~/.codefactory/worktrees/` | Isolated PR worktrees for agent runs |
 
-Override paths with `CODEFACTORY_HOME` and `PR_BABYSITTER_ROOT` environment variables.
+Override the root path with the `CODEFACTORY_HOME` environment variable.
 
 ## API Reference
 
