@@ -85,11 +85,11 @@ describe("MemStorage", () => {
     });
 
     it("sorts by addedAt descending", async () => {
-      const pr1 = await storage.addPR(makePRInput({ title: "First" }));
-      // Force a later addedAt on the second PR
-      await storage.updatePR(pr1.id, { addedAt: "2020-01-01T00:00:00.000Z" });
-      const pr2 = await storage.addPR(makePRInput({ title: "Second" }));
-      await storage.updatePR(pr2.id, { addedAt: "2025-01-01T00:00:00.000Z" });
+      // addedAt is immutable via updatePR, so we add PRs with a small delay
+      // to ensure they get distinct timestamps for deterministic ordering.
+      await storage.addPR(makePRInput({ title: "First" }));
+      await new Promise((r) => setTimeout(r, 2));
+      await storage.addPR(makePRInput({ title: "Second" }));
 
       const prs = await storage.getPRs();
       // Most recent first
