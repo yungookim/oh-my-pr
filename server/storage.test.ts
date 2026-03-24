@@ -1,9 +1,56 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp } from "fs/promises";
 import os from "os";
 import path from "path";
-import { SqliteStorage } from "./sqliteStorage";
+import { DatabaseSync } from "node:sqlite";
+import { getCodeFactoryPaths } from "./paths";
+import { SQLITE_LOCK_TIMEOUT_MS, SqliteStorage } from "./sqliteStorage";
+
+function createRawDatabase(root: string): DatabaseSync {
+  const db = new DatabaseSync(getCodeFactoryPaths(root).stateDbPath, {
+    timeout: SQLITE_LOCK_TIMEOUT_MS,
+    enableForeignKeyConstraints: true,
+  });
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  return db;
+}
+
+async function waitForStdout(child: ReturnType<typeof spawn>, expected: string): Promise<void> {
+  assert.ok(child.stdout, "child stdout should be available");
+
+  await new Promise<void>((resolve, reject) => {
+    let output = "";
+
+    const onData = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      if (output.includes(expected)) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      cleanup();
+      reject(new Error(`child exited before emitting ${expected}: code=${code} signal=${signal} output=${output}`));
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      child.stdout?.off("data", onData);
+      child.off("exit", onExit);
+      child.off("error", onError);
+    };
+
+    child.stdout.on("data", onData);
+    child.on("exit", onExit);
+    child.on("error", onError);
+  });
+}
 
 test("SqliteStorage reloads config and PR state from the same root", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
@@ -176,4 +223,134 @@ test("SqliteStorage upsertAgentRun preserves the original createdAt", async () =
   assert.equal(fetched?.status, "completed");
   assert.equal(fetched?.phase, "run.done");
   storage.close();
+});
+
+test("SqliteStorage allows getPR during a concurrent write transaction", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+  const writer = createRawDatabase(root);
+
+  try {
+    const pr = await storage.addPR({
+      number: 88,
+      title: "Readable during write lock",
+      repo: "owner/repo",
+      branch: "feature/read-lock",
+      author: "octocat",
+      url: "https://github.com/owner/repo/pull/88",
+      status: "watching",
+      feedbackItems: [],
+      accepted: 0,
+      rejected: 0,
+      flagged: 0,
+      testsPassed: null,
+      lintPassed: null,
+      lastChecked: null,
+    });
+
+    writer.exec("BEGIN IMMEDIATE");
+    writer.prepare("UPDATE prs SET title = ? WHERE id = ?").run("Uncommitted title", pr.id);
+
+    const fetched = await storage.getPR(pr.id);
+
+    assert.equal(fetched?.id, pr.id);
+    assert.equal(fetched?.title, "Readable during write lock");
+  } finally {
+    try {
+      writer.exec("ROLLBACK");
+    } catch {
+      // Ignore cleanup failures if the transaction already closed.
+    }
+    writer.close();
+    storage.close();
+  }
+});
+
+test("SqliteStorage recovers after a transient database lock", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  try {
+    const pr = await storage.addPR({
+      number: 89,
+      title: "Transient lock recovery",
+      repo: "owner/repo",
+      branch: "feature/lock-recovery",
+      author: "octocat",
+      url: "https://github.com/owner/repo/pull/89",
+      status: "watching",
+      feedbackItems: [],
+      accepted: 0,
+      rejected: 0,
+      flagged: 0,
+      testsPassed: null,
+      lintPassed: null,
+      lastChecked: null,
+    });
+
+    const holdMs = SQLITE_LOCK_TIMEOUT_MS + 500;
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        `
+const { DatabaseSync } = require("node:sqlite");
+
+try {
+  const dbPath = process.argv[1];
+  const prId = process.argv[2];
+  const holdMs = Number(process.argv[3]);
+  const db = new DatabaseSync(dbPath, {
+    timeout: ${SQLITE_LOCK_TIMEOUT_MS},
+    enableForeignKeyConstraints: true,
+  });
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  db.exec("BEGIN IMMEDIATE");
+  db.prepare("UPDATE prs SET title = ? WHERE id = ?").run("Locked by child", prId);
+  process.stdout.write("LOCKED\\n");
+  setTimeout(() => {
+    try {
+      db.exec("ROLLBACK");
+    } finally {
+      db.close();
+      process.exit(0);
+    }
+  }, holdMs);
+} catch (error) {
+  console.error(error);
+  process.exit(1);
+}
+        `,
+        getCodeFactoryPaths(root).stateDbPath,
+        pr.id,
+        String(holdMs),
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const exitPromise = once(child, "exit");
+    await waitForStdout(child, "LOCKED");
+
+    const startedAt = Date.now();
+    const updated = await storage.updatePR(pr.id, {
+      status: "processing",
+      lastChecked: "2026-03-24T12:00:00.000Z",
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    const [exitCode, signal] = await exitPromise;
+
+    assert.equal(exitCode, 0);
+    assert.equal(signal, null);
+    assert.equal(updated?.status, "processing");
+    assert.equal(updated?.lastChecked, "2026-03-24T12:00:00.000Z");
+    assert.ok(
+      elapsedMs >= SQLITE_LOCK_TIMEOUT_MS,
+      `expected the first write attempt to wait for the lock timeout before recovery, got ${elapsedMs}ms`,
+    );
+  } finally {
+    storage.close();
+  }
 });

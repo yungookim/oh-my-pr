@@ -1,5 +1,6 @@
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
+import type { SQLInputValue } from "node:sqlite";
 import { feedbackStatusEnum } from "@shared/schema";
 import type { AgentRun, AgentRunStatus, Config, FeedbackItem, LogEntry, PR, PRQuestion, RuntimeState, SocialChangelog } from "@shared/schema";
 import {
@@ -31,6 +32,16 @@ type ConfigRow = {
 };
 
 const LEGACY_CONFIG_MODEL_PLACEHOLDER = "cli-managed";
+export const SQLITE_LOCK_TIMEOUT_MS = 1000;
+export const SQLITE_LOCK_RECOVERY_RETRIES = 1;
+const SQLITE_RETRYABLE_LOCK_ERRCODES = new Set([5, 6]);
+
+type SqliteError = Error & {
+  code?: string;
+  errcode?: number;
+  errstr?: string;
+  statusCode?: number;
+};
 
 type PRRow = {
   id: string;
@@ -130,9 +141,10 @@ type SocialChangelogRow = {
 };
 
 export class SqliteStorage implements IStorage {
-  private readonly db: DatabaseSync;
+  private db!: DatabaseSync;
   private readonly rootDir: string;
   private readonly logRootDir: string;
+  private readonly stateDbPath: string;
 
   constructor(rootDirOverride?: string) {
     const paths = getCodeFactoryPaths(rootDirOverride);
@@ -141,14 +153,129 @@ export class SqliteStorage implements IStorage {
 
     this.rootDir = paths.rootDir;
     this.logRootDir = paths.logRootDir;
-    this.db = new DatabaseSync(paths.stateDbPath);
-    this.db.exec("PRAGMA foreign_keys = ON");
+    this.stateDbPath = paths.stateDbPath;
+    this.db = this.createDatabaseConnection();
 
     this.bootstrap();
   }
 
+  private createDatabaseConnection(): DatabaseSync {
+    const db = new DatabaseSync(this.stateDbPath, {
+      timeout: SQLITE_LOCK_TIMEOUT_MS,
+      enableForeignKeyConstraints: true,
+    });
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA foreign_keys = ON");
+    return db;
+  }
+
+  private isRetryableLockError(error: unknown): error is SqliteError {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const sqliteError = error as SqliteError;
+    return sqliteError.code === "ERR_SQLITE_ERROR"
+      && (
+        (typeof sqliteError.errcode === "number" && SQLITE_RETRYABLE_LOCK_ERRCODES.has(sqliteError.errcode))
+        || (typeof sqliteError.errstr === "string" && sqliteError.errstr.toLowerCase().includes("locked"))
+      );
+  }
+
+  private reopenDatabase(): void {
+    const previousDb = this.db;
+    this.db = this.createDatabaseConnection();
+    try {
+      previousDb.close();
+    } catch {
+      // Best-effort cleanup after opening the replacement connection.
+    }
+  }
+
+  private throwPersistentLockError(error: SqliteError): never {
+    const wrapped = new Error(
+      `SQLite database remained locked after recovery attempts at ${this.stateDbPath}. Stop the competing Code Factory process or use a different CODEFACTORY_HOME.`,
+      { cause: error },
+    ) as SqliteError;
+    wrapped.name = "SqliteDatabaseLockedError";
+    wrapped.code = error.code;
+    wrapped.errcode = error.errcode;
+    wrapped.errstr = error.errstr;
+    wrapped.statusCode = 503;
+    throw wrapped;
+  }
+
+  private withLockRecovery<T>(operation: () => T): T {
+    let lastError: SqliteError | undefined;
+
+    for (let attempt = 0; attempt <= SQLITE_LOCK_RECOVERY_RETRIES; attempt += 1) {
+      try {
+        return operation();
+      } catch (error) {
+        if (!this.isRetryableLockError(error)) {
+          throw error;
+        }
+
+        lastError = error;
+        if (this.db.isTransaction || attempt === SQLITE_LOCK_RECOVERY_RETRIES) {
+          break;
+        }
+
+        this.reopenDatabase();
+      }
+    }
+
+    this.throwPersistentLockError(lastError ?? new Error("SQLite database lock recovery failed."));
+  }
+
+  private exec(sql: string): void {
+    this.withLockRecovery(() => {
+      this.db.exec(sql);
+    });
+  }
+
+  private get<Row>(sql: string, ...params: SQLInputValue[]): Row | undefined {
+    return this.withLockRecovery(
+      () => this.db.prepare(sql).get(...params) as Row | undefined,
+    );
+  }
+
+  private all<Row>(sql: string, ...params: SQLInputValue[]): Row[] {
+    return this.withLockRecovery(
+      () => this.db.prepare(sql).all(...params) as Row[],
+    );
+  }
+
+  private run(sql: string, ...params: SQLInputValue[]) {
+    return this.withLockRecovery(
+      () => this.db.prepare(sql).run(...params),
+    );
+  }
+
+  private withWriteTransaction<T>(operation: () => T): T {
+    if (this.db.isTransaction) {
+      return operation();
+    }
+
+    this.exec("BEGIN IMMEDIATE");
+    try {
+      const result = operation();
+      this.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (this.db.isTransaction) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original error if rollback also fails.
+        }
+      }
+      throw error;
+    }
+  }
+
   private bootstrap(): void {
-    this.db.exec(`
+    this.exec(`
       CREATE TABLE IF NOT EXISTS config (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         github_token TEXT NOT NULL,
@@ -288,29 +415,29 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("feedback_items", "status_reason", "TEXT");
     this.ensureColumn("config", "auto_resolve_merge_conflicts", "INTEGER NOT NULL DEFAULT 1");
 
-    const configExists = this.db.prepare("SELECT 1 AS present FROM config WHERE id = 1").get() as { present: number } | undefined;
+    const configExists = this.get<{ present: number }>("SELECT 1 AS present FROM config WHERE id = 1");
     if (!configExists) {
       this.writeConfig(DEFAULT_CONFIG);
     }
 
-    const runtimeStateExists = this.db.prepare(
+    const runtimeStateExists = this.get<{ present: number }>(
       "SELECT 1 AS present FROM runtime_state WHERE id = 1",
-    ).get() as { present: number } | undefined;
+    );
     if (!runtimeStateExists) {
-      this.db.prepare(`
+      this.run(`
         INSERT INTO runtime_state (id, drain_mode, drain_requested_at, drain_reason)
         VALUES (1, 0, NULL, NULL)
-      `).run();
+      `);
     }
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
-    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    const rows = this.all<{ name: string }>(`PRAGMA table_info(${table})`);
     if (rows.some((row) => row.name === column)) {
       return;
     }
 
-    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    this.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   private parseConfigRow(row: ConfigRow, watchedRepos: string[]): Config {
@@ -329,58 +456,59 @@ export class SqliteStorage implements IStorage {
   }
 
   private writeConfig(config: Config): void {
-    const legacyModelValue = (
-      this.db.prepare("SELECT model FROM config WHERE id = 1").get() as { model?: string } | undefined
-    )?.model ?? LEGACY_CONFIG_MODEL_PLACEHOLDER;
+    this.withWriteTransaction(() => {
+      const legacyModelValue = (
+        this.get<{ model?: string }>("SELECT model FROM config WHERE id = 1")
+      )?.model ?? LEGACY_CONFIG_MODEL_PLACEHOLDER;
 
-    this.db.prepare(`
-      INSERT INTO config (
-        id,
-        github_token,
-        coding_agent,
-        model,
-        max_turns,
-        batch_window_ms,
-        poll_interval_ms,
-        max_changes_per_run,
-        auto_resolve_merge_conflicts,
-        trusted_reviewers_json,
-        ignored_bots_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        github_token = excluded.github_token,
-        coding_agent = excluded.coding_agent,
-        model = excluded.model,
-        max_turns = excluded.max_turns,
-        batch_window_ms = excluded.batch_window_ms,
-        poll_interval_ms = excluded.poll_interval_ms,
-        max_changes_per_run = excluded.max_changes_per_run,
-        auto_resolve_merge_conflicts = excluded.auto_resolve_merge_conflicts,
-        trusted_reviewers_json = excluded.trusted_reviewers_json,
-        ignored_bots_json = excluded.ignored_bots_json
-    `).run(
-      1,
-      config.githubToken,
-      config.codingAgent,
-      legacyModelValue,
-      config.maxTurns,
-      config.batchWindowMs,
-      config.pollIntervalMs,
-      config.maxChangesPerRun,
-      Number(config.autoResolveMergeConflicts),
-      JSON.stringify(config.trustedReviewers),
-      JSON.stringify(config.ignoredBots),
-    );
+      this.run(`
+        INSERT INTO config (
+          id,
+          github_token,
+          coding_agent,
+          model,
+          max_turns,
+          batch_window_ms,
+          poll_interval_ms,
+          max_changes_per_run,
+          auto_resolve_merge_conflicts,
+          trusted_reviewers_json,
+          ignored_bots_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          github_token = excluded.github_token,
+          coding_agent = excluded.coding_agent,
+          model = excluded.model,
+          max_turns = excluded.max_turns,
+          batch_window_ms = excluded.batch_window_ms,
+          poll_interval_ms = excluded.poll_interval_ms,
+          max_changes_per_run = excluded.max_changes_per_run,
+          auto_resolve_merge_conflicts = excluded.auto_resolve_merge_conflicts,
+          trusted_reviewers_json = excluded.trusted_reviewers_json,
+          ignored_bots_json = excluded.ignored_bots_json
+      `,
+        1,
+        config.githubToken,
+        config.codingAgent,
+        legacyModelValue,
+        config.maxTurns,
+        config.batchWindowMs,
+        config.pollIntervalMs,
+        config.maxChangesPerRun,
+        Number(config.autoResolveMergeConflicts),
+        JSON.stringify(config.trustedReviewers),
+        JSON.stringify(config.ignoredBots),
+      );
 
-    this.db.exec("DELETE FROM watched_repos");
-    const insertWatchedRepo = this.db.prepare("INSERT INTO watched_repos (repo) VALUES (?)");
-    for (const repo of config.watchedRepos) {
-      insertWatchedRepo.run(repo);
-    }
+      this.exec("DELETE FROM watched_repos");
+      for (const repo of config.watchedRepos) {
+        this.run("INSERT INTO watched_repos (repo) VALUES (?)", repo);
+      }
+    });
   }
 
   private getWatchedRepos(): string[] {
-    const rows = this.db.prepare("SELECT repo FROM watched_repos ORDER BY repo ASC").all() as Array<{ repo: string }>;
+    const rows = this.all<{ repo: string }>("SELECT repo FROM watched_repos ORDER BY repo ASC");
     return rows.map((row) => row.repo);
   }
 
@@ -437,14 +565,14 @@ export class SqliteStorage implements IStorage {
     }
 
     const placeholders = prIds.map(() => "?").join(", ");
-    const rows = this.db.prepare(`
+    const rows = this.all<FeedbackItemRow>(`
       SELECT id, pr_id, author, body, body_html, reply_kind, source_id, source_node_id, source_url,
              thread_id, thread_resolved, audit_token, file, line, type, created_at, decision,
              decision_reason, action, status, status_reason
       FROM feedback_items
       WHERE pr_id IN (${placeholders})
       ORDER BY created_at ASC
-    `).all(...prIds) as FeedbackItemRow[];
+    `, ...prIds);
 
     for (const row of rows) {
       const item: FeedbackItem = {
@@ -479,17 +607,16 @@ export class SqliteStorage implements IStorage {
   }
 
   private replaceFeedbackItems(prId: string, items: FeedbackItem[]): void {
-    this.db.prepare("DELETE FROM feedback_items WHERE pr_id = ?").run(prId);
-    const insert = this.db.prepare(`
-      INSERT INTO feedback_items (
-        id, pr_id, author, body, body_html, reply_kind, source_id, source_node_id, source_url,
-        thread_id, thread_resolved, audit_token, file, line, type, created_at, decision, decision_reason, action,
-        status, status_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    this.run("DELETE FROM feedback_items WHERE pr_id = ?", prId);
 
     for (const item of items) {
-      insert.run(
+      this.run(`
+        INSERT INTO feedback_items (
+          id, pr_id, author, body, body_html, reply_kind, source_id, source_node_id, source_url,
+          thread_id, thread_resolved, audit_token, file, line, type, created_at, decision, decision_reason, action,
+          status, status_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
         item.id,
         prId,
         item.author,
@@ -516,13 +643,13 @@ export class SqliteStorage implements IStorage {
   }
 
   async getPRs(): Promise<PR[]> {
-    const rows = this.db.prepare(`
+    const rows = this.all<PRRow>(`
       SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
              tests_passed, lint_passed, last_checked, added_at
       FROM prs
       WHERE status != 'archived'
       ORDER BY datetime(added_at) DESC
-    `).all() as PRRow[];
+    `);
 
     const itemsByPrId = this.getFeedbackItemsForPRIds(rows.map((row) => row.id));
 
@@ -530,13 +657,13 @@ export class SqliteStorage implements IStorage {
   }
 
   async getArchivedPRs(): Promise<PR[]> {
-    const rows = this.db.prepare(`
+    const rows = this.all<PRRow>(`
       SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
              tests_passed, lint_passed, last_checked, added_at
       FROM prs
       WHERE status = 'archived'
       ORDER BY datetime(added_at) DESC
-    `).all() as PRRow[];
+    `);
 
     const itemsByPrId = this.getFeedbackItemsForPRIds(rows.map((row) => row.id));
 
@@ -544,12 +671,12 @@ export class SqliteStorage implements IStorage {
   }
 
   async getPR(id: string): Promise<PR | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<PRRow>(`
       SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
              tests_passed, lint_passed, last_checked, added_at
       FROM prs
       WHERE id = ?
-    `).get(id) as PRRow | undefined;
+    `, id);
 
     if (!row) {
       return undefined;
@@ -560,12 +687,12 @@ export class SqliteStorage implements IStorage {
   }
 
   async getPRByRepoAndNumber(repo: string, number: number): Promise<PR | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<PRRow>(`
       SELECT id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
              tests_passed, lint_passed, last_checked, added_at
       FROM prs
       WHERE repo = ? AND number = ?
-    `).get(repo, number) as PRRow | undefined;
+    `, repo, number);
 
     if (!row) {
       return undefined;
@@ -578,30 +705,32 @@ export class SqliteStorage implements IStorage {
   async addPR(pr: Omit<PR, "id" | "addedAt">): Promise<PR> {
     const full = createPR(pr);
 
-    this.db.prepare(`
-      INSERT INTO prs (
-        id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
-        tests_passed, lint_passed, last_checked, added_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      full.id,
-      full.number,
-      full.title,
-      full.repo,
-      full.branch,
-      full.author,
-      full.url,
-      full.status,
-      full.accepted,
-      full.rejected,
-      full.flagged,
-      full.testsPassed === null ? null : Number(full.testsPassed),
-      full.lintPassed === null ? null : Number(full.lintPassed),
-      full.lastChecked,
-      full.addedAt,
-    );
+    this.withWriteTransaction(() => {
+      this.run(`
+        INSERT INTO prs (
+          id, number, title, repo, branch, author, url, status, accepted, rejected, flagged,
+          tests_passed, lint_passed, last_checked, added_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        full.id,
+        full.number,
+        full.title,
+        full.repo,
+        full.branch,
+        full.author,
+        full.url,
+        full.status,
+        full.accepted,
+        full.rejected,
+        full.flagged,
+        full.testsPassed === null ? null : Number(full.testsPassed),
+        full.lintPassed === null ? null : Number(full.lintPassed),
+        full.lastChecked,
+        full.addedAt,
+      );
 
-    this.replaceFeedbackItems(full.id, full.feedbackItems);
+      this.replaceFeedbackItems(full.id, full.feedbackItems);
+    });
     return full;
   }
 
@@ -613,44 +742,46 @@ export class SqliteStorage implements IStorage {
 
     const updated = applyPRUpdate(existing, updates);
 
-    this.db.prepare(`
-      UPDATE prs
-      SET number = ?, title = ?, repo = ?, branch = ?, author = ?, url = ?, status = ?,
-          accepted = ?, rejected = ?, flagged = ?, tests_passed = ?, lint_passed = ?, last_checked = ?
-      WHERE id = ?
-    `).run(
-      updated.number,
-      updated.title,
-      updated.repo,
-      updated.branch,
-      updated.author,
-      updated.url,
-      updated.status,
-      updated.accepted,
-      updated.rejected,
-      updated.flagged,
-      updated.testsPassed === null ? null : Number(updated.testsPassed),
-      updated.lintPassed === null ? null : Number(updated.lintPassed),
-      updated.lastChecked,
-      id,
-    );
+    this.withWriteTransaction(() => {
+      this.run(`
+        UPDATE prs
+        SET number = ?, title = ?, repo = ?, branch = ?, author = ?, url = ?, status = ?,
+            accepted = ?, rejected = ?, flagged = ?, tests_passed = ?, lint_passed = ?, last_checked = ?
+        WHERE id = ?
+      `,
+        updated.number,
+        updated.title,
+        updated.repo,
+        updated.branch,
+        updated.author,
+        updated.url,
+        updated.status,
+        updated.accepted,
+        updated.rejected,
+        updated.flagged,
+        updated.testsPassed === null ? null : Number(updated.testsPassed),
+        updated.lintPassed === null ? null : Number(updated.lintPassed),
+        updated.lastChecked,
+        id,
+      );
 
-    this.replaceFeedbackItems(id, updated.feedbackItems);
+      this.replaceFeedbackItems(id, updated.feedbackItems);
+    });
     return updated;
   }
 
   async removePR(id: string): Promise<boolean> {
-    const result = this.db.prepare("DELETE FROM prs WHERE id = ?").run(id);
+    const result = this.run("DELETE FROM prs WHERE id = ?", id);
     return result.changes > 0;
   }
 
   async getQuestions(prId: string): Promise<PRQuestion[]> {
-    const rows = this.db.prepare(`
+    const rows = this.all<QuestionRow>(`
       SELECT id, pr_id, question, answer, status, error, created_at, answered_at
       FROM pr_questions
       WHERE pr_id = ?
       ORDER BY datetime(created_at) ASC
-    `).all(prId) as QuestionRow[];
+    `, prId);
 
     return rows.map((row) => ({
       id: row.id,
@@ -667,19 +798,19 @@ export class SqliteStorage implements IStorage {
   async addQuestion(prId: string, question: string): Promise<PRQuestion> {
     const entry = createPRQuestion(prId, question);
 
-    this.db.prepare(`
+    this.run(`
       INSERT INTO pr_questions (id, pr_id, question, answer, status, error, created_at, answered_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(entry.id, entry.prId, entry.question, entry.answer, entry.status, entry.error, entry.createdAt, entry.answeredAt);
+    `, entry.id, entry.prId, entry.question, entry.answer, entry.status, entry.error, entry.createdAt, entry.answeredAt);
 
     return entry;
   }
 
   async updateQuestion(id: string, updates: Partial<PRQuestion>): Promise<PRQuestion | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<QuestionRow>(`
       SELECT id, pr_id, question, answer, status, error, created_at, answered_at
       FROM pr_questions WHERE id = ?
-    `).get(id) as QuestionRow | undefined;
+    `, id);
 
     if (!row) return undefined;
 
@@ -690,28 +821,28 @@ export class SqliteStorage implements IStorage {
 
     const updated = applyPRQuestionUpdate(current, updates);
 
-    this.db.prepare(`
+    this.run(`
       UPDATE pr_questions SET answer = ?, status = ?, error = ?, answered_at = ? WHERE id = ?
-    `).run(updated.answer, updated.status, updated.error, updated.answeredAt, updated.id);
+    `, updated.answer, updated.status, updated.error, updated.answeredAt, updated.id);
 
     return updated;
   }
 
   async getLogs(prId?: string): Promise<LogEntry[]> {
     const rows = prId
-      ? this.db.prepare(`
+      ? this.all<LogRow>(`
           SELECT id, pr_id, run_id, timestamp, level, phase, message, metadata_json
           FROM logs
           WHERE pr_id = ?
           ORDER BY datetime(timestamp) ASC
           LIMIT 500
-        `).all(prId) as LogRow[]
-      : this.db.prepare(`
+        `, prId)
+      : this.all<LogRow>(`
           SELECT id, pr_id, run_id, timestamp, level, phase, message, metadata_json
           FROM logs
           ORDER BY datetime(timestamp) ASC
           LIMIT 500
-        `).all() as LogRow[];
+        `);
 
     return rows.map((row) => ({
       id: row.id,
@@ -737,10 +868,10 @@ export class SqliteStorage implements IStorage {
   ): Promise<LogEntry> {
     const entry = createLogEntry(prId, level, message, details);
 
-    this.db.prepare(`
+    this.run(`
       INSERT INTO logs (id, pr_id, run_id, timestamp, level, phase, message, metadata_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       entry.id,
       entry.prId,
       entry.runId,
@@ -751,7 +882,10 @@ export class SqliteStorage implements IStorage {
       entry.metadata ? JSON.stringify(entry.metadata) : null,
     );
 
-    const pr = await this.getPR(prId);
+    const pr = this.get<{ repo: string; number: number }>(
+      "SELECT repo, number FROM prs WHERE id = ?",
+      prId,
+    );
     if (pr) {
       appendLogFile(this.logRootDir, pr, entry);
     }
@@ -761,23 +895,23 @@ export class SqliteStorage implements IStorage {
 
   async clearLogs(prId?: string): Promise<void> {
     if (prId) {
-      this.db.prepare("DELETE FROM logs WHERE pr_id = ?").run(prId);
+      this.run("DELETE FROM logs WHERE pr_id = ?", prId);
       return;
     }
 
-    this.db.exec("DELETE FROM logs");
+    this.exec("DELETE FROM logs");
   }
 
   async getConfig(): Promise<Config> {
-    const row = this.db.prepare(`
+    const row = this.get<ConfigRow>(`
       SELECT github_token, coding_agent, model, max_turns, batch_window_ms,
              poll_interval_ms, max_changes_per_run, auto_resolve_merge_conflicts,
              trusted_reviewers_json, ignored_bots_json
       FROM config
       WHERE id = 1
-    `).get() as ConfigRow;
+    `);
 
-    return this.parseConfigRow(row, this.getWatchedRepos());
+    return this.parseConfigRow(row as ConfigRow, this.getWatchedRepos());
   }
 
   async updateConfig(updates: Partial<Config>): Promise<Config> {
@@ -788,13 +922,13 @@ export class SqliteStorage implements IStorage {
   }
 
   async getRuntimeState(): Promise<RuntimeState> {
-    const row = this.db.prepare(`
+    const row = this.get<RuntimeStateRow>(`
       SELECT drain_mode, drain_requested_at, drain_reason
       FROM runtime_state
       WHERE id = 1
-    `).get() as RuntimeStateRow;
+    `);
 
-    return this.parseRuntimeStateRow(row);
+    return this.parseRuntimeStateRow(row as RuntimeStateRow);
   }
 
   async updateRuntimeState(updates: Partial<RuntimeState>): Promise<RuntimeState> {
@@ -804,14 +938,14 @@ export class SqliteStorage implements IStorage {
       ...updates,
     };
 
-    this.db.prepare(`
+    this.run(`
       INSERT INTO runtime_state (id, drain_mode, drain_requested_at, drain_reason)
       VALUES (1, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         drain_mode = excluded.drain_mode,
         drain_requested_at = excluded.drain_requested_at,
         drain_reason = excluded.drain_reason
-    `).run(
+    `,
       Number(next.drainMode),
       next.drainRequestedAt,
       next.drainReason,
@@ -821,12 +955,12 @@ export class SqliteStorage implements IStorage {
   }
 
   async getAgentRun(id: string): Promise<AgentRun | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<AgentRunRow>(`
       SELECT id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
              metadata_json, last_error, created_at, updated_at
       FROM agent_runs
       WHERE id = ?
-    `).get(id) as AgentRunRow | undefined;
+    `, id);
 
     if (!row) {
       return undefined;
@@ -851,13 +985,13 @@ export class SqliteStorage implements IStorage {
 
     const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
-    const rows = this.db.prepare(`
+    const rows = this.all<AgentRunRow>(`
       SELECT id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
              metadata_json, last_error, created_at, updated_at
       FROM agent_runs
       ${whereClause}
       ORDER BY datetime(created_at) ASC
-    `).all(...values) as AgentRunRow[];
+    `, ...values);
 
     return rows.map((row) => this.parseAgentRunRow(row));
   }
@@ -866,7 +1000,7 @@ export class SqliteStorage implements IStorage {
     const existing = await this.getAgentRun(run.id);
     const stored = existing ? { ...run, createdAt: existing.createdAt } : run;
 
-    this.db.prepare(`
+    this.run(`
       INSERT INTO agent_runs (
         id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
         metadata_json, last_error, created_at, updated_at
@@ -882,7 +1016,7 @@ export class SqliteStorage implements IStorage {
         metadata_json = excluded.metadata_json,
         last_error = excluded.last_error,
         updated_at = excluded.updated_at
-    `).run(
+    `,
       stored.id,
       stored.prId,
       stored.preferredAgent,
@@ -903,38 +1037,38 @@ export class SqliteStorage implements IStorage {
   // ── Social changelogs ───────────────────────────────────────────────────
 
   async getSocialChangelogs(): Promise<SocialChangelog[]> {
-    const rows = this.db.prepare(`
+    const rows = this.all<SocialChangelogRow>(`
       SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
       FROM social_changelogs
       ORDER BY datetime(created_at) DESC
-    `).all() as SocialChangelogRow[];
+    `);
     return rows.map((row) => this.parseSocialChangelogRow(row));
   }
 
   async getSocialChangelog(id: string): Promise<SocialChangelog | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<SocialChangelogRow>(`
       SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
       FROM social_changelogs
       WHERE id = ?
-    `).get(id) as SocialChangelogRow | undefined;
+    `, id);
     return row ? this.parseSocialChangelogRow(row) : undefined;
   }
 
   async getSocialChangelogForDateAndCount(date: string, triggerCount: number): Promise<SocialChangelog | undefined> {
-    const row = this.db.prepare(`
+    const row = this.get<SocialChangelogRow>(`
       SELECT id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at
       FROM social_changelogs
       WHERE date = ? AND trigger_count = ?
-    `).get(date, triggerCount) as SocialChangelogRow | undefined;
+    `, date, triggerCount);
     return row ? this.parseSocialChangelogRow(row) : undefined;
   }
 
   async createSocialChangelog(data: Omit<SocialChangelog, "id" | "createdAt">): Promise<SocialChangelog> {
     const entry = createSocialChangelog(data);
-    this.db.prepare(`
+    this.run(`
       INSERT INTO social_changelogs (id, date, trigger_count, pr_summaries_json, content, status, error, created_at, completed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
       entry.id,
       entry.date,
       entry.triggerCount,
@@ -952,11 +1086,11 @@ export class SqliteStorage implements IStorage {
     const existing = await this.getSocialChangelog(id);
     if (!existing) return undefined;
     const next = applySocialChangelogUpdate(existing, updates);
-    this.db.prepare(`
+    this.run(`
       UPDATE social_changelogs
       SET date = ?, trigger_count = ?, pr_summaries_json = ?, content = ?, status = ?, error = ?, created_at = ?, completed_at = ?
       WHERE id = ?
-    `).run(
+    `,
       next.date,
       next.triggerCount,
       JSON.stringify(next.prSummaries),

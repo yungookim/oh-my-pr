@@ -179,3 +179,11 @@
   - Keep the destination filename stable for replacement requests.
   - Verify the replacement by checking file type and dimensions after writing.
   - State clearly in handoff that the asset was replaced, not added as a second variant.
+
+## 2026-03-24 - Include lock recovery with SQLite contention fixes
+- Pattern: I scoped the SQLite fix to WAL and timeout hardening, and the user corrected it to also require an explicit recovery path when the database still reports `database is locked`.
+- Rule: When fixing storage contention, include both prevention (`WAL`, timeouts, transactions) and a bounded recovery mechanism for residual lock failures.
+- Prevention checklist:
+  - Ask whether the user expects retry/recovery behavior in addition to concurrency hardening whenever the symptom is an intermittent storage lock.
+  - Keep recovery in the storage layer so every caller gets the same behavior and error classification.
+  - Add a regression test that proves the recovery path works under two live connections contending on the same database file.
