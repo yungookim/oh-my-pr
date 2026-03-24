@@ -18,29 +18,29 @@
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       :root {
-        --bg: #0a0a0a;
-        --bg-secondary: #111111;
-        --bg-tertiary: #161616;
+        --bg: #000000;
+        --bg-secondary: #0c0c0c;
+        --bg-tertiary: #121212;
         --bg-elevated: #1a1a1a;
-        --bg-hover: #1f1f1f;
+        --bg-hover: #181818;
         --border: #1e1e1e;
         --border-hover: #2a2a2a;
-        --text-primary: #ececec;
-        --text-secondary: #a0a0a0;
-        --text-tertiary: #6b6b6b;
-        --accent: #9ba8ff;
-        --accent-dim: #7b8ae6;
-        --accent-bg: rgba(155, 168, 255, 0.08);
-        --accent-bg-hover: rgba(155, 168, 255, 0.12);
-        --accent-border: rgba(155, 168, 255, 0.2);
-        --green: #4ade80;
-        --green-bg: rgba(74, 222, 128, 0.08);
-        --purple: #a78bfa;
-        --purple-bg: rgba(167, 139, 250, 0.08);
-        --orange: #fb923c;
-        --orange-bg: rgba(251, 146, 60, 0.08);
-        --pink: #f472b6;
-        --pink-bg: rgba(244, 114, 182, 0.08);
+        --text-primary: #ffffff;
+        --text-secondary: #b5b5b5;
+        --text-tertiary: #525252;
+        --accent: #e0e0e0;
+        --accent-dim: #8f8f8f;
+        --accent-bg: rgba(255, 255, 255, 0.04);
+        --accent-bg-hover: rgba(255, 255, 255, 0.08);
+        --accent-border: rgba(255, 255, 255, 0.12);
+        --green: #f0f0f0;
+        --green-bg: rgba(255, 255, 255, 0.05);
+        --purple: #cecece;
+        --purple-bg: rgba(255, 255, 255, 0.04);
+        --orange: #9a9a9a;
+        --orange-bg: rgba(255, 255, 255, 0.03);
+        --pink: #767676;
+        --pink-bg: rgba(255, 255, 255, 0.025);
         --sidebar-w: 260px;
         --header-h: 56px;
       }
@@ -65,7 +65,7 @@
         left: 0;
         right: 0;
         height: var(--header-h);
-        background: rgba(10, 10, 10, 0.8);
+        background: rgba(0, 0, 0, 0.85);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid var(--border);
         z-index: 100;
@@ -95,7 +95,7 @@
       .header-logo .logo-icon {
         width: 24px;
         height: 24px;
-        background: linear-gradient(135deg, #4963ff, #9ba8ff);
+        background: linear-gradient(135deg, #1a1a1a, #050505);
         border-radius: 6px;
         display: flex;
         align-items: center;
@@ -434,9 +434,9 @@
       }
 
       .code-header .dot { width: 8px; height: 8px; border-radius: 50%; }
-      .code-header .dot.red { background: #f87171; opacity: 0.6; }
-      .code-header .dot.yellow { background: #fbbf24; opacity: 0.6; }
-      .code-header .dot.green { background: #4ade80; opacity: 0.6; }
+      .code-header .dot.red { background: #525252; opacity: 0.6; }
+      .code-header .dot.yellow { background: #8a8a8a; opacity: 0.6; }
+      .code-header .dot.green { background: #d9d9d9; opacity: 0.6; }
 
       .code-lang {
         font-family: 'JetBrains Mono', monospace;

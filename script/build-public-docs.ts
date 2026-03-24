@@ -54,18 +54,18 @@ function htmlTemplate(title: string, content: string, isIndex: boolean): string 
 function getStyles(): string {
   return `
     :root {
-      --bg: #0e0e0e;
-      --bg-elevated: #1a1919;
-      --bg-card: #201f1f;
-      --bg-code: #161616;
+      --bg: #000000;
+      --bg-elevated: #111111;
+      --bg-card: #1a1a1a;
+      --bg-code: #121212;
       --text: #ffffff;
-      --text-secondary: #adaaaa;
-      --text-muted: #777575;
-      --primary: #9ba8ff;
-      --primary-dim: #4963ff;
-      --border: #494847;
-      --border-subtle: rgba(73, 72, 71, 0.3);
-      --accent-gradient: linear-gradient(135deg, #4963ff 0%, #9ba8ff 100%);
+      --text-secondary: #b5b5b5;
+      --text-muted: #525252;
+      --primary: #e0e0e0;
+      --primary-dim: #8f8f8f;
+      --border: #1f1f1f;
+      --border-subtle: rgba(255, 255, 255, 0.1);
+      --accent-gradient: linear-gradient(135deg, #ffffff 0%, #8f8f8f 100%);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -82,7 +82,7 @@ function getStyles(): string {
       position: sticky;
       top: 0;
       z-index: 50;
-      background: rgba(14, 14, 14, 0.85);
+      background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--border-subtle);
       padding: 0.875rem 2rem;
@@ -131,7 +131,7 @@ function getStyles(): string {
       letter-spacing: -0.03em;
       line-height: 1.15;
       margin-bottom: 1.5rem;
-      background: linear-gradient(to bottom, #fff 0%, #adaaaa 100%);
+      background: linear-gradient(to bottom, #fff 0%, #8f8f8f 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -210,7 +210,7 @@ function getStyles(): string {
       border-left: 3px solid var(--primary-dim);
       margin: 1.5rem 0;
       padding: 0.75rem 1.25rem;
-      background: rgba(73, 99, 255, 0.05);
+      background: rgba(255, 255, 255, 0.04);
       border-radius: 0 8px 8px 0;
     }
     .prose blockquote p { color: var(--text-secondary); margin-bottom: 0; }

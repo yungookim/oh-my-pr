@@ -179,3 +179,12 @@
   - Keep the destination filename stable for replacement requests.
   - Verify the replacement by checking file type and dimensions after writing.
   - State clearly in handoff that the asset was replaced, not added as a second variant.
+
+## 2026-03-24 - Confirm the exact frontend surface before changing theme tokens
+- Pattern: I started auditing the app-wide theme when the user only wanted the documentation page switched to a black-and-white palette.
+- Rule: Before changing visual theme tokens, identify the exact surface in scope (app UI, docs shell, generated docs pages, or another isolated frontend) and patch only that surface.
+- Prevention checklist:
+  - Restate the target surface explicitly in the first execution update for any theme or styling request.
+  - Map the entry files that own that surface before touching shared or global styles.
+  - Treat documentation pages and the app dashboard as separate styling systems unless the user asks for both.
+  - Avoid app-wide token audits when the request names a specific page or docs surface.
