@@ -117,3 +117,63 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.deepEqual(logs[0]?.metadata, { attempt: 1 });
   second.close();
 });
+
+test("SqliteStorage upsertAgentRun preserves the original createdAt", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  const pr = await storage.addPR({
+    number: 59,
+    title: "Preserve createdAt",
+    repo: "yungookim/codefactory",
+    branch: "claude/typescript-data-model-k3zAW",
+    author: "claude",
+    url: "https://github.com/yungookim/codefactory/pull/59",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  await storage.upsertAgentRun({
+    id: "run-1",
+    prId: pr.id,
+    preferredAgent: "claude",
+    resolvedAgent: "claude",
+    status: "running",
+    phase: "run.agent-running",
+    prompt: "Initial run",
+    initialHeadSha: "abc123",
+    metadata: null,
+    lastError: null,
+    createdAt: "2026-03-18T10:01:00.000Z",
+    updatedAt: "2026-03-18T10:02:00.000Z",
+  });
+
+  const updated = await storage.upsertAgentRun({
+    id: "run-1",
+    prId: pr.id,
+    preferredAgent: "claude",
+    resolvedAgent: "claude",
+    status: "completed",
+    phase: "run.done",
+    prompt: "Updated run",
+    initialHeadSha: "def456",
+    metadata: { replay: true },
+    lastError: null,
+    createdAt: "2026-03-19T10:01:00.000Z",
+    updatedAt: "2026-03-19T10:02:00.000Z",
+  });
+
+  const fetched = await storage.getAgentRun("run-1");
+
+  assert.equal(updated.createdAt, "2026-03-18T10:01:00.000Z");
+  assert.equal(fetched?.createdAt, "2026-03-18T10:01:00.000Z");
+  assert.equal(fetched?.status, "completed");
+  assert.equal(fetched?.phase, "run.done");
+  storage.close();
+});

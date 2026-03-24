@@ -858,6 +858,9 @@ export class SqliteStorage implements IStorage {
   }
 
   async upsertAgentRun(run: AgentRun): Promise<AgentRun> {
+    const existing = await this.getAgentRun(run.id);
+    const stored = existing ? { ...run, createdAt: existing.createdAt } : run;
+
     this.db.prepare(`
       INSERT INTO agent_runs (
         id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
@@ -873,24 +876,23 @@ export class SqliteStorage implements IStorage {
         initial_head_sha = excluded.initial_head_sha,
         metadata_json = excluded.metadata_json,
         last_error = excluded.last_error,
-        created_at = excluded.created_at,
         updated_at = excluded.updated_at
     `).run(
-      run.id,
-      run.prId,
-      run.preferredAgent,
-      run.resolvedAgent,
-      run.status,
-      run.phase,
-      run.prompt,
-      run.initialHeadSha,
-      run.metadata ? JSON.stringify(run.metadata) : null,
-      run.lastError,
-      run.createdAt,
-      run.updatedAt,
+      stored.id,
+      stored.prId,
+      stored.preferredAgent,
+      stored.resolvedAgent,
+      stored.status,
+      stored.phase,
+      stored.prompt,
+      stored.initialHeadSha,
+      stored.metadata ? JSON.stringify(stored.metadata) : null,
+      stored.lastError,
+      stored.createdAt,
+      stored.updatedAt,
     );
 
-    return run;
+    return stored;
   }
 
   // ── Social changelogs ───────────────────────────────────────────────────
