@@ -1,9 +1,29 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 struct ServerProcess(Mutex<Option<Child>>);
+
+fn version_sort_key(path: &Path) -> Vec<u32> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .split('.')
+        .filter_map(|part| part.parse::<u32>().ok())
+        .collect()
+}
+
+fn node_binary_for_version(version_dir: &Path) -> Option<PathBuf> {
+    [
+        version_dir.join("bin").join("node"),
+        version_dir.join("installation").join("bin").join("node"),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+}
 
 /// Find the node binary by checking common install locations.
 /// GUI apps on macOS don't inherit the shell PATH, so `node` alone won't resolve
@@ -41,20 +61,21 @@ fn find_node() -> Option<PathBuf> {
                 .map(|e| e.path())
                 .filter(|p| p.is_dir())
                 .collect();
-            versions.sort();
-            if let Some(latest) = versions.last() {
-                let node_bin = latest.join("bin").join("node");
-                if node_bin.exists() {
-                    return Some(node_bin);
-                }
+            versions.sort_by_key(|path| version_sort_key(path));
+            if let Some(node_bin) = versions
+                .iter()
+                .rev()
+                .find_map(|version| node_binary_for_version(version))
+            {
+                return Some(node_bin);
             }
         }
     }
 
     // Homebrew paths
     let brew_paths = [
-        "/opt/homebrew/bin/node",  // Apple Silicon
-        "/usr/local/bin/node",     // Intel Mac / Linux Homebrew
+        "/opt/homebrew/bin/node", // Apple Silicon
+        "/usr/local/bin/node",    // Intel Mac / Linux Homebrew
     ];
     for path in &brew_paths {
         let p = PathBuf::from(path);
@@ -105,6 +126,7 @@ pub fn run() {
                 let _ = window.unminimize();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
@@ -122,7 +144,12 @@ pub fn run() {
                         eprintln!("Server error: {}", msg);
                         // Show a native dialog so the user knows what went wrong
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.set_title(&format!("Code Factory — Error: {}", msg));
+                            window
+                                .dialog()
+                                .message(msg.clone())
+                                .title("Code Factory — Error")
+                                .kind(MessageDialogKind::Error)
+                                .show(|_| {});
                         }
                         app.manage(ServerProcess(Mutex::new(None)));
                         return Err(msg.into());
