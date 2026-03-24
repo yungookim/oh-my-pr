@@ -18,29 +18,29 @@
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       :root {
-        --bg: #0a0a0a;
-        --bg-secondary: #111111;
-        --bg-tertiary: #161616;
+        --bg: #000000;
+        --bg-secondary: #0c0c0c;
+        --bg-tertiary: #121212;
         --bg-elevated: #1a1a1a;
-        --bg-hover: #1f1f1f;
+        --bg-hover: #181818;
         --border: #1e1e1e;
         --border-hover: #2a2a2a;
-        --text-primary: #ececec;
-        --text-secondary: #a0a0a0;
-        --text-tertiary: #6b6b6b;
-        --accent: #9ba8ff;
-        --accent-dim: #7b8ae6;
-        --accent-bg: rgba(155, 168, 255, 0.08);
-        --accent-bg-hover: rgba(155, 168, 255, 0.12);
-        --accent-border: rgba(155, 168, 255, 0.2);
-        --green: #4ade80;
-        --green-bg: rgba(74, 222, 128, 0.08);
-        --purple: #a78bfa;
-        --purple-bg: rgba(167, 139, 250, 0.08);
-        --orange: #fb923c;
-        --orange-bg: rgba(251, 146, 60, 0.08);
-        --pink: #f472b6;
-        --pink-bg: rgba(244, 114, 182, 0.08);
+        --text-primary: #ffffff;
+        --text-secondary: #b5b5b5;
+        --text-tertiary: #525252;
+        --accent: #e0e0e0;
+        --accent-dim: #8f8f8f;
+        --accent-bg: rgba(255, 255, 255, 0.04);
+        --accent-bg-hover: rgba(255, 255, 255, 0.08);
+        --accent-border: rgba(255, 255, 255, 0.12);
+        --tone-1: #f0f0f0;
+        --tone-1-bg: rgba(255, 255, 255, 0.05);
+        --tone-2: #cecece;
+        --tone-2-bg: rgba(255, 255, 255, 0.04);
+        --tone-3: #9a9a9a;
+        --tone-3-bg: rgba(255, 255, 255, 0.03);
+        --tone-4: #767676;
+        --tone-4-bg: rgba(255, 255, 255, 0.025);
         --sidebar-w: 260px;
         --header-h: 56px;
       }
@@ -65,7 +65,7 @@
         left: 0;
         right: 0;
         height: var(--header-h);
-        background: rgba(10, 10, 10, 0.8);
+        background: rgba(0, 0, 0, 0.85);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid var(--border);
         z-index: 100;
@@ -95,7 +95,7 @@
       .header-logo .logo-icon {
         width: 24px;
         height: 24px;
-        background: linear-gradient(135deg, #4963ff, #9ba8ff);
+        background: linear-gradient(135deg, #1a1a1a, #050505);
         border-radius: 6px;
         display: flex;
         align-items: center;
@@ -350,11 +350,11 @@
         font-size: 20px;
       }
 
-      .doc-card-icon.green { background: var(--green-bg); color: var(--green); }
-      .doc-card-icon.purple { background: var(--purple-bg); color: var(--purple); }
+      .doc-card-icon.tone-1 { background: var(--tone-1-bg); color: var(--tone-1); }
+      .doc-card-icon.tone-2 { background: var(--tone-2-bg); color: var(--tone-2); }
       .doc-card-icon.accent { background: var(--accent-bg); color: var(--accent); }
-      .doc-card-icon.orange { background: var(--orange-bg); color: var(--orange); }
-      .doc-card-icon.pink { background: var(--pink-bg); color: var(--pink); }
+      .doc-card-icon.tone-3 { background: var(--tone-3-bg); color: var(--tone-3); }
+      .doc-card-icon.tone-4 { background: var(--tone-4-bg); color: var(--tone-4); }
 
       .doc-card h3 {
         font-size: 15px;
@@ -434,9 +434,9 @@
       }
 
       .code-header .dot { width: 8px; height: 8px; border-radius: 50%; }
-      .code-header .dot.red { background: #f87171; opacity: 0.6; }
-      .code-header .dot.yellow { background: #fbbf24; opacity: 0.6; }
-      .code-header .dot.green { background: #4ade80; opacity: 0.6; }
+      .code-header .dot.dot-dark { background: #525252; opacity: 0.6; }
+      .code-header .dot.dot-medium { background: #8a8a8a; opacity: 0.6; }
+      .code-header .dot.dot-light { background: #d9d9d9; opacity: 0.6; }
 
       .code-lang {
         font-family: 'JetBrains Mono', monospace;
@@ -474,9 +474,9 @@
       }
 
       .code-body .comment { color: var(--text-tertiary); }
-      .code-body .command { color: var(--green); }
+      .code-body .command { color: var(--tone-1); }
       .code-body .arg { color: var(--accent); }
-      .code-body .url { color: var(--orange); }
+      .code-body .url { color: var(--tone-3); }
 
       /* ── Feature List ── */
       .feature-list {
@@ -781,7 +781,7 @@
         <!-- Tech Badges -->
         <div class="tech-badges">
           <span class="tech-badge">
-            <span class="material-symbols-outlined" style="font-size:14px;color:var(--green)">check_circle</span>
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--tone-1)">check_circle</span>
             Open Source (MIT)
           </span>
           <span class="tech-badge">
@@ -789,11 +789,11 @@
             Runs Locally
           </span>
           <span class="tech-badge">
-            <span class="material-symbols-outlined" style="font-size:14px;color:var(--purple)">smart_toy</span>
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--tone-2)">smart_toy</span>
             Claude Code &amp; OpenAI Codex
           </span>
           <span class="tech-badge">
-            <span class="material-symbols-outlined" style="font-size:14px;color:var(--orange)">bolt</span>
+            <span class="material-symbols-outlined" style="font-size:14px;color:var(--tone-3)">bolt</span>
             Node.js 22+
           </span>
         </div>
@@ -813,7 +813,7 @@
 
         <div class="cards-grid">
           <a class="doc-card" href="./public/_site/getting-started.html">
-            <div class="doc-card-icon green">
+            <div class="doc-card-icon tone-1">
               <span class="material-symbols-outlined">rocket_launch</span>
             </div>
             <h3>Quickstart</h3>
@@ -824,7 +824,7 @@
           </a>
 
           <a class="doc-card" href="./public/_site/configuration.html">
-            <div class="doc-card-icon purple">
+            <div class="doc-card-icon tone-2">
               <span class="material-symbols-outlined">settings</span>
             </div>
             <h3>Configuration</h3>
@@ -846,7 +846,7 @@
           </a>
 
           <a class="doc-card" href="./public/_site/agent-dispatch.html">
-            <div class="doc-card-icon orange">
+            <div class="doc-card-icon tone-3">
               <span class="material-symbols-outlined">smart_toy</span>
             </div>
             <h3>Agent Dispatch</h3>
@@ -863,9 +863,9 @@
         <div class="code-block">
           <div class="code-header">
             <div class="code-header-left">
-              <span class="dot red"></span>
-              <span class="dot yellow"></span>
-              <span class="dot green"></span>
+              <span class="dot dot-dark"></span>
+              <span class="dot dot-medium"></span>
+              <span class="dot dot-light"></span>
               <span class="code-lang">bash</span>
             </div>
             <button class="code-copy" onclick="navigator.clipboard.writeText('git clone https://github.com/yungookim/codefactory.git\ncd codefactory\nnpm install\nnpm run dev')">Copy</button>
@@ -897,8 +897,8 @@
           </div>
 
           <div class="feature-item">
-            <div class="feature-icon" style="background:var(--purple-bg)">
-              <span class="material-symbols-outlined" style="color:var(--purple)">sync_alt</span>
+            <div class="feature-icon" style="background:var(--tone-2-bg)">
+              <span class="material-symbols-outlined" style="color:var(--tone-2)">sync_alt</span>
             </div>
             <div class="feature-text">
               <h4>2. Sync Reviews</h4>
@@ -907,8 +907,8 @@
           </div>
 
           <div class="feature-item">
-            <div class="feature-icon" style="background:var(--green-bg)">
-              <span class="material-symbols-outlined" style="color:var(--green)">assignment_turned_in</span>
+            <div class="feature-icon" style="background:var(--tone-1-bg)">
+              <span class="material-symbols-outlined" style="color:var(--tone-1)">assignment_turned_in</span>
             </div>
             <div class="feature-text">
               <h4>3. Triage Feedback</h4>
@@ -917,8 +917,8 @@
           </div>
 
           <div class="feature-item">
-            <div class="feature-icon" style="background:var(--orange-bg)">
-              <span class="material-symbols-outlined" style="color:var(--orange)">smart_toy</span>
+            <div class="feature-icon" style="background:var(--tone-3-bg)">
+              <span class="material-symbols-outlined" style="color:var(--tone-3)">smart_toy</span>
             </div>
             <div class="feature-text">
               <h4>4. Dispatch Agents</h4>
@@ -927,8 +927,8 @@
           </div>
 
           <div class="feature-item">
-            <div class="feature-icon" style="background:var(--pink-bg)">
-              <span class="material-symbols-outlined" style="color:var(--pink)">call_merge</span>
+            <div class="feature-icon" style="background:var(--tone-4-bg)">
+              <span class="material-symbols-outlined" style="color:var(--tone-4)">call_merge</span>
             </div>
             <div class="feature-text">
               <h4>5. Resolve Conflicts</h4>
@@ -937,8 +937,8 @@
           </div>
 
           <div class="feature-item">
-            <div class="feature-icon" style="background:var(--green-bg)">
-              <span class="material-symbols-outlined" style="color:var(--green)">publish</span>
+            <div class="feature-icon" style="background:var(--tone-1-bg)">
+              <span class="material-symbols-outlined" style="color:var(--tone-1)">publish</span>
             </div>
             <div class="feature-text">
               <h4>6. Commit &amp; Push</h4>
@@ -952,7 +952,7 @@
 
         <div class="cards-grid">
           <a class="doc-card" href="./public/_site/pr-questions.html">
-            <div class="doc-card-icon pink">
+            <div class="doc-card-icon tone-4">
               <span class="material-symbols-outlined">chat_bubble</span>
             </div>
             <h3>PR Q&amp;A</h3>
