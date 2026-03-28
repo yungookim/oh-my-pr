@@ -1,12 +1,12 @@
 # PR Babysitter
 
-The PR Babysitter is CodeFactory's core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.
+The PR Babysitter is oh-my-pr's core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.
 
 ## How It Works
 
 ### 1. Repository Watching
 
-When you add a repository to CodeFactory, the babysitter begins polling for open pull requests. It tracks:
+When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests. It tracks:
 
 - New PRs opened against the repository.
 - Review comments and change requests on existing PRs.
@@ -14,7 +14,7 @@ When you add a repository to CodeFactory, the babysitter begins polling for open
 
 ### 2. Review Sync
 
-Every review comment is captured and stored locally. CodeFactory understands GitHub's threaded review model:
+Every review comment is captured and stored locally. oh-my-pr understands GitHub's threaded review model:
 
 - **Top-level review comments** — general feedback on the PR.
 - **Inline comments** — feedback attached to specific lines of code.
@@ -22,7 +22,7 @@ Every review comment is captured and stored locally. CodeFactory understands Git
 
 ### 3. Feedback Triage
 
-Not all feedback is equal. CodeFactory classifies each piece of feedback:
+Not all feedback is equal. oh-my-pr classifies each piece of feedback:
 
 | Category | Description | Action |
 |----------|-------------|--------|
@@ -33,7 +33,7 @@ Not all feedback is equal. CodeFactory classifies each piece of feedback:
 
 ### 4. Automated Resolution
 
-For actionable feedback, CodeFactory:
+For actionable feedback, oh-my-pr:
 
 1. Creates an **isolated worktree** — a clean copy of the branch.
 2. Dispatches an **AI agent** (Claude Code or OpenAI Codex) with the feedback context.
@@ -57,7 +57,7 @@ pending → triaged → dispatched → resolved
 
 ## Merge Conflict Resolution
 
-When a PR branch falls behind the base branch, CodeFactory can automatically:
+When a PR branch falls behind the base branch, oh-my-pr can automatically:
 
 1. Detect the conflict.
 2. Rebase the branch.
@@ -70,6 +70,6 @@ You can control babysitter behavior per repository:
 
 - **Poll interval** — How often to check for new reviews (default: 60 seconds).
 - **Auto-dispatch** — Whether to automatically dispatch agents or require approval.
-- **Agent preference** — Choose between Claude Code, OpenAI Codex, or let CodeFactory decide.
+- **Agent preference** — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.
 
 See [Configuration](./configuration.md) for details.

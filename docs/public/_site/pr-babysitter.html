@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="PR Babysitter - CodeFactory documentation" />
-  <title>PR Babysitter | CodeFactory Docs</title>
+  <meta name="description" content="PR Babysitter - oh-my-pr documentation" />
+  <title>PR Babysitter | oh-my-pr Docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -42,7 +42,7 @@
   <div class="sticky top-0 z-10 border-b border-dark-800 bg-dark-900/95 p-4 backdrop-blur">
     <div class="mb-4 flex items-center gap-2">
       <svg class="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-      <span class="text-base font-semibold text-white">CodeFactory</span>
+      <span class="text-base font-semibold text-white">oh-my-pr</span>
       <span class="ml-auto rounded bg-dark-700 px-1.5 py-0.5 text-[10px] text-gray-300">DOCS</span>
     </div>
     <div class="relative mb-4">
@@ -164,7 +164,7 @@
         <div class="mb-8 flex items-center justify-between rounded-xl border border-dark-800 bg-dark-800/60 px-4 py-3 md:hidden">
   <a class="flex items-center gap-2 text-white" href="../../index.html">
     <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-    <span class="font-semibold">CodeFactory</span>
+    <span class="font-semibold">oh-my-pr</span>
   </a>
   <span class="rounded bg-dark-700 px-2 py-1 text-[10px] uppercase tracking-wider text-gray-300">Docs</span>
 </div>
@@ -178,27 +178,27 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">PR Babysitter</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is CodeFactory&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is oh-my-pr&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.</p>
 </header>
 
 <article class="doc-prose">
   <h2>How It Works</h2>
 <h3>1. Repository Watching</h3>
-<p>When you add a repository to CodeFactory, the babysitter begins polling for open pull requests. It tracks:</p>
+<p>When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests. It tracks:</p>
 <ul>
 <li>New PRs opened against the repository.</li>
 <li>Review comments and change requests on existing PRs.</li>
 <li>Status changes (approvals, dismissals, re-requests).</li>
 </ul>
 <h3>2. Review Sync</h3>
-<p>Every review comment is captured and stored locally. CodeFactory understands GitHub&#39;s threaded review model:</p>
+<p>Every review comment is captured and stored locally. oh-my-pr understands GitHub&#39;s threaded review model:</p>
 <ul>
 <li><strong>Top-level review comments</strong> — general feedback on the PR.</li>
 <li><strong>Inline comments</strong> — feedback attached to specific lines of code.</li>
 <li><strong>Review threads</strong> — multi-message conversations about a specific change.</li>
 </ul>
 <h3>3. Feedback Triage</h3>
-<p>Not all feedback is equal. CodeFactory classifies each piece of feedback:</p>
+<p>Not all feedback is equal. oh-my-pr classifies each piece of feedback:</p>
 <table>
 <thead>
 <tr>
@@ -229,7 +229,7 @@
 </tr>
 </tbody></table>
 <h3>4. Automated Resolution</h3>
-<p>For actionable feedback, CodeFactory:</p>
+<p>For actionable feedback, oh-my-pr:</p>
 <ol>
 <li>Creates an <strong>isolated worktree</strong> — a clean copy of the branch.</li>
 <li>Dispatches an <strong>AI agent</strong> (Claude Code or OpenAI Codex) with the feedback context.</li>
@@ -249,7 +249,7 @@
 <li><strong>skipped</strong> — Determined to not need automated action.</li>
 </ul>
 <h2>Merge Conflict Resolution</h2>
-<p>When a PR branch falls behind the base branch, CodeFactory can automatically:</p>
+<p>When a PR branch falls behind the base branch, oh-my-pr can automatically:</p>
 <ol>
 <li>Detect the conflict.</li>
 <li>Rebase the branch.</li>
@@ -261,7 +261,7 @@
 <ul>
 <li><strong>Poll interval</strong> — How often to check for new reviews (default: 60 seconds).</li>
 <li><strong>Auto-dispatch</strong> — Whether to automatically dispatch agents or require approval.</li>
-<li><strong>Agent preference</strong> — Choose between Claude Code, OpenAI Codex, or let CodeFactory decide.</li>
+<li><strong>Agent preference</strong> — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.</li>
 </ul>
 <p>See <a href="./configuration.html">Configuration</a> for details.</p>
 

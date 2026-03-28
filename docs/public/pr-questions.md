@@ -1,6 +1,6 @@
 # PR Q&A
 
-CodeFactory includes a built-in PR question-answering system that lets you interrogate your pull requests using natural language.
+oh-my-pr includes a built-in PR question-answering system that lets you interrogate your pull requests using natural language.
 
 ## Overview
 
@@ -11,11 +11,11 @@ Instead of manually reading through large diffs, you can ask questions like:
 - "What are the architectural implications of this change?"
 - "Does this PR introduce any security concerns?"
 
-CodeFactory uses an AI agent to analyze the PR diff, review comments, and commit history to provide accurate answers.
+oh-my-pr uses an AI agent to analyze the PR diff, review comments, and commit history to provide accurate answers.
 
 ## How to Use
 
-1. Open a PR in the CodeFactory dashboard.
+1. Open a PR in the oh-my-pr dashboard.
 2. Navigate to the **Q&A** tab.
 3. Type your question and press Enter.
 

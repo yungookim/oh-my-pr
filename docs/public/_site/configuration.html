@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Configuration - CodeFactory documentation" />
-  <title>Configuration | CodeFactory Docs</title>
+  <meta name="description" content="Configuration - oh-my-pr documentation" />
+  <title>Configuration | oh-my-pr Docs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -42,7 +42,7 @@
   <div class="sticky top-0 z-10 border-b border-dark-800 bg-dark-900/95 p-4 backdrop-blur">
     <div class="mb-4 flex items-center gap-2">
       <svg class="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-      <span class="text-base font-semibold text-white">CodeFactory</span>
+      <span class="text-base font-semibold text-white">oh-my-pr</span>
       <span class="ml-auto rounded bg-dark-700 px-1.5 py-0.5 text-[10px] text-gray-300">DOCS</span>
     </div>
     <div class="relative mb-4">
@@ -164,7 +164,7 @@
         <div class="mb-8 flex items-center justify-between rounded-xl border border-dark-800 bg-dark-800/60 px-4 py-3 md:hidden">
   <a class="flex items-center gap-2 text-white" href="../../index.html">
     <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-    <span class="font-semibold">CodeFactory</span>
+    <span class="font-semibold">oh-my-pr</span>
   </a>
   <span class="rounded bg-dark-700 px-2 py-1 text-[10px] uppercase tracking-wider text-gray-300">Docs</span>
 </div>
@@ -178,7 +178,7 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">Configuration</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">CodeFactory is configured through environment variables and the dashboard settings page.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">oh-my-pr is configured through environment variables and the dashboard settings page.</p>
 </header>
 
 <article class="doc-prose">
@@ -224,19 +224,19 @@
 </tbody></table>
 <h2>Storage</h2>
 <h3>SQLite (Default)</h3>
-<p>By default, CodeFactory stores all state in a local SQLite database:</p>
+<p>By default, oh-my-pr stores all state in a local SQLite database:</p>
 <pre><code>~/.oh-my-pr/state.sqlite
 </code></pre>
 <p>No external database is required. This is ideal for single-user setups.</p>
 <h3>PostgreSQL</h3>
 <p>For team deployments, configure a PostgreSQL connection:</p>
-<pre><code class="language-bash">DATABASE_URL=postgresql://user:pass@localhost:5432/codefactory
+<pre><code class="language-bash">DATABASE_URL=postgresql://user:pass@localhost:5432/oh_my_pr
 </code></pre>
 <p>Then push the schema:</p>
 <pre><code class="language-bash">npm run db:push
 </code></pre>
 <h2>Activity Logs</h2>
-<p>CodeFactory writes daily activity logs to:</p>
+<p>oh-my-pr writes daily activity logs to:</p>
 <pre><code>~/.oh-my-pr/log/
 </code></pre>
 <p>These logs mirror the dashboard activity feed and are useful for debugging or auditing agent behavior.</p>

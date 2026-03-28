@@ -1,6 +1,6 @@
 # Agent Dispatch
 
-CodeFactory dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.
+oh-my-pr dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.
 
 ## Supported Agents
 
@@ -9,13 +9,13 @@ CodeFactory dispatches local AI agents to fix code based on review feedback. Age
 | **Claude Code** | `claude` | Complex reasoning, multi-file refactors, architectural changes |
 | **OpenAI Codex** | `codex` | Quick fixes, single-file edits, style corrections |
 
-CodeFactory automatically detects which CLI tools are available on your system and selects the most appropriate agent for each task.
+oh-my-pr automatically detects which CLI tools are available on your system and selects the most appropriate agent for each task.
 
 ## How Dispatch Works
 
 ### 1. Worktree Isolation
 
-Before an agent runs, CodeFactory creates a **temporary git worktree**:
+Before an agent runs, oh-my-pr creates a **temporary git worktree**:
 
 ```
 /tmp/pr-babysitter/<repo>/<pr-number>/
@@ -43,14 +43,14 @@ After the agent completes:
 
 ### 4. Commit & Push
 
-If validation passes, CodeFactory:
+If validation passes, oh-my-pr:
 - Creates a **descriptive commit message** explaining what was fixed.
 - Pushes the commit to the **PR branch** on GitHub.
 - Updates the **feedback status** to resolved.
 
 ## Agent Runs in the Dashboard
 
-Every agent run is tracked in the CodeFactory dashboard:
+Every agent run is tracked in the oh-my-pr dashboard:
 
 - **Status** — Running, succeeded, or failed.
 - **Duration** — How long the agent took.
@@ -59,7 +59,7 @@ Every agent run is tracked in the CodeFactory dashboard:
 
 ## Model Discovery
 
-CodeFactory discovers available models from your local CLI installations. You can view and refresh available models from the **Settings** page in the dashboard.
+oh-my-pr discovers available models from your local CLI installations. You can view and refresh available models from the **Settings** page in the dashboard.
 
 ## Customization
 

@@ -79,7 +79,7 @@ const DOC_DEFINITIONS: DocDefinition[] = [
     navLabel: "Quickstart",
     cardTitle: "Quickstart",
     icon: "quickstart",
-    fallbackDescription: "Install CodeFactory, connect a repository, and let the agents handle your first PR in minutes.",
+    fallbackDescription: "Install oh-my-pr, connect a repository, and let the agents handle your first PR in minutes.",
   },
   {
     slug: "configuration",
@@ -103,7 +103,7 @@ const DOC_DEFINITIONS: DocDefinition[] = [
     navLabel: "Agent Dispatch",
     cardTitle: "Agent Dispatch",
     icon: "package",
-    fallbackDescription: "How CodeFactory dispatches Claude Code and OpenAI Codex agents in isolated worktrees.",
+    fallbackDescription: "How oh-my-pr dispatches Claude Code and OpenAI Codex agents in isolated worktrees.",
   },
   {
     slug: "pr-questions",
@@ -119,7 +119,7 @@ const WORKFLOW_STEPS = [
   {
     number: "1.",
     title: "Watch Repositories",
-    description: "Add any GitHub repository. CodeFactory polls for open PRs and new review activity.",
+    description: "Add any GitHub repository. oh-my-pr polls for open PRs and new review activity.",
   },
   {
     number: "2.",
@@ -295,7 +295,7 @@ function renderSidebar(context: RenderContext, activeKey: string | null, docs: D
   <div class="sticky top-0 z-10 border-b border-dark-800 bg-dark-900/95 p-4 backdrop-blur">
     <div class="mb-4 flex items-center gap-2">
       ${icon("logo", "h-6 w-6 text-white")}
-      <span class="text-base font-semibold text-white">CodeFactory</span>
+      <span class="text-base font-semibold text-white">oh-my-pr</span>
       <span class="ml-auto rounded bg-dark-700 px-1.5 py-0.5 text-[10px] text-gray-300">DOCS</span>
     </div>
     <div class="relative mb-4">
@@ -355,7 +355,7 @@ function renderMobileHeader(context: RenderContext): string {
   return `<div class="mb-8 flex items-center justify-between rounded-xl border border-dark-800 bg-dark-800/60 px-4 py-3 md:hidden">
   <a class="flex items-center gap-2 text-white" href="${context.introHref}">
     ${icon("logo", "h-5 w-5")}
-    <span class="font-semibold">CodeFactory</span>
+    <span class="font-semibold">oh-my-pr</span>
   </a>
   <span class="rounded bg-dark-700 px-2 py-1 text-[10px] uppercase tracking-wider text-gray-300">Docs</span>
 </div>`;
@@ -442,11 +442,11 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
   const bodyContent = `<header class="mb-12">
   <div class="mb-6 inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-400">
     ${icon("plus", "h-4 w-4")}
-    <span>Welcome to CodeFactory</span>
+    <span>Welcome to oh-my-pr</span>
   </div>
   <h1 class="mb-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">The Autonomous PR Babysitter</h1>
   <p class="mb-8 max-w-3xl text-lg leading-relaxed text-gray-400">
-    CodeFactory watches your GitHub repositories, triages review feedback, and dispatches local AI agents to fix code so you can focus on building instead of babysitting pull requests.
+    oh-my-pr watches your GitHub repositories, triages review feedback, and dispatches local AI agents to fix code so you can focus on building instead of babysitting pull requests.
   </p>
 
   <div class="mb-8 flex flex-wrap gap-3">
@@ -471,7 +471,7 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
   <div class="flex gap-3 rounded-lg border border-blue-500/20 bg-blue-900/20 p-4">
     ${icon("info", "mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400")}
     <p class="text-sm leading-relaxed text-blue-100/80">
-      CodeFactory runs entirely on your machine. Your code never leaves your environment. Get started in under 2 minutes with our
+      oh-my-pr runs entirely on your machine. Your code never leaves your environment. Get started in under 2 minutes with our
       <a class="text-blue-400 hover:underline" href="${context.docHref("getting-started")}">quickstart guide</a>.
     </p>
   </div>
@@ -479,7 +479,7 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
 
 <section class="mb-16">
   <h2 class="mb-4 text-2xl font-bold text-white">Get Started</h2>
-  <p class="mb-6 text-gray-400">Everything you need to set up CodeFactory and start automating your PR workflow.</p>
+  <p class="mb-6 text-gray-400">Everything you need to set up oh-my-pr and start automating your PR workflow.</p>
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     ${getStartedCards}
   </div>
@@ -507,7 +507,7 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
 
 <section class="mb-16">
   <h2 class="mb-4 text-2xl font-bold text-white">How It Works</h2>
-  <p class="mb-8 text-gray-400">CodeFactory follows a six-step autonomous workflow to handle PR feedback end-to-end.</p>
+  <p class="mb-8 text-gray-400">oh-my-pr follows a six-step autonomous workflow to handle PR feedback end-to-end.</p>
   <div class="space-y-0">
     ${WORKFLOW_STEPS.map(
       (step) => `<div class="flex gap-6 border-b border-dark-700/50 py-6">
@@ -537,15 +537,15 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
         ${icon("doc", "h-5 w-5")}
       </div>
       <h3 class="mb-2 text-lg font-semibold text-white">API Reference</h3>
-      <p class="text-sm leading-relaxed text-gray-400">Full REST API documentation for programmatic control of CodeFactory.</p>
+      <p class="text-sm leading-relaxed text-gray-400">Full REST API documentation for programmatic control of oh-my-pr.</p>
     </a>
   </div>
 </section>`;
 
   return renderShell(
     context,
-    "CodeFactory Documentation",
-    "CodeFactory documentation for the autonomous PR babysitter that watches repositories, triages review feedback, and dispatches local AI agents to fix code.",
+    "oh-my-pr Documentation",
+    "oh-my-pr documentation for the autonomous PR babysitter that watches repositories, triages review feedback, and dispatches local AI agents to fix code.",
     "intro",
     bodyContent,
     docs,
@@ -602,8 +602,8 @@ function renderDocPage(context: RenderContext, doc: DocMeta, docs: DocMeta[], re
 
   return renderShell(
     context,
-    `${doc.title} | CodeFactory Docs`,
-    `${doc.title} - CodeFactory documentation`,
+    `${doc.title} | oh-my-pr Docs`,
+    `${doc.title} - oh-my-pr documentation`,
     doc.slug,
     bodyContent,
     docs,

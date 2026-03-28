@@ -1,6 +1,6 @@
 # Configuration
 
-CodeFactory is configured through environment variables and the dashboard settings page.
+oh-my-pr is configured through environment variables and the dashboard settings page.
 
 ## Environment Variables
 
@@ -17,7 +17,7 @@ CodeFactory is configured through environment variables and the dashboard settin
 
 ### SQLite (Default)
 
-By default, CodeFactory stores all state in a local SQLite database:
+By default, oh-my-pr stores all state in a local SQLite database:
 
 ```
 ~/.oh-my-pr/state.sqlite
@@ -30,7 +30,7 @@ No external database is required. This is ideal for single-user setups.
 For team deployments, configure a PostgreSQL connection:
 
 ```bash
-DATABASE_URL=postgresql://user:pass@localhost:5432/codefactory
+DATABASE_URL=postgresql://user:pass@localhost:5432/oh_my_pr
 ```
 
 Then push the schema:
@@ -41,7 +41,7 @@ npm run db:push
 
 ## Activity Logs
 
-CodeFactory writes daily activity logs to:
+oh-my-pr writes daily activity logs to:
 
 ```
 ~/.oh-my-pr/log/
