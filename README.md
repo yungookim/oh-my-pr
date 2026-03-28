@@ -8,8 +8,8 @@
 
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, dispatches AI agents to fix code, and creates releases**
 
-[![npm version](https://img.shields.io/npm/v/codefactory.svg)](https://www.npmjs.com/package/codefactory)
-[![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/oh-my-pr.svg)](https://www.npmjs.com/package/oh-my-pr)
+[![CI](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
@@ -106,10 +106,10 @@ On startup, Code Factory restores the watcher schedule, resumes interrupted runs
 
 ```bash
 # Install globally from npm
-npm install -g codefactory
+npm install -g oh-my-pr
 
 # Start the server
-codefactory
+oh-my-pr
 ```
 
 The server starts on port `5001` (configurable via `PORT`) and serves both the API and the dashboard.
@@ -118,7 +118,7 @@ The server starts on port `5001` (configurable via `PORT`) and serves both the A
 
 ```bash
 # Clone the repository
-git clone https://github.com/yungookim/codefactory.git
+git clone https://github.com/yungookim/oh-my-pr.git
 cd codefactory
 
 # Install dependencies
@@ -236,14 +236,14 @@ If you get a `200` response, Code Factory is running and you can proceed to Step
 Run these shell commands on the local machine:
 
 ```bash
-npm install -g codefactory
-codefactory &
+npm install -g oh-my-pr
+oh-my-pr &
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/yungookim/codefactory.git
+git clone https://github.com/yungookim/oh-my-pr.git
 cd codefactory
 npm install
 npm run dev &
@@ -326,7 +326,7 @@ Full parameter schemas are in [LOCAL_API.md](LOCAL_API.md).
 
 If you encounter a bug, an unexpected error response, a missing tool, or behaviour that does not match this documentation, create a GitHub issue so the maintainers can fix it.
 
-**Issue URL:** `https://github.com/yungookim/codefactory/issues/new`
+**Issue URL:** `https://github.com/yungookim/oh-my-pr/issues/new`
 
 Include the following in the issue body:
 - What you were trying to do (the goal)

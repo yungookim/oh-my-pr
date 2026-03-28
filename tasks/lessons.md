@@ -196,3 +196,12 @@
   - Map the entry files that own that surface before touching shared or global styles.
   - Treat documentation pages and the app dashboard as separate styling systems unless the user asks for both.
   - Avoid app-wide token audits when the request names a specific page or docs surface.
+
+## 2026-03-24 - Treat user-provided reference markup as the canonical docs source
+- Pattern: I initially optimized around the existing docs landing page instead of locking onto the exact reference markup the user later provided.
+- Rule: When a user supplies canonical HTML/CSS for a docs surface, treat that snippet as the source of truth and align every related generated page to it, not just the page that looked closest already.
+- Prevention checklist:
+  - Ask for or confirm the canonical reference before redesigning an existing docs surface.
+  - Compare both the root docs entry page and any generated docs pages against the provided reference before editing.
+  - Move shared docs layout into the generator or a shared template so the reference style cannot drift between pages.
+  - Rebuild generated docs after the template change and inspect at least one root page and one generated page for matching shell structure.

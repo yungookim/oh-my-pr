@@ -1,24 +1,7 @@
 {
-  "name": "codefactory",
+  "name": "oh-my-pr",
   "version": "1.0.0",
   "description": "Autonomous GitHub PR babysitter that watches repos, triages review feedback, and dispatches AI agents to fix code locally",
-  "type": "module",
-  "license": "MIT",
-  "bin": {
-    "codefactory": "bin/codefactory.cjs"
-  },
-  "files": [
-    "dist/",
-    "bin/"
-  ],
-  "homepage": "https://github.com/yungookim/codefactory#readme",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yungookim/codefactory.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yungookim/codefactory/issues"
-  },
   "keywords": [
     "github",
     "pull-request",
@@ -30,6 +13,28 @@
     "developer-tools",
     "pr-management",
     "babysitter"
+  ],
+  "homepage": "https://github.com/yungookim/oh-my-pr#readme",
+  "bugs": {
+    "url": "https://github.com/yungookim/oh-my-pr/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yungookim/oh-my-pr.git"
+  },
+  "license": "MIT",
+  "author": "dygk",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "bin": {
+    "oh-my-pr": "bin/codefactory.cjs"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "files": [
+    "dist/",
+    "bin/"
   ],
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",

@@ -1,58 +1,347 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CodeFactory Documentation — Documentation" />
-  <title>Documentation | CodeFactory Docs</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <meta name="description" content="CodeFactory documentation for the autonomous PR babysitter that watches repositories, triages review feedback, and dispatches local AI agents to fix code." />
+  <title>CodeFactory Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              400: "#60a5fa",
+              500: "#3b82f6",
+              600: "#2563eb",
+            },
+            dark: {
+              900: "#0f1115",
+              800: "#1e2128",
+              700: "#2c313c",
+            }
+          },
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
+            mono: ["Fira Code", "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", "monospace"],
+          }
+        }
+      }
+    };
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-  <nav class="top-nav">
-    <div class="nav-inner">
-      <a href="../../index.html" class="brand">CodeFactory</a>
-      <span class="nav-separator">/</span>
-      <span class="nav-section">Documentation</span>
+<body class="antialiased text-sm">
+  <div class="flex min-h-screen overflow-hidden">
+    <aside class="hidden h-screen w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-dark-800 bg-dark-900 md:flex" data-purpose="sidebar">
+  <div class="sticky top-0 z-10 border-b border-dark-800 bg-dark-900/95 p-4 backdrop-blur">
+    <div class="mb-4 flex items-center gap-2">
+      <svg class="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+      <span class="text-base font-semibold text-white">CodeFactory</span>
+      <span class="ml-auto rounded bg-dark-700 px-1.5 py-0.5 text-[10px] text-gray-300">DOCS</span>
+    </div>
+    <div class="relative mb-4">
+      <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      <input class="doc-search-input w-full rounded-md border border-dark-700 bg-dark-800 py-1.5 pl-9 pr-3 text-sm text-gray-300 placeholder-gray-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" placeholder="Search documents..." type="text" />
+    </div>
+    <div class="flex gap-4 text-sm text-gray-400">
+      <a class="flex items-center gap-1.5 transition-colors hover:text-gray-200" href="https://github.com/yungookim/oh-my-pr" target="_blank" rel="noreferrer">
+        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+        <span>GitHub</span>
+      </a>
+      <a class="flex items-center gap-1.5 transition-colors hover:text-gray-200" href="https://github.com/yungookim/oh-my-pr/discussions" target="_blank" rel="noreferrer">
+        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15H9v-2h2v2zm0-4H9V7h2v6z"></path></svg>
+        <span>Community</span>
+      </a>
+    </div>
+  </div>
+
+  <nav class="flex-1 space-y-6 px-3 pb-8 pt-6">
+    <div>
+      <h4 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Getting Started</h4>
+      <ul class="space-y-0.5">
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors bg-dark-800 text-white" href="../../index.html">
+    <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12l2-2m0 0 7-7 7 7M5 10v10a1 1 0 0 0 1 1h3m10-11 2 2m-2-2v10a1 1 0 0 1-1 1h-3m-6 0a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Introduction</span>
+  </a>
+</li>
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="./getting-started.html">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Quickstart</span>
+  </a>
+</li>
+<li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="./configuration.html">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Configuration</span>
+  </a>
+</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Core Concepts</h4>
+      <ul class="space-y-0.5">
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="./pr-babysitter.html">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>PR Babysitter</span>
+  </a>
+</li>
+<li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="./agent-dispatch.html">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Agent Dispatch</span>
+  </a>
+</li>
+<li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="./pr-questions.html">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-5 5v-5z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>PR Q&amp;A</span>
+  </a>
+</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Guides</h4>
+      <ul class="space-y-0.5">
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 20 14 4m4 4 4 4-4 4M6 16l-4-4 4-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Contributing</span>
+  </a>
+</li>
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr/blob/main/LOCAL_API.md" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>API Reference</span>
+  </a>
+</li>
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr/blob/main/AGENTS.md" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6V4m0 2a2 2 0 1 0 0 4m0-4a2 2 0 1 1 0 4m-6 8a2 2 0 1 0 0-4m0 4a2 2 0 1 1 0-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 1 0 0-4m0 4a2 2 0 1 1 0-4m0 4v2m0-6V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Agent Config</span>
+  </a>
+</li>
+      </ul>
+    </div>
+
+    <div>
+      <h4 class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Resources</h4>
+      <ul class="space-y-0.5">
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr/releases" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Changelog</span>
+  </a>
+</li>
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr/issues" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Report an Issue</span>
+  </a>
+</li>
+        <li>
+  <a class="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors text-slate-400 hover:bg-dark-800 hover:text-slate-200" href="https://github.com/yungookim/oh-my-pr" target="_blank" rel="noreferrer">
+    <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 20 14 4m4 4 4 4-4 4M6 16l-4-4 4-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Source Code</span>
+  </a>
+</li>
+      </ul>
     </div>
   </nav>
-  <div class="layout">
-    <main class="content">
-      <div class="breadcrumb"><a href="../../index.html" class="nav-back">← Back to CodeFactory</a></div>
-      <article class="prose">
-        
-    <h1>Documentation</h1>
-    <p>Everything you need to know about using CodeFactory to automate your PR review workflow.</p>
-    <div class="doc-grid">
-      
-      <a href="./getting-started.html" class="doc-card">
-        <h3>Getting Started</h3>
-        <p>Welcome to CodeFactory — the autonomous PR babysitter that watches your repositories, triages review feedback, and dispatches AI agents to fix code.</p>
-      </a>
+</aside>
+    <main class="relative w-full flex-1 overflow-y-auto" data-purpose="main-content">
+      <div class="mx-auto max-w-4xl px-6 py-10 pb-28 sm:px-8 sm:py-12 sm:pb-32">
+        <div class="mb-8 flex items-center justify-between rounded-xl border border-dark-800 bg-dark-800/60 px-4 py-3 md:hidden">
+  <a class="flex items-center gap-2 text-white" href="../../index.html">
+    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+    <span class="font-semibold">CodeFactory</span>
+  </a>
+  <span class="rounded bg-dark-700 px-2 py-1 text-[10px] uppercase tracking-wider text-gray-300">Docs</span>
+</div>
+        <header class="mb-12">
+  <div class="mb-6 inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-400">
+    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    <span>Welcome to CodeFactory</span>
+  </div>
+  <h1 class="mb-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">The Autonomous PR Babysitter</h1>
+  <p class="mb-8 max-w-3xl text-lg leading-relaxed text-gray-400">
+    CodeFactory watches your GitHub repositories, triages review feedback, and dispatches local AI agents to fix code so you can focus on building instead of babysitting pull requests.
+  </p>
 
-      <a href="./agent-dispatch.html" class="doc-card">
-        <h3>Agent Dispatch</h3>
-        <p>CodeFactory dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.</p>
-      </a>
+  <div class="mb-8 flex flex-wrap gap-3">
+    <span class="inline-flex items-center gap-1.5 rounded border border-dark-700 bg-dark-800 px-3 py-1 text-sm text-gray-300">
+      <svg class="h-4 w-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+      <span>Open Source (MIT)</span>
+    </span>
+    <span class="inline-flex items-center gap-1.5 rounded border border-dark-700 bg-dark-800 px-3 py-1 text-sm text-gray-300">
+      <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M5 12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2M5 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2m-2-4h.01M17 16h.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      <span>Runs Locally</span>
+    </span>
+    <span class="inline-flex items-center gap-1.5 rounded border border-dark-700 bg-dark-800 px-3 py-1 text-sm text-gray-300">
+      <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      <span>Claude Code &amp; OpenAI Codex</span>
+    </span>
+    <span class="inline-flex items-center gap-1.5 rounded border border-dark-700 bg-dark-800 px-3 py-1 text-sm text-gray-300">
+      <svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      <span>Node.js 22+</span>
+    </span>
+  </div>
 
-      <a href="./configuration.html" class="doc-card">
-        <h3>Configuration</h3>
-        <p>CodeFactory is configured through environment variables and the dashboard settings page.</p>
-      </a>
+  <div class="flex gap-3 rounded-lg border border-blue-500/20 bg-blue-900/20 p-4">
+    <svg class="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM9 9a1 1 0 0 0 0 2v3a1 1 0 0 0 1 1h1a1 1 0 1 0 0-2v-3a1 1 0 0 0-1-1H9z"></path></svg>
+    <p class="text-sm leading-relaxed text-blue-100/80">
+      CodeFactory runs entirely on your machine. Your code never leaves your environment. Get started in under 2 minutes with our
+      <a class="text-blue-400 hover:underline" href="./getting-started.html">quickstart guide</a>.
+    </p>
+  </div>
+</header>
 
-      <a href="./pr-babysitter.html" class="doc-card">
-        <h3>PR Babysitter</h3>
-        <p>The PR Babysitter is CodeFactory's core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.</p>
-      </a>
+<section class="mb-16">
+  <h2 class="mb-4 text-2xl font-bold text-white">Get Started</h2>
+  <p class="mb-6 text-gray-400">Everything you need to set up CodeFactory and start automating your PR workflow.</p>
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="./getting-started.html">
+  <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  </div>
+  <h3 class="mb-2 text-lg font-semibold text-white">Quickstart</h3>
+  <p class="text-sm leading-relaxed text-gray-400">Install CodeFactory, connect a repository, and let the agents handle your first PR in minutes.</p>
+</a>
+<a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="./configuration.html">
+  <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  </div>
+  <h3 class="mb-2 text-lg font-semibold text-white">Configuration</h3>
+  <p class="text-sm leading-relaxed text-gray-400">Environment variables, storage options, database setup, and activity logging.</p>
+</a>
+<a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="./pr-babysitter.html">
+  <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  </div>
+  <h3 class="mb-2 text-lg font-semibold text-white">PR Babysitter</h3>
+  <p class="text-sm leading-relaxed text-gray-400">Autonomous monitoring, review sync, and feedback triage for your pull requests.</p>
+</a>
+<a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="./agent-dispatch.html">
+  <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+  </div>
+  <h3 class="mb-2 text-lg font-semibold text-white">Agent Dispatch</h3>
+  <p class="text-sm leading-relaxed text-gray-400">How CodeFactory dispatches Claude Code and OpenAI Codex agents in isolated worktrees.</p>
+</a>
+  </div>
+</section>
 
-      <a href="./pr-questions.html" class="doc-card">
-        <h3>PR Q&A</h3>
-        <p>CodeFactory includes a built-in PR question-answering system that lets you interrogate your pull requests using natural language.</p>
-      </a>
+<section class="mb-16">
+  <h2 class="mb-4 text-2xl font-bold text-white">Installation</h2>
+  <div class="overflow-hidden rounded-xl border border-dark-700 bg-dark-800">
+    <div class="flex items-center gap-2 border-b border-dark-700 bg-dark-800 px-4 py-2">
+      <div class="flex gap-1.5">
+        <div class="h-3 w-3 rounded-full bg-dark-700"></div>
+        <div class="h-3 w-3 rounded-full bg-dark-700"></div>
+        <div class="h-3 w-3 rounded-full bg-dark-700"></div>
+      </div>
     </div>
-  
-      </article>
+    <div class="overflow-x-auto p-6">
+      <pre class="font-mono text-sm leading-relaxed text-gray-300"><code><span class="text-gray-500"># Clone and install</span>
+<span class="text-white">git clone https://github.com/yungookim/oh-my-pr.git</span>
+<span class="text-white">cd codefactory</span>
+<span class="text-white">npm install</span>
+
+<span class="text-gray-500"># Start the dashboard</span>
+<span class="text-white">npm run dev</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mb-16">
+  <h2 class="mb-4 text-2xl font-bold text-white">How It Works</h2>
+  <p class="mb-8 text-gray-400">CodeFactory follows a six-step autonomous workflow to handle PR feedback end-to-end.</p>
+  <div class="space-y-0">
+    <div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">1.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Watch Repositories</h3>
+        <p class="text-gray-400">Add any GitHub repository. CodeFactory polls for open PRs and new review activity.</p>
+      </div>
+    </div>
+<div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">2.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Sync Reviews</h3>
+        <p class="text-gray-400">Review comments, inline feedback, and threaded conversations are captured and stored locally.</p>
+      </div>
+    </div>
+<div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">3.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Triage Feedback</h3>
+        <p class="text-gray-400">Feedback is classified into blocking, suggestions, and nitpicks for prioritized action.</p>
+      </div>
+    </div>
+<div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">4.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Dispatch Agents</h3>
+        <p class="text-gray-400">Local AI agents work in isolated git worktrees to fix issues without touching your active checkout.</p>
+      </div>
+    </div>
+<div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">5.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Resolve Conflicts</h3>
+        <p class="text-gray-400">Automated merge handling keeps agent branches clean before fixes are pushed back upstream.</p>
+      </div>
+    </div>
+<div class="flex gap-6 border-b border-dark-700/50 py-6">
+      <div class="w-8 flex-shrink-0 text-3xl font-bold text-blue-500/50">6.</div>
+      <div>
+        <h3 class="mb-1 text-lg font-semibold text-white">Commit &amp; Push</h3>
+        <p class="text-gray-400">Validated fixes are committed and pushed back to the PR branch automatically.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mb-8">
+  <h2 class="mb-4 text-2xl font-bold text-white">Explore</h2>
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="./pr-questions.html">
+      <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-5 5v-5z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </div>
+      <h3 class="mb-2 text-lg font-semibold text-white">PR Q&amp;A</h3>
+      <p class="text-sm leading-relaxed text-gray-400">Ask natural-language questions about any pull request and get AI-powered answers.</p>
+    </a>
+
+    <a class="group block rounded-xl border border-dark-700 bg-dark-800/50 p-6 transition-colors hover:bg-dark-800" href="https://github.com/yungookim/oh-my-pr/blob/main/LOCAL_API.md" target="_blank" rel="noreferrer">
+      <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-dark-700 text-brand-400 transition-colors group-hover:text-blue-300">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+      </div>
+      <h3 class="mb-2 text-lg font-semibold text-white">API Reference</h3>
+      <p class="text-sm leading-relaxed text-gray-400">Full REST API documentation for programmatic control of CodeFactory.</p>
+    </a>
+  </div>
+</section>
+      </div>
+      <div class="pointer-events-none sticky bottom-0 left-0 right-0 mx-auto flex w-full max-w-4xl justify-end bg-gradient-to-t from-dark-900 via-dark-900 to-transparent px-6 pb-8 pt-16 sm:px-8">
+  <a class="pointer-events-auto flex w-full min-w-[220px] flex-col items-end rounded-lg bg-brand-500 px-6 py-4 text-white shadow-lg shadow-brand-500/20 transition-colors hover:bg-brand-400 sm:w-auto" href="./getting-started.html">
+    <span class="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-100">Next</span>
+    <span class="flex items-center gap-2 text-lg font-medium">
+      Quickstart Guide
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5l7 7m0 0-7 7m7-7H3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+    </span>
+  </a>
+</div>
     </main>
   </div>
 </body>

@@ -13,7 +13,7 @@ Welcome to CodeFactory — the autonomous PR babysitter that watches your reposi
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/yungookim/codefactory.git
+git clone https://github.com/yungookim/oh-my-pr.git
 cd codefactory
 npm install
 ```
