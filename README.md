@@ -71,7 +71,7 @@ npm run dev
 
 The dashboard is served on port `5001` by default. All `/api/*` routes are restricted to loopback callers.
 
-## MCP And API
+## MCP and API
 
 Code Factory exposes the same local system through REST and MCP.
 
