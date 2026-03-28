@@ -12,13 +12,13 @@ const DOCS_DIR = path.resolve(import.meta.dirname, "../docs/public");
 const ROOT_DOCS_INDEX = path.resolve(import.meta.dirname, "../docs/index.html");
 const OUT_DIR = path.join(DOCS_DIR, "_site");
 const SHARED_STYLESHEET = "styles.css";
-const REPO_URL = "https://github.com/yungookim/codefactory";
-const COMMUNITY_URL = "https://github.com/yungookim/codefactory/discussions";
-const CHANGELOG_URL = "https://github.com/yungookim/codefactory/releases";
-const ISSUES_URL = "https://github.com/yungookim/codefactory/issues";
-const API_REFERENCE_URL = "https://github.com/yungookim/codefactory/blob/main/LOCAL_API.md";
-const CONTRIBUTING_URL = "https://github.com/yungookim/codefactory/blob/main/CONTRIBUTING.md";
-const AGENT_CONFIG_URL = "https://github.com/yungookim/codefactory/blob/main/AGENTS.md";
+const REPO_URL = "https://github.com/yungookim/oh-my-pr";
+const COMMUNITY_URL = "https://github.com/yungookim/oh-my-pr/discussions";
+const CHANGELOG_URL = "https://github.com/yungookim/oh-my-pr/releases";
+const ISSUES_URL = "https://github.com/yungookim/oh-my-pr/issues";
+const API_REFERENCE_URL = "https://github.com/yungookim/oh-my-pr/blob/main/LOCAL_API.md";
+const CONTRIBUTING_URL = "https://github.com/yungookim/oh-my-pr/blob/main/CONTRIBUTING.md";
+const AGENT_CONFIG_URL = "https://github.com/yungookim/oh-my-pr/blob/main/AGENTS.md";
 
 interface DocMeta {
   slug: string;
@@ -497,7 +497,7 @@ function renderLandingPage(context: RenderContext, docs: DocMeta[]): string {
     </div>
     <div class="overflow-x-auto p-6">
       <pre class="font-mono text-sm leading-relaxed text-gray-300"><code><span class="text-gray-500"># Clone and install</span>
-<span class="text-white">git clone https://github.com/yungookim/codefactory.git</span>
+<span class="text-white">git clone https://github.com/yungookim/oh-my-pr.git</span>
 <span class="text-white">cd codefactory</span>
 <span class="text-white">npm install</span>
 

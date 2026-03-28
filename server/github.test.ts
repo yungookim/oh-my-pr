@@ -297,7 +297,7 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
             path: "server/github.ts",
             line: 331,
             created_at: "2026-03-15T11:00:00Z",
-            html_url: "https://github.com/yungookim/codefactory/pull/1#discussion_r101",
+            html_url: "https://github.com/yungookim/oh-my-pr/pull/1#discussion_r101",
             user: {
               login: "gemini-code-assist[bot]",
               type: "Bot",

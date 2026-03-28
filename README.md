@@ -6,8 +6,8 @@
   <img width="409" height="409" alt="Code Factory logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
 </p>
 
-[![npm version](https://img.shields.io/npm/v/codefactory.svg)](https://www.npmjs.com/package/codefactory)
-[![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/oh-my-pr.svg)](https://www.npmjs.com/package/oh-my-pr)
+[![CI](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
@@ -54,8 +54,8 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 ### Install From npm
 
 ```bash
-npm install -g codefactory
-codefactory
+npm install -g oh-my-pr
+oh-my-pr
 ```
 
 Open `http://localhost:5001`.
@@ -63,7 +63,7 @@ Open `http://localhost:5001`.
 ### Run From Source
 
 ```bash
-git clone https://github.com/yungookim/codefactory.git
+git clone https://github.com/yungookim/oh-my-pr.git
 cd codefactory
 npm install
 npm run dev

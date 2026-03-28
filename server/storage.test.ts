@@ -212,10 +212,10 @@ test("SqliteStorage upsertAgentRun preserves the original createdAt", async () =
   const pr = await storage.addPR({
     number: 59,
     title: "Preserve createdAt",
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     branch: "claude/typescript-data-model-k3zAW",
     author: "claude",
-    url: "https://github.com/yungookim/codefactory/pull/59",
+    url: "https://github.com/yungookim/oh-my-pr/pull/59",
     status: "watching",
     feedbackItems: [],
     accepted: 0,
