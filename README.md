@@ -32,6 +32,10 @@ This is what Code Factory is good at:
 
 Code Factory runs locally and uses the CLI coding agents that are already installed in your machine. No need to add OPEN_API_KEY or any such. Just install & have it running and let it do its thing.
 
+<p align="center">
+  <img src="docs/architecture-diagram.svg" alt="Code Factory Architecture" width="900" />
+</p>
+
 Managing PR feedback across multiple repositories is tedious. Review comments pile up, context-switching kills productivity, and small fixes sit idle for hours. Code Factory automates the entire feedback loop:
 
 - **Watch** one or more GitHub repositories for open pull requests
