@@ -1,9 +1,16 @@
 {
-  "name": "code-factory",
+  "name": "codefactory",
   "version": "1.0.0",
   "description": "Autonomous GitHub PR babysitter that watches repos, triages review feedback, and dispatches AI agents to fix code locally",
   "type": "module",
   "license": "MIT",
+  "bin": {
+    "codefactory": "bin/codefactory.cjs"
+  },
+  "files": [
+    "dist/",
+    "bin/"
+  ],
   "homepage": "https://github.com/yungookim/codefactory#readme",
   "repository": {
     "type": "git",
@@ -27,6 +34,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
+    "prepublishOnly": "npm run build",
     "build:docs": "mkdir -p docs/assets && tailwindcss -c docs/tailwind.config.cjs -i docs/src/input.css -o docs/assets/landing.css --minify",
     "build:public-docs": "tsx script/build-public-docs.ts",
     "start": "NODE_ENV=production node dist/index.cjs",

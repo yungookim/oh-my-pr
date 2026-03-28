@@ -1,12 +1,11 @@
 name: Build Tauri App
 
 on:
-  pull_request:
-    types: [closed]
+  release:
+    types: [published]
 
 jobs:
   build-tauri:
-    if: github.event.pull_request.merged == true
     strategy:
       fail-fast: false
       matrix:
@@ -68,9 +67,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ github.event.pull_request.merge_commit_sha }}
-          releaseName: "Code Factory v__VERSION__"
-          releaseBody: "Built from PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
-          releaseDraft: true
-          prerelease: false
+          tagName: ${{ github.event.release.tag_name }}
           args: --target ${{ matrix.target }}

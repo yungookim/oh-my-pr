@@ -8,6 +8,7 @@
 
 **Autonomous GitHub PR babysitter — watches your repos, triages review feedback, dispatches AI agents to fix code, and creates releases**
 
+[![npm version](https://img.shields.io/npm/v/codefactory.svg)](https://www.npmjs.com/package/codefactory)
 [![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
@@ -104,6 +105,18 @@ On startup, Code Factory restores the watcher schedule, resumes interrupted runs
 ### Install & Run
 
 ```bash
+# Install globally from npm
+npm install -g codefactory
+
+# Start the server
+codefactory
+```
+
+The server starts on port `5001` (configurable via `PORT`) and serves both the API and the dashboard.
+
+### Install from Source
+
+```bash
 # Clone the repository
 git clone https://github.com/yungookim/codefactory.git
 cd codefactory
@@ -115,9 +128,7 @@ npm install
 npm run dev
 ```
 
-The server starts on port `5001` (configurable via `PORT`) and serves both the API and the dashboard.
-
-### Production Build
+### Production Build (from source)
 
 ```bash
 npm run build    # Build the production bundle
@@ -223,6 +234,13 @@ If you get a `200` response, Code Factory is running and you can proceed to Step
 ### Step 2 — Install and start Code Factory
 
 Run these shell commands on the local machine:
+
+```bash
+npm install -g codefactory
+codefactory &
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/yungookim/codefactory.git
