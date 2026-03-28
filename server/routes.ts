@@ -34,8 +34,7 @@ export async function registerRoutes(
       findLatestSemverReleaseTag: getLatestSemverTagForRepo,
       bumpReleaseTag: resolveNextSemverTag,
       listMergedPullsForReleaseCandidate: async (octokit, repo, options) => {
-        const client = octokit as Awaited<ReturnType<typeof buildOctokit>>;
-        const merged = await listUnreleasedMergedPulls(client, repo, {
+        const merged = await listUnreleasedMergedPulls(octokit, repo, {
           baseRef: options.baseBranch,
         });
         const cutoffMs = Date.parse(options.untilMergedAt);
@@ -53,8 +52,7 @@ export async function registerRoutes(
           }));
       },
       findReleaseByTag: async (octokit, repo, tagName) => {
-        const client = octokit as Awaited<ReturnType<typeof buildOctokit>>;
-        const releases = await listReleasesForRepo(client, repo);
+        const releases = await listReleasesForRepo(octokit, repo);
         const existing = releases.find((release) => !release.draft && release.tagName === tagName);
         if (!existing) {
           return null;
@@ -68,8 +66,7 @@ export async function registerRoutes(
         };
       },
       createGitHubRelease: async (octokit, repo, params) => {
-        const client = octokit as Awaited<ReturnType<typeof buildOctokit>>;
-        const created = await createGitHubRelease(client, repo, {
+        const created = await createGitHubRelease(octokit, repo, {
           tagName: params.tagName,
           targetCommitish: params.targetCommitish,
           name: params.name,

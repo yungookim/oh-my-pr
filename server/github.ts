@@ -606,6 +606,7 @@ export async function fetchPullSummary(
   );
 
   const pull = response.data;
+  const baseRef = pull.base?.ref || pull.base?.repo?.default_branch || "";
 
   return {
     number: pull.number,
@@ -619,7 +620,7 @@ export async function fetchPullSummary(
     headRef: pull.head?.ref || "",
     headRepoFullName: pull.head?.repo?.full_name || `${parsed.owner}/${parsed.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${parsed.owner}/${parsed.repo}.git`,
-    baseRef: pull.base?.ref || "main",
+    baseRef,
     mergeable: typeof pull.mergeable === "boolean" ? pull.mergeable : null,
   };
 }
@@ -637,13 +638,14 @@ export async function fetchPullCloseState(
   );
 
   const pull = response.data;
+  const baseRef = pull.base?.ref || pull.base?.repo?.default_branch || "";
 
   return {
     number: pull.number,
     title: pull.title || `PR #${pull.number}`,
     url: pull.html_url || `https://github.com/${parsed.owner}/${parsed.repo}/pull/${pull.number}`,
     author: pull.user?.login || "unknown",
-    baseRef: pull.base?.ref || "main",
+    baseRef,
     headRef: pull.head?.ref || "",
     headSha: pull.head?.sha || "",
     merged: Boolean(pull.merged_at),
@@ -725,6 +727,25 @@ function parseDateMs(value: string | null | undefined): number | null {
   if (!value) return null;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+async function getDefaultBranchForRepo(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+): Promise<string> {
+  const response = await withGitHubErrorHandling("repository metadata", repo, () =>
+    octokit.repos.get({
+      owner: repo.owner,
+      repo: repo.repo,
+    }),
+  );
+
+  const defaultBranch = response.data.default_branch?.trim();
+  if (!defaultBranch) {
+    throw new GitHubIntegrationError(`GitHub did not return a default branch for ${formatRepoSlug(repo)}`, 502);
+  }
+
+  return defaultBranch;
 }
 
 export async function listReleasesForRepo(
@@ -1237,7 +1258,7 @@ export async function listOpenPullsForRepo(
     headRef: pull.head?.ref || "",
     headRepoFullName: pull.head?.repo?.full_name || `${repo.owner}/${repo.repo}`,
     headRepoCloneUrl: pull.head?.repo?.clone_url || `https://github.com/${repo.owner}/${repo.repo}.git`,
-    baseRef: pull.base?.ref || "main",
+    baseRef: pull.base?.ref || pull.base?.repo?.default_branch || "",
     mergeable: null,
   }));
 }
@@ -1503,7 +1524,7 @@ export async function listMergedPullsSince(
     sinceMergeCommitSha?: string | null;
   },
 ): Promise<MergedPRSummary[]> {
-  const baseRef = options?.baseRef ?? "main";
+  const baseRef = options?.baseRef?.trim() || await getDefaultBranchForRepo(octokit, repo);
   const sinceMergedAtMs = parseDateMs(options?.sinceMergedAt);
   const sinceMergeCommitSha = options?.sinceMergeCommitSha?.trim() || null;
 
@@ -1548,7 +1569,7 @@ export async function listUnreleasedMergedPulls(
   },
 ): Promise<MergedPRSummary[]> {
   let boundaryMergedAt = options?.sinceMergedAt ?? null;
-  let boundaryMergeCommitSha = options?.sinceMergeCommitSha ?? null;
+  const boundaryMergeCommitSha = options?.sinceMergeCommitSha ?? null;
 
   if (!boundaryMergedAt && !boundaryMergeCommitSha) {
     const releases = await listReleasesForRepo(octokit, repo);
@@ -1573,9 +1594,15 @@ export async function listUnreleasedMergedPulls(
 export async function listMergedPullsToday(
   octokit: Octokit,
   repo: ParsedRepoSlug,
-  baseRef = "main",
+  baseRef?: string,
 ): Promise<MergedPRSummary[]> {
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const pulls = await listMergedPullsSince(octokit, repo, { baseRef });
+  const pulls = await listMergedPullsSince(
+    octokit,
+    repo,
+    baseRef
+      ? { baseRef }
+      : undefined,
+  );
   return pulls.filter((pull) => pull.mergedAt.startsWith(today));
 }

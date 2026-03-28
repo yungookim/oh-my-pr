@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Octokit } from "@octokit/rest";
 import { MemStorage } from "./memoryStorage";
 import { ReleaseManager, type ReleaseGitHubService } from "./releaseManager";
 import type { Config } from "@shared/schema";
@@ -46,7 +47,7 @@ function makeMergedSummary(overrides: Partial<ReleaseAgentPullSummary> = {}): Re
 
 function makeGitHubService(overrides: Partial<ReleaseGitHubService> = {}): ReleaseGitHubService {
   return {
-    buildOctokit: async () => ({}),
+    buildOctokit: async () => ({}) as Octokit,
     findLatestSemverReleaseTag: async () => "v1.2.3",
     bumpReleaseTag: (latestTag, bump) => {
       if (latestTag !== "v1.2.3") {

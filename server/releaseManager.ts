@@ -1,3 +1,4 @@
+import type { Octokit } from "@octokit/rest";
 import type { Config, ReleaseRun, ReleaseRunIncludedPR } from "@shared/schema";
 import type { CodingAgent } from "./agentRunner";
 import { parseRepoSlug } from "./github";
@@ -22,11 +23,11 @@ type PublishedRelease = {
 };
 
 export type ReleaseGitHubService = {
-  buildOctokit(config: Config): Promise<unknown>;
-  findLatestSemverReleaseTag(octokit: unknown, repo: ReleaseRepo): Promise<string | null>;
+  buildOctokit(config: Config): Promise<Octokit>;
+  findLatestSemverReleaseTag(octokit: Octokit, repo: ReleaseRepo): Promise<string | null>;
   bumpReleaseTag(latestTag: string | null, bump: ReleaseBump): string;
   listMergedPullsForReleaseCandidate?(
-    octokit: unknown,
+    octokit: Octokit,
     repo: ReleaseRepo,
     options: {
       baseBranch: string;
@@ -34,9 +35,9 @@ export type ReleaseGitHubService = {
       triggerPr: ReleaseAgentPullSummary;
     },
   ): Promise<ReleaseAgentPullSummary[]>;
-  findReleaseByTag?(octokit: unknown, repo: ReleaseRepo, tagName: string): Promise<PublishedRelease | null>;
+  findReleaseByTag?(octokit: Octokit, repo: ReleaseRepo, tagName: string): Promise<PublishedRelease | null>;
   createGitHubRelease(
-    octokit: unknown,
+    octokit: Octokit,
     repo: ReleaseRepo,
     params: {
       tagName: string;
@@ -283,7 +284,7 @@ export class ReleaseManager {
   }
 
   private async loadIncludedPulls(
-    octokit: unknown,
+    octokit: Octokit,
     repo: ReleaseRepo,
     run: ReleaseRun,
     triggerPr: ReleaseAgentPullSummary,

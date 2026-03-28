@@ -8,6 +8,7 @@ import {
   createGitHubRelease,
   fetchFeedbackItemsForPR,
   fetchPullCloseState,
+  fetchPullSummary,
   formatRepoSlug,
   getLatestSemverTagForRepo,
   listMergedPullsSince,
@@ -843,6 +844,77 @@ test("fetchPullCloseState returns merged close metadata", async () => {
     closedAt: "2026-03-28T10:01:00Z",
     mergeCommitSha: "merge123",
   });
+});
+
+test("fetchPullSummary falls back to the repo default branch when the base ref is missing", async () => {
+  const octokit = {
+    pulls: {
+      get: async () => ({
+        data: {
+          number: 124,
+          title: "Prepare release branch handling",
+          html_url: "https://github.com/octo/example/pull/124",
+          user: { login: "alice" },
+          base: {
+            ref: null,
+            repo: {
+              full_name: "octo/example",
+              clone_url: "https://github.com/octo/example.git",
+              default_branch: "develop",
+            },
+          },
+          head: {
+            ref: "feature/releases",
+            sha: "head124",
+            repo: {
+              full_name: "octo/example",
+              clone_url: "https://github.com/octo/example.git",
+            },
+          },
+          mergeable: true,
+        },
+      }),
+    },
+  };
+
+  const summary = await fetchPullSummary(
+    octokit as never,
+    { owner: "octo", repo: "example", number: 124 },
+  );
+
+  assert.equal(summary.baseRef, "develop");
+});
+
+test("fetchPullCloseState falls back to the repo default branch when the base ref is missing", async () => {
+  const octokit = {
+    pulls: {
+      get: async () => ({
+        data: {
+          number: 125,
+          title: "Prepare release branch handling",
+          html_url: "https://github.com/octo/example/pull/125",
+          user: { login: "alice" },
+          base: {
+            ref: null,
+            repo: {
+              default_branch: "develop",
+            },
+          },
+          head: { ref: "feature/releases", sha: "head125" },
+          merged_at: "2026-03-28T10:00:00Z",
+          closed_at: "2026-03-28T10:01:00Z",
+          merge_commit_sha: "merge125",
+        },
+      }),
+    },
+  };
+
+  const state = await fetchPullCloseState(
+    octokit as never,
+    { owner: "octo", repo: "example", number: 125 },
+  );
+
+  assert.equal(state.baseRef, "develop");
 });
 
 test("selectLatestSemverTag picks highest semver and ignores non-semver tags", () => {

@@ -486,6 +486,68 @@ test("syncAndBabysitTrackedRepos respects autoCreateReleases when a merged PR is
   assert.equal(queued.length, 0);
 });
 
+test("syncAndBabysitTrackedRepos skips release evaluation when merged PR metadata is incomplete", async () => {
+  const storage = new MemStorage();
+  const queued: Array<Record<string, string | number>> = [];
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Example PR",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchPullCloseState: async () => ({
+        number: 42,
+        title: "Example PR",
+        url: "https://github.com/octo/example/pull/42",
+        author: "octocat",
+        baseRef: "",
+        headRef: "feature/example",
+        headSha: "",
+        merged: true,
+        mergedAt: null,
+        closedAt: null,
+        mergeCommitSha: null,
+      }),
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    {
+      enqueueMergedPullReleaseEvaluation: async (input) => {
+        queued.push(input as Record<string, string | number>);
+      },
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(queued.length, 0);
+  assert.ok(logs.some((log) => log.message.includes("release evaluation was not queued because GitHub did not return")));
+  assert.ok(logs.some((log) => log.message.includes("base branch")));
+  assert.ok(logs.some((log) => log.message.includes("merge SHA")));
+  assert.ok(logs.some((log) => log.message.includes("merge timestamp")));
+});
+
 test("babysitPR skips new runs while drain mode is enabled", async () => {
   const storage = new MemStorage();
   const pr = await storage.addPR({

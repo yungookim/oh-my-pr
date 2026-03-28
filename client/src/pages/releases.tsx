@@ -5,9 +5,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
 import type { ReleaseRun } from "@shared/schema";
 
-type ReleaseRunStatus = ReleaseRun["status"] | string;
+type ReleaseRunStatus = ReleaseRun["status"];
 
-const ACTIVE_RELEASE_STATUSES = new Set<ReleaseRunStatus>([
+const ACTIVE_RELEASE_STATUSES = new Set<ReleaseRun["status"]>([
   "detected",
   "evaluating",
   "proposed",
@@ -16,6 +16,10 @@ const ACTIVE_RELEASE_STATUSES = new Set<ReleaseRunStatus>([
 
 function isActiveStatus(status: ReleaseRunStatus): boolean {
   return ACTIVE_RELEASE_STATUSES.has(status);
+}
+
+function isTerminalStatus(status: ReleaseRunStatus): boolean {
+  return status === "published" || status === "skipped" || status === "error";
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -62,8 +66,9 @@ function CopyButton({ text }: { text: string }) {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // no-op
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Clipboard write failed";
+      toast({ variant: "destructive", description: `Failed to copy: ${message}` });
     }
   };
 
@@ -89,10 +94,14 @@ function ReleaseRunCard({
   const [expanded, setExpanded] = useState(false);
   const hasDetails =
     Boolean(run.decisionReason) ||
+    Boolean(run.releaseTitle) ||
     Boolean(run.releaseNotes) ||
     Boolean(run.error) ||
     Boolean(run.githubReleaseUrl) ||
     run.includedPrs.length > 0;
+  const shouldShowEmptyDetails =
+    !hasDetails
+    && isTerminalStatus(run.status);
 
   return (
     <div className="border border-border">
@@ -125,7 +134,7 @@ function ReleaseRunCard({
         <div className="border-t border-border px-4 pb-4 pt-3">
           <div className="mb-3 text-[12px] text-muted-foreground">
             Trigger PR:{" "}
-            <a href={run.triggerPrUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+            <a href={run.triggerPrUrl} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">
               #{run.triggerPrNumber} {run.triggerPrTitle}
             </a>
           </div>
@@ -142,7 +151,7 @@ function ReleaseRunCard({
           )}
 
           <div className="mb-3 grid grid-cols-1 gap-2 text-[12px] text-muted-foreground md:grid-cols-2">
-            <div>Base branch: {run.baseBranch || "main"}</div>
+            <div>Base branch: {run.baseBranch || "n/a"}</div>
             <div>Trigger SHA: {shortSha(run.triggerMergeSha)}</div>
             <div>Merged at: {formatDateTime(run.triggerMergedAt)}</div>
             <div>Updated: {formatDateTime(run.updatedAt)}</div>
@@ -159,7 +168,7 @@ function ReleaseRunCard({
                     <span className="truncate">
                       #{pr.number} {pr.title}
                     </span>
-                    <a href={pr.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
+                    <a href={pr.url} target="_blank" rel="noreferrer noopener" className="text-muted-foreground hover:text-foreground">
                       open
                     </a>
                   </div>
@@ -191,7 +200,7 @@ function ReleaseRunCard({
               <a
                 href={run.githubReleaseUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noreferrer noopener"
                 className="border border-border px-2 py-1 text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
               >
                 open release
@@ -208,7 +217,7 @@ function ReleaseRunCard({
             )}
           </div>
 
-          {!hasDetails && (
+          {shouldShowEmptyDetails && (
             <p className="mt-2 text-[12px] text-muted-foreground">No details available yet.</p>
           )}
         </div>
@@ -220,10 +229,7 @@ function ReleaseRunCard({
 export default function Releases() {
   const { data: releases = [], isLoading } = useQuery<ReleaseRun[]>({
     queryKey: ["/api/releases"],
-    refetchInterval: (query) => {
-      const data = query.state.data as ReleaseRun[] | undefined;
-      return data?.some((run) => isActiveStatus(run.status)) ? 5000 : false;
-    },
+    refetchInterval: () => (releases.some((run) => isActiveStatus(run.status)) ? 5000 : false),
   });
 
   const retryMutation = useMutation({
