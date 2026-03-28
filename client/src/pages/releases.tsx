@@ -22,6 +22,10 @@ function isTerminalStatus(status: ReleaseRunStatus): boolean {
   return status === "published" || status === "skipped" || status === "error";
 }
 
+function hasReleaseRunStatus(value: unknown): value is { status: ReleaseRunStatus } {
+  return typeof value === "object" && value !== null && "status" in value && typeof value.status === "string";
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "n/a";
   const date = new Date(value);
