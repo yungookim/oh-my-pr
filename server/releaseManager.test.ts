@@ -25,7 +25,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 function makePublishedRelease(tagName = "v1.3.0") {
   return {
     id: 123,
-    url: `https://github.com/yungookim/codefactory/releases/tag/${tagName}`,
+    url: `https://github.com/yungookim/oh-my-pr/releases/tag/${tagName}`,
     tagName,
     name: tagName,
   };
@@ -35,9 +35,9 @@ function makeMergedSummary(overrides: Partial<ReleaseAgentPullSummary> = {}): Re
   return {
     number: 71,
     title: "Release automation",
-    url: "https://github.com/yungookim/codefactory/pull/71",
+    url: "https://github.com/yungookim/oh-my-pr/pull/71",
     author: "octocat",
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     mergedAt: "2026-03-28T15:00:00.000Z",
     mergeSha: "abc123",
     ...overrides,
@@ -95,11 +95,11 @@ test("ReleaseManager publishes a release for a positive agent decision", async (
   });
 
   const created = await manager.enqueueMergedPullReleaseEvaluation({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     triggerPrNumber: 71,
     triggerPrTitle: "Release automation",
-    triggerPrUrl: "https://github.com/yungookim/codefactory/pull/71",
+    triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/71",
     triggerMergeSha: "abc123",
     triggerMergedAt: "2026-03-28T15:00:00.000Z",
   });
@@ -111,7 +111,7 @@ test("ReleaseManager publishes a release for a positive agent decision", async (
   assert.equal(stored.status, "published");
   assert.equal(stored.recommendedBump, "minor");
   assert.equal(stored.proposedVersion, "v1.3.0");
-  assert.equal(stored.githubReleaseUrl, "https://github.com/yungookim/codefactory/releases/tag/v1.3.0");
+  assert.equal(stored.githubReleaseUrl, "https://github.com/yungookim/oh-my-pr/releases/tag/v1.3.0");
   assert.equal(stored.includedPrs.length, 2);
   assert.equal(createCalls, 1);
 });
@@ -138,11 +138,11 @@ test("ReleaseManager marks runs skipped when the agent rejects release creation"
   });
 
   const created = await manager.enqueueMergedPullReleaseEvaluation({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     triggerPrNumber: 72,
     triggerPrTitle: "Refactor internals",
-    triggerPrUrl: "https://github.com/yungookim/codefactory/pull/72",
+    triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/72",
     triggerMergeSha: "skip123",
     triggerMergedAt: "2026-03-28T16:00:00.000Z",
   });
@@ -176,20 +176,20 @@ test("ReleaseManager deduplicates runs for the same repo and merge sha", async (
   });
 
   const first = await manager.enqueueMergedPullReleaseEvaluation({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     triggerPrNumber: 73,
     triggerPrTitle: "Bug fix",
-    triggerPrUrl: "https://github.com/yungookim/codefactory/pull/73",
+    triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/73",
     triggerMergeSha: "same-sha",
     triggerMergedAt: "2026-03-28T17:00:00.000Z",
   });
   const second = await manager.enqueueMergedPullReleaseEvaluation({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     triggerPrNumber: 73,
     triggerPrTitle: "Bug fix",
-    triggerPrUrl: "https://github.com/yungookim/codefactory/pull/73",
+    triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/73",
     triggerMergeSha: "same-sha",
     triggerMergedAt: "2026-03-28T17:00:00.000Z",
   });
@@ -227,11 +227,11 @@ test("ReleaseManager can retry a failed run", async () => {
   });
 
   const created = await manager.enqueueMergedPullReleaseEvaluation({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     triggerPrNumber: 74,
     triggerPrTitle: "Retryable release",
-    triggerPrUrl: "https://github.com/yungookim/codefactory/pull/74",
+    triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/74",
     triggerMergeSha: "retry-sha",
     triggerMergedAt: "2026-03-28T18:00:00.000Z",
   });

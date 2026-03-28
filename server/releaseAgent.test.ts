@@ -61,15 +61,15 @@ test("parseReleaseDecisionOutput rejects release decisions with invalid bumps", 
 
 test("buildReleaseDecisionPrompt includes trigger and included PR context", () => {
   const prompt = buildReleaseDecisionPrompt({
-    repo: "yungookim/codefactory",
+    repo: "yungookim/oh-my-pr",
     baseBranch: "main",
     latestTag: "v1.2.3",
     triggerPr: {
       number: 71,
       title: "Add release automation",
-      url: "https://github.com/yungookim/codefactory/pull/71",
+      url: "https://github.com/yungookim/oh-my-pr/pull/71",
       author: "octocat",
-      repo: "yungookim/codefactory",
+      repo: "yungookim/oh-my-pr",
       mergedAt: "2026-03-28T15:00:00.000Z",
       mergeSha: "abc123",
     },
@@ -77,9 +77,9 @@ test("buildReleaseDecisionPrompt includes trigger and included PR context", () =
       {
         number: 70,
         title: "Improve changelog generation",
-        url: "https://github.com/yungookim/codefactory/pull/70",
+        url: "https://github.com/yungookim/oh-my-pr/pull/70",
         author: "octocat",
-        repo: "yungookim/codefactory",
+        repo: "yungookim/oh-my-pr",
         mergedAt: "2026-03-28T14:00:00.000Z",
         mergeSha: "def456",
       },
