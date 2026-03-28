@@ -205,3 +205,12 @@
   - Compare both the root docs entry page and any generated docs pages against the provided reference before editing.
   - Move shared docs layout into the generator or a shared template so the reference style cannot drift between pages.
   - Rebuild generated docs after the template change and inspect at least one root page and one generated page for matching shell structure.
+
+## 2026-03-28 - Preserve useful visuals when tightening docs
+- Pattern: I made the README more concise by removing visual elements the user still wanted to keep, then had to restore them.
+- Rule: When simplifying documentation, keep helpful images and diagrams unless the user explicitly asks to remove them.
+- Prevention checklist:
+  - Separate content trimming from visual trimming before rewriting a docs page.
+  - Inventory existing images and diagrams and decide which are essential before deleting them.
+  - If the goal is "more concise," default to shortening copy first and preserving high-signal visuals.
+  - Call out any planned visual removals in the execution update when they are not explicitly requested.

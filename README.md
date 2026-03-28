@@ -2,6 +2,10 @@
 
 **Local-first GitHub PR babysitter for Codex and Claude.**
 
+<p align="center">
+  <img width="409" height="409" alt="Code Factory logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+</p>
+
 [![npm version](https://img.shields.io/npm/v/codefactory.svg)](https://www.npmjs.com/package/codefactory)
 [![CI](https://github.com/yungookim/codefactory/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/codefactory/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -11,6 +15,8 @@
 Code Factory watches GitHub repositories, syncs PR feedback, triages what matters, and dispatches locally installed coding agents inside isolated app-owned worktrees. It keeps durable state in `~/.codefactory` and exposes the same system through a dashboard, REST API, and MCP server.
 
 No hosted service. No agent edits inside your working copy. Your PR automation stays on your machine.
+
+<img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
 ## Features
 
@@ -28,6 +34,8 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 - Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.
 
 ## How It Works
+
+<img width="969" height="572" alt="Code Factory workflow" src="https://github.com/user-attachments/assets/b9dbd102-ae2e-4837-a862-a0282bdfa0b8" />
 
 1. Add a repository to the watch list or register a PR directly by URL.
 2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, and queues babysitter runs.
