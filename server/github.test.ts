@@ -1175,6 +1175,40 @@ test("listMergedPullsSince applies timestamp and merge-sha boundaries", async ()
   assert.equal(merged[0]?.mergeCommitSha, "sha-30");
 });
 
+test("listMergedPullsSince uses the repository default branch when none is provided", async () => {
+  const listPulls = Symbol("listPulls");
+  let repoLookups = 0;
+
+  const octokit = {
+    paginate: async (method: symbol, params: { base: string }) => {
+      assert.equal(method, listPulls);
+      assert.equal(params.base, "develop");
+      return [];
+    },
+    pulls: {
+      list: listPulls,
+    },
+    repos: {
+      get: async () => {
+        repoLookups += 1;
+        return {
+          data: {
+            default_branch: "develop",
+          },
+        };
+      },
+    },
+  };
+
+  const merged = await listMergedPullsSince(
+    octokit as never,
+    { owner: "octo", repo: "example" },
+  );
+
+  assert.deepEqual(merged, []);
+  assert.equal(repoLookups, 1);
+});
+
 test("listUnreleasedMergedPulls uses latest published release when no explicit boundary is provided", async () => {
   const listReleases = Symbol("listReleases");
   const listPulls = Symbol("listPulls");
@@ -1225,6 +1259,11 @@ test("listUnreleasedMergedPulls uses latest published release when no explicit b
       throw new Error("unexpected paginate method");
     },
     repos: {
+      get: async () => ({
+        data: {
+          default_branch: "develop",
+        },
+      }),
       listReleases,
     },
     pulls: {

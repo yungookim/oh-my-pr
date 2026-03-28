@@ -229,7 +229,12 @@ function ReleaseRunCard({
 export default function Releases() {
   const { data: releases = [], isLoading } = useQuery<ReleaseRun[]>({
     queryKey: ["/api/releases"],
-    refetchInterval: () => (releases.some((run) => isActiveStatus(run.status)) ? 5000 : false),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return Array.isArray(data) && data.some((run) => hasReleaseRunStatus(run) && isActiveStatus(run.status))
+        ? 5000
+        : false;
+    },
   });
 
   const retryMutation = useMutation({

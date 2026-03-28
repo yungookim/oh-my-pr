@@ -544,7 +544,7 @@ test("syncAndBabysitTrackedRepos skips release evaluation when merged PR metadat
   assert.equal(queued.length, 0);
   assert.ok(logs.some((log) => log.message.includes("release evaluation was not queued because GitHub did not return")));
   assert.ok(logs.some((log) => log.message.includes("base branch")));
-  assert.ok(logs.some((log) => log.message.includes("merge SHA")));
+  assert.ok(logs.some((log) => log.message.includes("commit SHA")));
   assert.ok(logs.some((log) => log.message.includes("merge timestamp")));
 });
 

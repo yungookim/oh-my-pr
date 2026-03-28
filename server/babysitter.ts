@@ -816,19 +816,19 @@ export class PRBabysitter {
           });
 
           if (closeState?.merged && this.releaseManager && config.autoCreateReleases) {
-            const baseBranch = closeState.baseRef;
+            const baseBranch = closeState.baseRef.trim();
             const triggerMergeSha = closeState.mergeCommitSha || closeState.headSha;
             const triggerMergedAt = closeState.mergedAt || closeState.closedAt;
             if (!baseBranch || !triggerMergeSha || !triggerMergedAt) {
               const missingReleaseMetadata = [
-                !baseBranch ? "base branch" : null,
-                !triggerMergeSha ? "merge SHA" : null,
-                !triggerMergedAt ? "merge timestamp" : null,
+                !baseBranch ? "a base branch" : null,
+                !triggerMergeSha ? "a commit SHA" : null,
+                !triggerMergedAt ? "a merge timestamp" : null,
               ].filter((value): value is string => Boolean(value));
               await this.storage.addLog(
                 pr.id,
                 "warn",
-                `PR #${pr.number} was merged, but release evaluation was not queued because GitHub did not return: ${missingReleaseMetadata.join(", ")}`,
+                `PR #${pr.number} was merged, but release evaluation was not queued because GitHub did not return ${missingReleaseMetadata.join(" and ")}.`,
                 {
                   phase: "watcher",
                   metadata: {
