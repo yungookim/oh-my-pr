@@ -94,37 +94,36 @@ On startup, Code Factory restores the watcher schedule, resumes interrupted runs
 
 ## Quick Start
 
+```bash
+npm install -g oh-my-pr
+oh-my-pr
+```
+
+That's it. The dashboard opens in your browser at `http://localhost:5001`.
+
 ### Prerequisites
 
 - **Node.js 22+** (tested with Node v24.12.0)
-- **npm**
 - **git**
 - A GitHub token (via `GITHUB_TOKEN`, app config, or `gh auth login`)
 - Either `codex` or `claude` CLI installed
 
-### Install & Run
+### CLI Usage
 
-```bash
-# Install globally from npm
-npm install -g oh-my-pr
-
-# Start the server
-oh-my-pr
+```
+oh-my-pr              Start the dashboard server (opens browser)
+oh-my-pr --help       Show help message
+oh-my-pr --version    Print the version
 ```
 
-The server starts on port `5001` (configurable via `PORT`) and serves both the API and the dashboard.
+Set `PORT` to change the default port (`5001`).
 
 ### Install from Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/yungookim/oh-my-pr.git
-cd codefactory
-
-# Install dependencies
+cd oh-my-pr
 npm install
-
-# Start in development mode
 npm run dev
 ```
 

@@ -79,11 +79,17 @@ export function log(message: string, source = "express") {
       host: "0.0.0.0",
     },
     () => {
-      log(`serving on port ${port}`);
+      const url = `http://localhost:${port}`;
+      const version = process.env.APP_VERSION || "dev";
 
-      // Auto-open browser when running locally in development (skip when Tauri manages the window)
-      if (process.env.NODE_ENV !== "production" && !process.env.TAURI_DEV) {
-        const url = `http://localhost:${port}`;
+      if (process.env.NODE_ENV === "production") {
+        console.log(`\n  oh-my-pr v${version}\n  Dashboard: ${url}\n`);
+      } else {
+        log(`serving on port ${port}`);
+      }
+
+      // Auto-open browser (skip when Tauri manages the window)
+      if (!process.env.TAURI_DEV) {
         open(url).catch((err) => {
           log(`Could not open browser automatically: ${err.message}`);
         });
