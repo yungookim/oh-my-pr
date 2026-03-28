@@ -58,6 +58,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   const first = new SqliteStorage(root);
   await first.updateConfig({
     pollIntervalMs: 45000,
+    autoUpdateDocs: false,
     watchedRepos: ["alex-morgan-o/lolodex"],
   });
   await first.updateRuntimeState({
@@ -111,6 +112,12 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     rejected: 0,
     flagged: 0,
     lastChecked: "2026-03-15T07:31:00.000Z",
+    docsAssessment: {
+      headSha: "abc123",
+      status: "needed",
+      summary: "README and configuration docs should reflect the behavior change",
+      assessedAt: "2026-03-28T12:00:00.000Z",
+    },
   });
   await first.addLog(pr.id, "info", "Agent started", {
     runId: "run-1",
@@ -142,6 +149,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   const logs = await second.getLogs(pr.id);
 
   assert.equal(config.pollIntervalMs, 45000);
+  assert.equal(config.autoUpdateDocs, false);
   assert.deepEqual(config.watchedRepos, ["alex-morgan-o/lolodex"]);
   assert.equal(runtime.drainMode, true);
   assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
@@ -153,6 +161,9 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(reloadedPr?.feedbackItems[0]?.threadId, "PRRT_kwDO_thread");
   assert.equal(reloadedPr?.feedbackItems[0]?.auditToken, "codefactory-feedback:feedback-1");
   assert.equal(reloadedPr?.accepted, 1);
+  assert.equal(reloadedPr?.docsAssessment?.headSha, "abc123");
+  assert.equal(reloadedPr?.docsAssessment?.status, "needed");
+  assert.match(reloadedPr?.docsAssessment?.summary || "", /README/);
   assert.equal(reloadedPr?.feedbackItems[0]?.status, "resolved");
   assert.equal(reloadedPr?.feedbackItems[0]?.statusReason, "GitHub audit trail verified");
   assert.equal(run?.status, "running");
@@ -174,6 +185,7 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
   try {
     await storage.updateConfig({
       githubToken: "tok_123",
+      autoUpdateDocs: false,
       watchedRepos: ["alex-morgan-o/lolodex"],
       trustedReviewers: ["octocat"],
       ignoredBots: ["custom[bot]"],

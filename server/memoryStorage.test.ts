@@ -328,6 +328,7 @@ describe("MemStorage", () => {
       const config = await storage.getConfig();
       assert.equal(config.codingAgent, DEFAULT_CONFIG.codingAgent);
       assert.equal(config.maxTurns, DEFAULT_CONFIG.maxTurns);
+      assert.equal(config.autoUpdateDocs, true);
       assert.deepEqual(config.watchedRepos, []);
     });
   });

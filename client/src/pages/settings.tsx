@@ -104,6 +104,25 @@ export default function Settings() {
                 onChange={(v) => updateConfigMutation.mutate({ maxChangesPerRun: v })}
                 disabled={updateConfigMutation.isPending}
               />
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm">Auto-update docs</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Automatically assess whether tracked PRs need documentation updates.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config?.autoUpdateDocs ?? true}
+                  onChange={(e) =>
+                    updateConfigMutation.mutate({
+                      autoUpdateDocs: e.target.checked,
+                    })
+                  }
+                  disabled={updateConfigMutation.isPending}
+                  className="h-4 w-4 accent-foreground"
+                />
+              </div>
             </div>
           </section>
 

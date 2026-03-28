@@ -722,6 +722,21 @@ export default function Dashboard() {
             />
             Auto-resolve conflicts
           </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={config?.autoUpdateDocs ?? true}
+              onChange={(e) =>
+                updateConfigMutation.mutate({
+                  autoUpdateDocs: e.target.checked,
+                })
+              }
+              disabled={updateConfigMutation.isPending}
+              data-testid="checkbox-auto-update-docs"
+              className="accent-foreground"
+            />
+            Auto-update docs
+          </label>
           <Link
             href="/settings"
             className="border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"

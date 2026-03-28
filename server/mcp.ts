@@ -309,7 +309,7 @@ const TOOLS: Tool[] = [
     description:
       "Partially update Code Factory configuration. All fields are optional; only provided " +
       "fields are changed. Available fields: githubToken, codingAgent, maxTurns, " +
-      "batchWindowMs, pollIntervalMs, maxChangesPerRun, autoResolveMergeConflicts, " +
+      "batchWindowMs, pollIntervalMs, maxChangesPerRun, autoResolveMergeConflicts, autoUpdateDocs, " +
       "watchedRepos, trustedReviewers, ignoredBots.",
     inputSchema: {
       type: "object",
@@ -321,6 +321,7 @@ const TOOLS: Tool[] = [
         pollIntervalMs: { type: "number" },
         maxChangesPerRun: { type: "number" },
         autoResolveMergeConflicts: { type: "boolean" },
+        autoUpdateDocs: { type: "boolean" },
         watchedRepos: { type: "array", items: { type: "string" } },
         trustedReviewers: { type: "array", items: { type: "string" } },
         ignoredBots: { type: "array", items: { type: "string" } },

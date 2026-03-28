@@ -409,6 +409,7 @@ test("retryFeedbackItem serializes concurrent retry updates for the same PR", as
 
 test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and verifies audit trail", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem();
   const pr = await storage.addPR({
     number: 106,
@@ -532,9 +533,10 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
   assert.ok(fixRunLog);
   assert.equal(
     fixRunLog.message,
-    "Babysitter preparing fix run with 1 comment task(s), 0 status task(s), and 1 GitHub follow-up task(s) using codex",
+    "Babysitter preparing fix run with 1 comment task(s), 0 status task(s), 0 documentation task(s), and 1 GitHub follow-up task(s) using codex",
   );
   assert.equal(fixRunLog.metadata?.followUpTasks, 1);
+  assert.equal(fixRunLog.metadata?.docsTasks, 0);
   assert.deepEqual(postedFollowUps, [
     {
       id: "gh-review-comment-1",
@@ -546,7 +548,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
   assert.ok(logs.some((log) => log.phase === "github.followup" && log.message.includes("GitHub follow-up complete for gh-review-comment-1")));
   assert.ok(logs.some((log) => log.phase === "verify.github" && log.message.includes("GitHub audit trail verified")));
   assert.ok(logs.some((log) => log.phase === "run" && log.message.includes("Babysitter run complete")));
-  assert.match(receivedPrompt, /commit it and push it to origin HEAD:feature\/verbose/i);
+  assert.match(receivedPrompt, /If you changed files, commit and push to origin HEAD:feature\/verbose/i);
   assert.match(receivedPrompt, /GitHub follow-up replies and review-thread resolution will be handled by the babysitter/i);
   assert.match(receivedPrompt, /auditToken=codefactory-feedback:gh-review-comment-1/);
   assert.match(receivedPrompt, /FEEDBACK_SUMMARY_START/);
@@ -558,6 +560,7 @@ test("babysitPR uses a CODEFACTORY_HOME worktree, passes GitHub context, and ver
 
 test("babysitPR centralizes status replies, logs best-effort failures, and updates replies in parallel", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const firstItem = makeFeedbackItem();
   const secondItem = makeFeedbackItem({
     id: "gh-review-comment-2",
@@ -610,7 +613,7 @@ test("babysitPR centralizes status replies, logs best-effort failures, and updat
         sourceUrl: "https://github.com/octo/example/pull/42#discussion_r3",
         threadId: firstItem.threadId,
         threadResolved: true,
-        createdAt: "2026-03-15T10:02:00.000Z",
+        createdAt: new Date().toISOString(),
         decision: null,
         decisionReason: null,
         action: null,
@@ -625,7 +628,7 @@ test("babysitPR centralizes status replies, logs best-effort failures, and updat
         sourceUrl: "https://github.com/octo/example/pull/42#discussion_r4",
         threadId: secondItem.threadId,
         threadResolved: true,
-        createdAt: "2026-03-15T10:03:00.000Z",
+        createdAt: new Date().toISOString(),
         decision: null,
         decisionReason: null,
         action: null,
@@ -726,6 +729,7 @@ test("babysitPR centralizes status replies, logs best-effort failures, and updat
 
 test("babysitPR marks the run as error when app-owned GitHub follow-up fails", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem();
   const pr = await storage.addPR({
     number: 106,
@@ -806,6 +810,7 @@ test("babysitPR marks the run as error when app-owned GitHub follow-up fails", a
 
 test("babysitPR treats audit-trail replies as non-actionable follow-up comments", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const originalItem = makeFeedbackItem({
     decision: "accept",
     decisionReason: "Previously addressed",
@@ -891,6 +896,7 @@ test("babysitPR treats audit-trail replies as non-actionable follow-up comments"
 
 test("babysitPR does not auto-ignore audit-trail replies when referenced timestamps are invalid", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const originalItem = makeFeedbackItem({
     decision: "accept",
     decisionReason: "Previously addressed",
@@ -981,6 +987,7 @@ test("babysitPR does not auto-ignore audit-trail replies when referenced timesta
 
 test("babysitPR marks accepted pending items as resolved after a successful run", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem({ status: "pending", decision: null });
   const pr = await storage.addPR({
     number: 106,
@@ -1062,6 +1069,7 @@ test("babysitPR marks accepted pending items as resolved after a successful run"
 
 test("babysitPR marks claimed items as warning when audit trail verification fails but branch moved", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem({ status: "pending", decision: null });
   const pr = await storage.addPR({
     number: 106,
@@ -1124,6 +1132,7 @@ test("babysitPR marks claimed items as warning when audit trail verification fai
 
 test("babysitPR picks up manually-queued items and resolves them without re-evaluating", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const queuedItem = makeFeedbackItem({
     status: "queued",
     decision: "accept",
@@ -1312,6 +1321,7 @@ test("babysitPR does not pull rejected or resolved items into in_progress", asyn
 
 test("babysitPR skips run when no items are pending or queued", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const rejectedItem = makeFeedbackItem({ status: "rejected", decision: "reject" });
   const pr = await storage.addPR({
     number: 106,
@@ -1369,8 +1379,642 @@ test("babysitPR skips run when no items are pending or queued", async () => {
   delete process.env.CODEFACTORY_HOME;
 });
 
+test("babysitPR suppresses docs assessment and docs remediation when autoUpdateDocs is disabled", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs toggle off",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "needed",
+      summary: "README should be updated",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let evaluateCalls = 0;
+  let applyCalled = false;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+      listFailingStatuses: async () => [],
+      checkCISettled: async () => true,
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => {
+        evaluateCalls += 1;
+        return { needsFix: true, reason: "Should not run when docs automation is disabled" };
+      },
+      applyFixesWithAgent: async () => {
+        applyCalled = true;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      runCommand: makeGitRunCommand(),
+    },
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+
+  const updated = await storage.getPR(pr.id);
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(evaluateCalls, 0);
+  assert.equal(applyCalled, false);
+  assert.equal(updated?.status, "watching");
+  assert.ok(!logs.some((log) => log.phase === "evaluate.docs"));
+});
+
+test("babysitPR reuses same-SHA docsAssessment needed without reassessing", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Cached docs needed",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "needed",
+      summary: "README and configuration docs should be updated",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let evaluateCalls = 0;
+  let applyCalled = false;
+  let capturedPrompt = "";
+
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => {
+          evaluateCalls += 1;
+          return { needsFix: false, reason: "Should not reassess for same SHA" };
+        },
+        applyFixesWithAgent: async ({ prompt }) => {
+          applyCalled = true;
+          capturedPrompt = prompt;
+          const output = [
+            "DOCS_SUMMARY_START changed",
+            "Updated README and configuration docs.",
+            "DOCS_SUMMARY_END",
+          ].join("\n");
+          return { code: 0, stdout: `${output}\n`, stderr: "" };
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const logs = await storage.getLogs(pr.id);
+    assert.equal(evaluateCalls, 0);
+    assert.equal(applyCalled, true);
+    assert.match(capturedPrompt, /Approved documentation tasks:/);
+    assert.match(capturedPrompt, /README and configuration docs should be updated/);
+    assert.match(capturedPrompt, /DOCS_SUMMARY_START <changed\|no_change>/);
+    assert.ok(logs.some((log) => log.phase === "evaluate.docs" && log.message.includes("(needed)")));
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR reuses same-SHA docsAssessment not_needed and skips agent work", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Cached docs not needed",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "not_needed",
+      summary: "No docs changes required",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let evaluateCalls = 0;
+  let applyCalled = false;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+      listFailingStatuses: async () => [],
+      checkCISettled: async () => true,
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => {},
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => {},
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => {
+        evaluateCalls += 1;
+        return { needsFix: true, reason: "Should not run for not_needed same SHA" };
+      },
+      applyFixesWithAgent: async () => {
+        applyCalled = true;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      runCommand: makeGitRunCommand(),
+    },
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(evaluateCalls, 0);
+  assert.equal(applyCalled, false);
+  assert.ok(logs.some((log) => log.phase === "evaluate.docs" && log.message.includes("(not_needed)")));
+});
+
+test("babysitPR reassesses docs when the head SHA changes", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Head moved docs reassessment",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "not_needed",
+      summary: "No docs changes required for the previous head",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let evaluateCalls = 0;
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "def456" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => {
+          evaluateCalls += 1;
+          return { needsFix: false, reason: "Docs are still accurate for the new head SHA" };
+        },
+        applyFixesWithAgent: async () => {
+          throw new Error("Should not run the agent when reassessment returns not_needed");
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const updated = await storage.getPR(pr.id);
+    assert.equal(evaluateCalls, 1);
+    assert.equal(updated?.docsAssessment?.headSha, "def456");
+    assert.equal(updated?.docsAssessment?.status, "not_needed");
+    assert.match(updated?.docsAssessment?.summary || "", /new head SHA/);
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR retries docs assessment for same-SHA failed state", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Retry failed docs assessment",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "failed",
+      summary: "Previous docs evaluation timed out",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let evaluateCalls = 0;
+  let applyCalled = false;
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => {
+          evaluateCalls += 1;
+          return { needsFix: false, reason: "No docs updates required after retry" };
+        },
+        applyFixesWithAgent: async () => {
+          applyCalled = true;
+          return { code: 0, stdout: "", stderr: "" };
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const updated = await storage.getPR(pr.id);
+    assert.equal(evaluateCalls, 1);
+    assert.equal(applyCalled, false);
+    assert.equal(updated?.docsAssessment?.headSha, "abc123");
+    assert.equal(updated?.docsAssessment?.status, "not_needed");
+    assert.match(updated?.docsAssessment?.summary || "", /No docs updates required/);
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR runs agent for docs-only work when docs assessment says needed", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs-only remediation",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  let evaluateCalls = 0;
+  let applyCalled = false;
+  let capturedPrompt = "";
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => {
+          evaluateCalls += 1;
+          return { needsFix: true, reason: "README and API docs need updates" };
+        },
+        applyFixesWithAgent: async ({ prompt }) => {
+          applyCalled = true;
+          capturedPrompt = prompt;
+          const output = [
+            "DOCS_SUMMARY_START changed",
+            "Updated README and API docs.",
+            "DOCS_SUMMARY_END",
+          ].join("\n");
+          return { code: 0, stdout: `${output}\n`, stderr: "" };
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const updated = await storage.getPR(pr.id);
+    assert.equal(evaluateCalls, 1);
+    assert.equal(applyCalled, true);
+    assert.equal(updated?.docsAssessment?.status, "needed");
+    assert.match(capturedPrompt, /Approved documentation tasks:/);
+    assert.match(capturedPrompt, /README and API docs need updates/);
+    assert.match(capturedPrompt, /DOCS_SUMMARY_START <changed\|no_change>/);
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR allows docs no_change outcome after inspection", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs no-change outcome",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    docsAssessment: {
+      headSha: "abc123",
+      status: "needed",
+      summary: "README may need an update",
+      assessedAt: "2026-03-28T10:00:00.000Z",
+    },
+  });
+
+  let applyCalls = 0;
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => {
+          throw new Error("Should not reassess for same SHA");
+        },
+        applyFixesWithAgent: async () => {
+          applyCalls += 1;
+          const output = [
+            "DOCS_SUMMARY_START no_change",
+            "The existing README already explains this behavior accurately.",
+            "DOCS_SUMMARY_END",
+          ].join("\n");
+          return { code: 0, stdout: `${output}\n`, stderr: "" };
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "abc123", remoteHeadSha: "abc123" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const updated = await storage.getPR(pr.id);
+    const logs = await storage.getLogs(pr.id);
+    assert.equal(applyCalls, 1);
+    assert.equal(updated?.status, "watching");
+    assert.equal(updated?.docsAssessment?.status, "not_needed");
+    assert.equal(updated?.docsAssessment?.headSha, "abc123");
+    assert.match(updated?.docsAssessment?.summary || "", /already explains this behavior accurately/);
+    assert.ok(logs.some((log) => log.phase === "verify.docs" && log.message.includes("no_change")));
+    assert.ok(logs.some((log) => log.phase === "evaluate.docs" && log.message.includes("(not_needed)")));
+    assert.ok(logs.some((log) => log.phase === "run" && log.message.includes("no necessary fixes identified")));
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR continues comment remediation when docs assessment fails", async () => {
+  const storage = new MemStorage();
+  const existingItem = makeFeedbackItem();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs assessment failure isolation",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [existingItem],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  let feedbackFetchCount = 0;
+  let applyCalled = false;
+  const followUp = makeFeedbackItem({
+    id: "gh-review-comment-2",
+    author: "code-factory",
+    body: `Addressed in commit \`def456\` by the latest babysitter run.\n\n${existingItem.auditToken}`,
+    bodyHtml: `<p>Addressed in commit <code>def456</code> by the latest babysitter run.</p><p>${existingItem.auditToken}</p>`,
+    sourceId: "2",
+    sourceNodeId: "PRRC_kwDO_followup",
+    sourceUrl: "https://github.com/alex-morgan-o/lolodex/pull/106#discussion_r2",
+    threadId: existingItem.threadId,
+    threadResolved: true,
+    createdAt: new Date().toISOString(),
+    auditToken: "codefactory-feedback:gh-review-comment-2",
+    decision: null,
+    decisionReason: null,
+    action: null,
+    status: "pending",
+    statusReason: null,
+  });
+
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => {
+          feedbackFetchCount += 1;
+          if (feedbackFetchCount === 1) {
+            return [existingItem];
+          }
+          return [{ ...existingItem, threadResolved: true }, followUp];
+        },
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async ({ prompt }) => {
+          if (prompt.includes("requires repository documentation updates")) {
+            throw new Error("docs assessment exploded");
+          }
+          return { needsFix: true, reason: "Comment requires a code change" };
+        },
+        applyFixesWithAgent: async ({ onStdoutChunk, onStderrChunk }) => {
+          applyCalled = true;
+          const output = [
+            "FEEDBACK_SUMMARY_START codefactory-feedback:gh-review-comment-1",
+            "Applied requested rename.",
+            "FEEDBACK_SUMMARY_END",
+          ].join("\n");
+          onStdoutChunk?.(`${output}\n`);
+          onStderrChunk?.("");
+          return { code: 0, stdout: `${output}\n`, stderr: "" };
+        },
+        runCommand: makeGitRunCommand({ localHeadSha: "def456", remoteHeadSha: "def456" }),
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const updated = await storage.getPR(pr.id);
+    const logs = await storage.getLogs(pr.id);
+    assert.equal(applyCalled, true);
+    assert.equal(updated?.status, "watching");
+    assert.equal(updated?.docsAssessment?.status, "failed");
+    assert.match(updated?.docsAssessment?.summary || "", /docs assessment exploded/);
+    assert.ok(logs.some((log) => log.phase === "evaluate.docs" && log.message.includes("Documentation assessment failed")));
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
 test("babysitPR retries accepted in-progress feedback items that still need GitHub follow-up without rerunning the agent", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem({
     decision: "accept",
     decisionReason: "Already fixed in a previous run",
@@ -1708,6 +2352,7 @@ test("resumeInterruptedRuns skips prompt replay when the PR head already moved",
 
 test("babysitPR resolves lingering review threads without reposting an existing audit trail", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem({
     decision: "accept",
     decisionReason: "Already fixed in a previous run",
@@ -1821,6 +2466,7 @@ test("babysitPR resolves lingering review threads without reposting an existing 
 
 test("babysitPR reposts GitHub follow-up when an earlier audit trail used the wrong thread", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem({
     decision: "accept",
     decisionReason: "Already fixed in a previous run",
@@ -2132,6 +2778,7 @@ test("babysitPR pushes a clean base merge when GitHub mergeability is stale", as
 
 test("babysitPR skips conflict resolution when PR is mergeable", async () => {
   const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
   const existingItem = makeFeedbackItem();
   const pr = await storage.addPR({
     number: 106,
@@ -2308,7 +2955,7 @@ test("babysitPR errors when conflict resolution agent fails", async () => {
 
 test("babysitPR skips conflict resolution when autoResolveMergeConflicts is disabled", async () => {
   const storage = new MemStorage();
-  await storage.updateConfig({ autoResolveMergeConflicts: false });
+  await storage.updateConfig({ autoResolveMergeConflicts: false, autoUpdateDocs: false });
   const pr = await storage.addPR({
     number: 107,
     title: "Conflict skip PR",

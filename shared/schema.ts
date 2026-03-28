@@ -44,6 +44,17 @@ export const feedbackItemSchema = z.object({
 });
 export type FeedbackItem = z.infer<typeof feedbackItemSchema>;
 
+export const docsAssessmentStatusEnum = z.enum(["needed", "not_needed", "failed"]);
+export type DocsAssessmentStatus = z.infer<typeof docsAssessmentStatusEnum>;
+
+export const docsAssessmentSchema = z.object({
+  headSha: z.string(),
+  status: docsAssessmentStatusEnum,
+  summary: z.string(),
+  assessedAt: z.string(),
+});
+export type DocsAssessment = z.infer<typeof docsAssessmentSchema>;
+
 export const prSchema = z.object({
   id: z.string(),
   number: z.number(),
@@ -60,6 +71,7 @@ export const prSchema = z.object({
   testsPassed: z.boolean().nullable(),
   lintPassed: z.boolean().nullable(),
   lastChecked: z.string().nullable(),
+  docsAssessment: docsAssessmentSchema.nullable().optional(),
   addedAt: z.string(),
 });
 export type PR = z.infer<typeof prSchema>;
@@ -159,6 +171,7 @@ export const configSchema = z.object({
   pollIntervalMs: z.number(),
   maxChangesPerRun: z.number(),
   autoResolveMergeConflicts: z.boolean(),
+  autoUpdateDocs: z.boolean(),
   watchedRepos: z.array(z.string()),
   trustedReviewers: z.array(z.string()),
   ignoredBots: z.array(z.string()),

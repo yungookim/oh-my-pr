@@ -12,6 +12,8 @@ describe("DEFAULT_CONFIG", () => {
       "batchWindowMs",
       "pollIntervalMs",
       "maxChangesPerRun",
+      "autoResolveMergeConflicts",
+      "autoUpdateDocs",
       "watchedRepos",
       "trustedReviewers",
       "ignoredBots",
@@ -71,5 +73,9 @@ describe("DEFAULT_CONFIG", () => {
       validAgents.includes(DEFAULT_CONFIG.codingAgent),
       `codingAgent should be one of ${validAgents.join(", ")}, got ${DEFAULT_CONFIG.codingAgent}`,
     );
+  });
+
+  it("enables docs auto-update by default", () => {
+    assert.equal(DEFAULT_CONFIG.autoUpdateDocs, true);
   });
 });

@@ -207,6 +207,71 @@ function buildStatusEvaluationPrompt(params: {
   ].join("\n");
 }
 
+function truncateForPrompt(input: string, maxChars: number): string {
+  if (input.length <= maxChars) {
+    return input;
+  }
+
+  return `${input.slice(0, maxChars)}\n... (truncated)`;
+}
+
+function buildDocumentationAssessmentPrompt(params: {
+  pr: PR;
+  pullSummary: GitHubPullSummary;
+  changedFiles: string;
+  diffStat: string;
+  diffPreview: string;
+}): string {
+  const { pr, pullSummary, changedFiles, diffStat, diffPreview } = params;
+
+  return [
+    "You are deciding whether a pull request requires repository documentation updates.",
+    "Return JSON only.",
+    `Repository: ${pr.repo}`,
+    `PR: #${pr.number}`,
+    `PR title: ${pr.title}`,
+    `Base branch: ${pullSummary.baseRef}`,
+    `Head branch: ${pullSummary.headRef}`,
+    "",
+    "Changed files (git diff --name-only origin/base...HEAD):",
+    truncateForPrompt(changedFiles || "None", 4000),
+    "",
+    "Diff stat (git diff --stat origin/base...HEAD):",
+    truncateForPrompt(diffStat || "None", 4000),
+    "",
+    "Unified diff excerpt (git diff --unified=0 origin/base...HEAD):",
+    truncateForPrompt(diffPreview || "None", 12000),
+    "",
+    "Decision rule:",
+    "- needsFix=true only when docs should be updated in this PR branch.",
+    "- needsFix=false when current docs are already accurate for these changes.",
+    "- Consider README, setup docs, API docs, configuration docs, and operator docs based on repo conventions.",
+    "- reason must briefly explain what docs should change (or why no docs change is needed).",
+  ].join("\n");
+}
+
+function getCurrentHeadDocsAssessment(pr: PR, headSha: string): NonNullable<PR["docsAssessment"]> | null {
+  const assessment = pr.docsAssessment;
+  if (!assessment || assessment.headSha !== headSha) {
+    return null;
+  }
+
+  return assessment;
+}
+
+function shouldAssessDocsForHead(pr: PR, headSha: string, enabled: boolean): boolean {
+  if (!enabled) {
+    return false;
+  }
+
+  const existing = getCurrentHeadDocsAssessment(pr, headSha);
+  if (!existing) {
+    return true;
+  }
+
+  return existing.status === "failed";
+}
+
 function buildConflictResolutionPrompt(params: {
   pr: PR;
   pullSummary: GitHubPullSummary;
@@ -250,8 +315,9 @@ function buildAgentFixPrompt(params: {
   remoteName: string;
   commentTasks: FeedbackItem[];
   statusTasks: { context: string; description: string; targetUrl: string | null }[];
+  docsTaskSummary: string | null;
 }): string {
-  const { pr, pullSummary, remoteName, commentTasks, statusTasks } = params;
+  const { pr, pullSummary, remoteName, commentTasks, statusTasks, docsTaskSummary } = params;
 
   const commentSection = commentTasks.length
     ? commentTasks
@@ -276,6 +342,16 @@ function buildAgentFixPrompt(params: {
         .join("\n")
     : "None";
 
+  const docsSection = docsTaskSummary
+    ? [
+        "Documentation updates are required for this PR.",
+        `Assessment summary: ${docsTaskSummary}`,
+        "Update the appropriate repository documentation for these changes.",
+        "Choose the right docs files for this repository (for example README, docs pages, API/config/operator docs).",
+        "If, after inspection, the repository documentation is already accurate or there is no appropriate docs target, leave docs unchanged and report that using the docs summary block with `no_change`.",
+      ].join("\n")
+    : "None";
+
   return [
     `You are acting as an autonomous PR babysitter for ${pr.repo} PR #${pr.number}.`,
     `PR URL: ${pr.url}`,
@@ -297,14 +373,21 @@ function buildAgentFixPrompt(params: {
     "Approved status-check tasks:",
     statusSection,
     "",
+    "Approved documentation tasks:",
+    docsSection,
+    "",
     "When done:",
     "1) Run the relevant verification for your changes.",
-    `2) If you changed code, commit it and push it to ${remoteName} HEAD:${pullSummary.headRef}.`,
+    `2) If you changed files, commit and push to ${remoteName} HEAD:${pullSummary.headRef}.`,
     "3) For each feedback item you addressed or were blocked on, emit a summary block in the following format:",
     "   FEEDBACK_SUMMARY_START <auditToken>",
     "   <A concise 1-2 sentence summary of what you did or why you were blocked>",
     "   FEEDBACK_SUMMARY_END",
     "   Include one block per audit token. These summaries will be posted as follow-up comments on the PR.",
+    "4) If documentation tasks were assigned, emit exactly one docs summary block in the following format:",
+    "   DOCS_SUMMARY_START <changed|no_change>",
+    "   <A concise 1-2 sentence summary of the docs you updated, or why no docs changes were necessary after inspection>",
+    "   DOCS_SUMMARY_END",
   ].join("\n");
 }
 
@@ -318,6 +401,12 @@ function extractMentionedAuditTokens(body: string): string[] {
 }
 
 const FEEDBACK_SUMMARY_BLOCK = /FEEDBACK_SUMMARY_START\s+(codefactory-feedback:[^\s]+)\s*\n([\s\S]*?)FEEDBACK_SUMMARY_END/g;
+const DOCS_SUMMARY_BLOCK = /DOCS_SUMMARY_START\s+(changed|no_change)\s*\n([\s\S]*?)DOCS_SUMMARY_END/;
+
+type DocsTaskOutcome = {
+  outcome: "changed" | "no_change";
+  summary: string;
+};
 
 function extractAgentSummaries(agentOutput: string): Map<string, string> {
   const summaries = new Map<string, string>();
@@ -331,6 +420,24 @@ function extractAgentSummaries(agentOutput: string): Map<string, string> {
     }
   }
   return summaries;
+}
+
+function extractDocsTaskOutcome(agentOutput: string): DocsTaskOutcome | null {
+  const match = DOCS_SUMMARY_BLOCK.exec(agentOutput);
+  if (!match) {
+    return null;
+  }
+
+  const outcome = match[1];
+  const summary = match[2]?.trim();
+  if (!summary || (outcome !== "changed" && outcome !== "no_change")) {
+    return null;
+  }
+
+  return {
+    outcome,
+    summary,
+  };
 }
 
 function isAutomationAuditTrailFollowUp(item: FeedbackItem, feedbackItems: FeedbackItem[]): boolean {
@@ -1411,9 +1518,33 @@ export class PRBabysitter {
       }
       const shouldRunForcedReplay = Boolean(forcedFixPrompt && !skipForcedReplay);
       const disableAgentExecution = Boolean(forcedFixPrompt && skipForcedReplay);
-      const hasAgentWork = !disableAgentExecution && (effectiveCommentTasks.length > 0 || statusTasks.length > 0 || shouldRunForcedReplay);
+      const hasCommentOrStatusAgentWork = !disableAgentExecution && (effectiveCommentTasks.length > 0 || statusTasks.length > 0 || shouldRunForcedReplay);
+      const currentHeadDocsAssessment = getCurrentHeadDocsAssessment(pr, pullSummary.headSha);
+      const docsAssessmentNeeded = !disableAgentExecution
+        && !shouldRunForcedReplay
+        && shouldAssessDocsForHead(pr, pullSummary.headSha, config.autoUpdateDocs);
+      let docsTaskSummary = config.autoUpdateDocs && currentHeadDocsAssessment?.status === "needed"
+        ? currentHeadDocsAssessment.summary
+        : null;
+      let hasDocsTask = Boolean(docsTaskSummary);
+      const needsWorktree = hasCommentOrStatusAgentWork || hasConflicts || docsAssessmentNeeded || hasDocsTask;
 
-      if (!hasAgentWork && followUpTasks.length === 0 && !hasConflicts) {
+      if (config.autoUpdateDocs && currentHeadDocsAssessment && !docsAssessmentNeeded) {
+        await queueLog(
+          pr.id,
+          "info",
+          `Documentation assessment already recorded for ${pullSummary.headSha.slice(0, 7)} (${currentHeadDocsAssessment.status})`,
+          {
+            phase: "evaluate.docs",
+            metadata: {
+              headSha: pullSummary.headSha,
+              status: currentHeadDocsAssessment.status,
+            },
+          },
+        );
+      }
+
+      if (!needsWorktree && followUpTasks.length === 0 && !hasConflicts) {
         await queueLog(pr.id, "info", `Babysitter checked PR #${pr.number}; no necessary fixes identified`, {
           phase: "run",
         });
@@ -1434,6 +1565,7 @@ export class PRBabysitter {
       branchMoved = false;
       let remoteNameForLogs: string | null = null;
       let agentSummaries = new Map<string, string>();
+      let docsTaskOutcome: DocsTaskOutcome | null = null;
 
       if (hasConflicts) {
         await queueLog(pr.id, "info", `PR #${pr.number} has merge conflicts with base branch ${pullSummary.baseRef}`, {
@@ -1442,16 +1574,18 @@ export class PRBabysitter {
         });
       }
 
-      if (hasAgentWork || hasConflicts) {
+      if (needsWorktree || hasConflicts) {
         await queueLog(
           pr.id,
           "info",
-          `Babysitter preparing fix run with ${effectiveCommentTasks.length} comment task(s), ${statusTasks.length} status task(s), and ${followUpTasks.length} GitHub follow-up task(s)${hasConflicts ? ", plus merge conflict resolution" : ""}${shouldRunForcedReplay ? ", with forced prompt replay" : ""} using ${agent}`,
+          `Babysitter preparing fix run with ${effectiveCommentTasks.length} comment task(s), ${statusTasks.length} status task(s), ${hasDocsTask ? 1 : 0} documentation task(s), and ${followUpTasks.length} GitHub follow-up task(s)${docsAssessmentNeeded ? ", with documentation assessment" : ""}${hasConflicts ? ", plus merge conflict resolution" : ""}${shouldRunForcedReplay ? ", with forced prompt replay" : ""} using ${agent}`,
           {
             phase: "run",
             metadata: {
               commentTasks: effectiveCommentTasks.length,
               statusTasks: statusTasks.length,
+              docsTasks: hasDocsTask ? 1 : 0,
+              docsAssessmentNeeded,
               followUpTasks: followUpTasks.length,
               hasConflicts,
               shouldRunForcedReplay,
@@ -1500,6 +1634,140 @@ export class PRBabysitter {
           await queueLog(pr.id, "info", "Git identity ready", {
             phase: "git.identity",
           });
+
+          if (docsAssessmentNeeded) {
+            await queueLog(pr.id, "info", "Documentation assessment started", {
+              phase: "evaluate.docs",
+              metadata: {
+                headSha: pullSummary.headSha,
+              },
+            });
+
+            try {
+              const baseFetchForDocs = await runLoggedCommand({
+                currentPrId: pr.id,
+                command: "git",
+                args: ["fetch", "origin", pullSummary.baseRef],
+                cwd: worktreePath,
+                timeoutMs: 120000,
+                phase: "evaluate.docs",
+                successMessage: `Fetched origin/${pullSummary.baseRef} for docs assessment`,
+              });
+              if (baseFetchForDocs.code !== 0) {
+                throw new Error(`Failed to fetch origin/${pullSummary.baseRef} for docs assessment: ${summarizeCommandFailure(baseFetchForDocs)}`);
+              }
+
+              const changedFilesResult = await runLoggedCommand({
+                currentPrId: pr.id,
+                command: "git",
+                args: ["diff", "--name-only", `origin/${pullSummary.baseRef}...HEAD`],
+                cwd: worktreePath,
+                timeoutMs: 10000,
+                phase: "evaluate.docs",
+                successMessage: "Collected changed files for docs assessment",
+              });
+              if (changedFilesResult.code !== 0) {
+                throw new Error(`Failed to collect changed files for docs assessment: ${summarizeCommandFailure(changedFilesResult)}`);
+              }
+
+              const diffStatResult = await runLoggedCommand({
+                currentPrId: pr.id,
+                command: "git",
+                args: ["diff", "--stat", `origin/${pullSummary.baseRef}...HEAD`],
+                cwd: worktreePath,
+                timeoutMs: 10000,
+                phase: "evaluate.docs",
+                successMessage: "Collected diff stat for docs assessment",
+              });
+              if (diffStatResult.code !== 0) {
+                throw new Error(`Failed to collect diff stat for docs assessment: ${summarizeCommandFailure(diffStatResult)}`);
+              }
+
+              const diffPreviewResult = await runLoggedCommand({
+                currentPrId: pr.id,
+                command: "git",
+                args: ["diff", "--no-color", "--unified=0", `origin/${pullSummary.baseRef}...HEAD`],
+                cwd: worktreePath,
+                timeoutMs: 10000,
+                phase: "evaluate.docs",
+                successMessage: "Collected diff preview for docs assessment",
+              });
+              if (diffPreviewResult.code !== 0) {
+                throw new Error(`Failed to collect diff preview for docs assessment: ${summarizeCommandFailure(diffPreviewResult)}`);
+              }
+
+              const docsPrompt = buildDocumentationAssessmentPrompt({
+                pr,
+                pullSummary,
+                changedFiles: changedFilesResult.stdout.trim(),
+                diffStat: diffStatResult.stdout.trim(),
+                diffPreview: diffPreviewResult.stdout.trim(),
+              });
+              await queueLog(pr.id, "info", `Evaluating documentation needs with ${agent}`, {
+                phase: "evaluate.docs",
+                metadata: {
+                  agent,
+                  prompt: docsPrompt,
+                },
+              });
+
+              const docsEvaluation = await this.runtime.evaluateFixNecessityWithAgent({
+                agent,
+                cwd: worktreePath,
+                prompt: docsPrompt,
+              });
+
+              const docsAssessment = {
+                headSha: pullSummary.headSha,
+                status: docsEvaluation.needsFix ? "needed" as const : "not_needed" as const,
+                summary: docsEvaluation.reason,
+                assessedAt: new Date().toISOString(),
+              };
+              const docsUpdatedPR = await this.storage.updatePR(pr.id, {
+                docsAssessment,
+              });
+              if (docsUpdatedPR) {
+                pr = docsUpdatedPR;
+              }
+
+              hasDocsTask = docsEvaluation.needsFix;
+              docsTaskSummary = docsEvaluation.needsFix ? docsEvaluation.reason : null;
+
+              await queueLog(pr.id, "info", docsEvaluation.needsFix
+                ? `Documentation updates required: ${docsEvaluation.reason}`
+                : `Documentation updates not required: ${docsEvaluation.reason}`, {
+                phase: "evaluate.docs",
+                metadata: {
+                  decision: docsEvaluation.needsFix ? "needed" : "not_needed",
+                  headSha: pullSummary.headSha,
+                },
+              });
+            } catch (error) {
+              const failureMessage = summarizeUnknownError(error);
+              const docsAssessment = {
+                headSha: pullSummary.headSha,
+                status: "failed" as const,
+                summary: failureMessage,
+                assessedAt: new Date().toISOString(),
+              };
+              const docsUpdatedPR = await this.storage.updatePR(pr.id, {
+                docsAssessment,
+              });
+              if (docsUpdatedPR) {
+                pr = docsUpdatedPR;
+              }
+
+              hasDocsTask = false;
+              docsTaskSummary = null;
+
+              await queueLog(pr.id, "warn", `Documentation assessment failed: ${failureMessage}`, {
+                phase: "evaluate.docs",
+                metadata: {
+                  headSha: pullSummary.headSha,
+                },
+              });
+            }
+          }
 
           if (hasConflicts) {
             await queueLog(pr.id, "info", `Fetching base branch origin/${pullSummary.baseRef} for merge`, {
@@ -1642,7 +1910,7 @@ export class PRBabysitter {
             }
           }
 
-          if (shouldRunForcedReplay || effectiveCommentTasks.length > 0 || statusTasks.length > 0) {
+          if (shouldRunForcedReplay || effectiveCommentTasks.length > 0 || statusTasks.length > 0 || hasDocsTask) {
             const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
             const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
             const githubToken = await this.github.resolveGitHubAuthToken(config);
@@ -1660,6 +1928,7 @@ export class PRBabysitter {
               remoteName,
               commentTasks: effectiveCommentTasks,
               statusTasks,
+              docsTaskSummary,
             });
 
             await updateRunRecord({
@@ -1705,10 +1974,15 @@ export class PRBabysitter {
 
             // Extract per-feedback-item summaries from agent output.
             agentSummaries = extractAgentSummaries(applyResult.stdout);
+            docsTaskOutcome = extractDocsTaskOutcome(applyResult.stdout);
 
             await queueLog(pr.id, "info", `${agent} completed successfully`, {
               phase: "agent",
-              metadata: { code: applyResult.code, extractedSummaries: agentSummaries.size },
+              metadata: {
+                code: applyResult.code,
+                extractedSummaries: agentSummaries.size,
+                docsTaskOutcome: docsTaskOutcome?.outcome ?? null,
+              },
             });
             await updateRunRecord({
               phase: "run.agent-finished",
@@ -1785,8 +2059,30 @@ export class PRBabysitter {
             throw new Error("Agent did not update the PR head branch for accepted failing status tasks");
           }
 
+          if (hasDocsTask && !docsTaskOutcome) {
+            throw new Error("Agent did not report documentation task outcome");
+          }
+
+          if (hasDocsTask && !branchMoved && docsTaskOutcome?.outcome !== "no_change") {
+            throw new Error("Agent did not update the PR head branch for required documentation tasks");
+          }
+
           if (hasConflicts && !branchMoved) {
             throw new Error("Agent did not push conflict resolution to the PR head branch");
+          }
+
+          if (hasDocsTask && docsTaskOutcome?.outcome === "no_change") {
+            const docsUpdatedPR = await this.storage.updatePR(pr.id, {
+              docsAssessment: {
+                headSha: pullSummary.headSha,
+                status: "not_needed",
+                summary: docsTaskOutcome.summary,
+                assessedAt: new Date().toISOString(),
+              },
+            });
+            if (docsUpdatedPR) {
+              pr = docsUpdatedPR;
+            }
           }
 
           headShaForFollowUp = localHeadSha;
@@ -1800,8 +2096,19 @@ export class PRBabysitter {
               branchMoved,
               localCommitCreated,
               remoteName,
+              docsTaskOutcome: docsTaskOutcome?.outcome ?? null,
             },
           });
+
+          if (docsTaskOutcome) {
+            await queueLog(pr.id, "info", `Documentation task outcome: ${docsTaskOutcome.outcome} - ${docsTaskOutcome.summary}`, {
+              phase: "verify.docs",
+              metadata: {
+                outcome: docsTaskOutcome.outcome,
+                branchMoved,
+              },
+            });
+          }
         } finally {
           try {
             await queueLog(pr.id, "info", "Cleaning up worktree", {

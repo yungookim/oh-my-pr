@@ -1,5 +1,14 @@
 # Lessons Learned
 
+## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
+- Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
+- Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
+- Prevention checklist:
+  - Restate whether a request targets Code Factory's product behavior or this repository's internal workflow before proposing a design.
+  - Validate that prompt contracts, defaults, and storage shape make sense for arbitrary user repositories, not just `README.md` or docs layout in this repo.
+  - Avoid deriving product requirements from this repo's local docs/build pipeline unless the user explicitly wants repo-specific behavior.
+  - Check whether the feature needs to generalize across heterogeneous repositories before choosing fixed file paths or heuristics.
+
 ## 2026-03-15 - Keep PR automation in app-owned `~/.codefactory`
 - Pattern: I described PR workspace isolation too loosely and pointed it at a repo-local `.codefactory` directory instead of the app-owned `~/.codefactory` workspace, and I omitted the required checkout-plus-worktree flow.
 - Rule: When implementing PR automation, default to a clean repository checkout in `~/.codefactory`, fetch and check out the PR there, and create agent worktrees from that app-owned clone rather than from the user's working copy.
