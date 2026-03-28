@@ -10,7 +10,10 @@ export type CodeFactoryPaths = {
 };
 
 export function getCodeFactoryPaths(rootDirOverride?: string): CodeFactoryPaths {
-  const rootDir = rootDirOverride || process.env.CODEFACTORY_HOME || path.join(os.homedir(), ".codefactory");
+  const rootDir = rootDirOverride
+    || process.env.OH_MY_PR_HOME
+    || process.env.CODEFACTORY_HOME
+    || path.join(os.homedir(), ".oh-my-pr");
 
   return {
     rootDir,

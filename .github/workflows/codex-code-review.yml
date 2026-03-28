@@ -17,6 +17,8 @@ jobs:
           fetch-depth: 0
 
       - uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt: |

@@ -201,7 +201,7 @@ export class SqliteStorage implements IStorage {
 
   private throwPersistentLockError(error: SqliteError): never {
     const wrapped = new Error(
-      `SQLite database remained locked after recovery attempts at ${this.stateDbPath}. Stop the competing Code Factory process or use a different CODEFACTORY_HOME.`,
+      `SQLite database remained locked after recovery attempts at ${this.stateDbPath}. Stop the competing Code Factory process or use a different OH_MY_PR_HOME.`,
       { cause: error },
     ) as SqliteError;
     wrapped.name = "SqliteDatabaseLockedError";

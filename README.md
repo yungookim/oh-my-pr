@@ -12,7 +12,7 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 
-Code Factory watches GitHub repositories, syncs PR feedback, triages what matters, and dispatches locally installed coding agents inside isolated app-owned worktrees. It keeps durable state in `~/.codefactory` and exposes the same system through a dashboard, REST API, and MCP server.
+Code Factory watches GitHub repositories, syncs PR feedback, triages what matters, and dispatches locally installed coding agents inside isolated app-owned worktrees. It keeps durable state in `~/.oh-my-pr` and exposes the same system through a dashboard, REST API, and MCP server.
 
 No hosted service. No agent edits inside your working copy. Your PR automation stays on your machine.
 
@@ -24,7 +24,7 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 - Auto-register open PRs, archive closed or merged PRs, and keep syncing review activity.
 - Store PR state, questions, logs, and social changelogs in SQLite with mirrored log files.
 - Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
-- Run `codex` or `claude` in isolated worktrees under `~/.codefactory`, then push verified fixes back to the PR branch.
+- Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
 - Evaluate review comments and failing CI statuses, post GitHub follow-ups, and resolve review threads.
 - Detect merge conflicts and optionally let the agent resolve them automatically.
 - Ask natural-language questions about any tracked PR from the dashboard or via MCP.
@@ -39,32 +39,40 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 
 1. Add a repository to the watch list or register a PR directly by URL.
 2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, and queues babysitter runs.
-3. Accepted work is executed in an app-owned repo cache and isolated git worktree under `~/.codefactory`.
+3. Accepted work is executed in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
 4. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
 
 ## Quick Start
-
-### Prerequisites
-
-- Node.js 22+
-- `git`
-- GitHub auth via `gh auth login`, `GITHUB_TOKEN`, or a saved dashboard token
-- Either the `codex` CLI or `claude` CLI already installed and authenticated locally
-
-### Install From npm
 
 ```bash
 npm install -g oh-my-pr
 oh-my-pr
 ```
 
-Open `http://localhost:5001`.
+That's it. The dashboard opens in your browser at `http://localhost:5001`.
+
+### Prerequisites
+
+- **Node.js 22+** (tested with Node v24.12.0)
+- **git**
+- GitHub auth via `gh auth login`, `GITHUB_TOKEN`, app config, or a saved dashboard token
+- Either the `codex` CLI or `claude` CLI installed and authenticated locally
+
+### CLI Usage
+
+```bash
+oh-my-pr              Start the dashboard server (opens browser)
+oh-my-pr --help       Show help message
+oh-my-pr --version    Print the version
+```
+
+Set `PORT` to change the default port (`5001`).
 
 ### Run From Source
 
 ```bash
 git clone https://github.com/yungookim/oh-my-pr.git
-cd codefactory
+cd oh-my-pr
 npm install
 npm run dev
 ```
@@ -105,14 +113,14 @@ Use it with MCP hosts such as Claude Desktop or OpenClaw, or call the REST API d
 
 ## Local State
 
-By default Code Factory stores its runtime data in `~/.codefactory`:
+By default Code Factory stores its runtime data in `~/.oh-my-pr`:
 
 - `state.sqlite` for durable app state
 - `log/` for mirrored activity logs
 - `repos/` for app-owned repository caches
 - `worktrees/` for isolated PR worktrees
 
-Set `CODEFACTORY_HOME` to override the root path.
+Set `OH_MY_PR_HOME` to override the root path. The legacy `CODEFACTORY_HOME` name is still supported for compatibility.
 
 ## Contributing
 

@@ -55,7 +55,7 @@ structured tool calls without writing a single line of HTTP client code.
 │                       └─────────┤
 │                            │    │
 │                       SQLite DB │
-│                       ~/.codefactory/
+│                       ~/.oh-my-pr/
 └─────────────────────────────────┘
 ```
 
@@ -727,7 +727,7 @@ All error responses share this shape:
 |----------------------|----------------|-------------|
 | `PORT`               | `5001`         | HTTP port for the Code Factory server |
 | `CODEFACTORY_PORT`   | `5001`         | Port the MCP server connects to (MCP only) |
-| `CODEFACTORY_HOME`   | `~/.codefactory` | Directory for SQLite DB, logs, repos, worktrees |
+| `OH_MY_PR_HOME`      | `~/.oh-my-pr` | Directory for SQLite DB, logs, repos, worktrees |
 | `PR_BABYSITTER_ROOT` | —              | Override worktree root directory |
 | `GITHUB_TOKEN`       | —              | GitHub personal access token (falls back to config / `gh auth`) |
 | `NODE_ENV`           | `development`  | Set to `production` for production builds |

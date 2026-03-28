@@ -19,6 +19,12 @@ jobs:
 
       - uses: anthropics/claude-code-action@beta
         with:
-          prompt: /code-review
+          prompt: |
+            Review this pull request. Focus on:
+            - Code correctness and potential bugs
+            - Security issues
+            - Performance concerns
+            - Code style and readability
+            Post your findings as a PR review.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

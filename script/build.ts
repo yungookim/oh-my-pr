@@ -54,6 +54,7 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+      "process.env.APP_VERSION": JSON.stringify(pkg.version),
     },
     minify: true,
     external: externals,

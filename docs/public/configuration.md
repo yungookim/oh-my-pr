@@ -7,7 +7,7 @@ CodeFactory is configured through environment variables and the dashboard settin
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `5001` | HTTP server port |
-| `CODEFACTORY_HOME` | `~/.codefactory` | Data directory for state and logs |
+| `OH_MY_PR_HOME` | `~/.oh-my-pr` | Data directory for state and logs |
 | `PR_BABYSITTER_ROOT` | `/tmp/pr-babysitter` | Root directory for agent worktrees |
 | `CODEFACTORY_AGENT` | (auto) | Preferred agent: `claude` or `codex` |
 | `DATABASE_URL` | (SQLite) | PostgreSQL connection string (optional) |
@@ -20,7 +20,7 @@ CodeFactory is configured through environment variables and the dashboard settin
 By default, CodeFactory stores all state in a local SQLite database:
 
 ```
-~/.codefactory/state.sqlite
+~/.oh-my-pr/state.sqlite
 ```
 
 No external database is required. This is ideal for single-user setups.
@@ -44,7 +44,7 @@ npm run db:push
 CodeFactory writes daily activity logs to:
 
 ```
-~/.codefactory/log/
+~/.oh-my-pr/log/
 ```
 
 These logs mirror the dashboard activity feed and are useful for debugging or auditing agent behavior.
