@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { MemStorage } from "./memoryStorage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
-import type { AgentRun, NewPR, PR } from "@shared/schema";
+import type { AgentRun, NewPR } from "@shared/schema";
 
 function makePRInput(overrides: Partial<NewPR> = {}): NewPR {
   return {

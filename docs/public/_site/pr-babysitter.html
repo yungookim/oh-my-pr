@@ -189,7 +189,9 @@
 <li>New PRs opened against the repository.</li>
 <li>Review comments and change requests on existing PRs.</li>
 <li>Status changes (approvals, dismissals, re-requests).</li>
+<li>A per-PR watch state so you can pause background automation for one tracked PR without removing it.</li>
 </ul>
+<p>Paused PRs stay tracked locally and can still be run manually from the dashboard or API. While paused, the background watcher skips autonomous sync and babysitter runs for that PR until you resume watch.</p>
 <h3>2. Review Sync</h3>
 <p>Every review comment is captured and stored locally. oh-my-pr understands GitHub&#39;s threaded review model:</p>
 <ul>
@@ -262,6 +264,7 @@
 <li><strong>Poll interval</strong> — How often to check for new reviews (default: 60 seconds).</li>
 <li><strong>Auto-dispatch</strong> — Whether to automatically dispatch agents or require approval.</li>
 <li><strong>Agent preference</strong> — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.</li>
+<li><strong>Per-PR watch toggle</strong> — Pause one tracked PR&#39;s background automation while keeping manual runs available.</li>
 </ul>
 <p>See <a href="./configuration.html">Configuration</a> for details.</p>
 
