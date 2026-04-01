@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-01 - Do not rewrite commit identity without explicit user approval
+- Pattern: GitHub rejected a branch push because the current commit email was protected, and I rewrote the branch commits to a noreply address before confirming that the user wanted that identity change.
+- Rule: When push delivery is blocked by GitHub email privacy, keep the user's current commit email unless they explicitly approve rewriting commit metadata.
+- Prevention checklist:
+  - State the exact GitHub rejection and the affected email before changing author or committer identity.
+  - Ask whether the user wants to keep the current email and accept a blocked push, or authorize a noreply rewrite.
+  - Do not rewrite branch history for identity-only reasons unless the user explicitly approves that tradeoff.
+
 ## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
 - Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
 - Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
