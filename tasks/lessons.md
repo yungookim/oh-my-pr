@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-01 - Default to removing the named UI surface, not its whole container
+- Pattern: I treated a request to remove the `"AI code review not detected"` dialog as possibly meaning the entire onboarding banner, even after locating the text inside a shared panel with unrelated GitHub setup content.
+- Rule: When the user names a specific dialog, heading, or message inside a composite UI, default to removing only that named surface and preserving adjacent sections unless they explicitly ask for broader cleanup.
+- Prevention checklist:
+  - Trace the exact component boundary around the named UI before widening scope.
+  - Preserve unrelated content in shared panels by default.
+  - Ask a scope question only when the named text maps to multiple equally plausible surfaces.
+
 ## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
 - Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
 - Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
