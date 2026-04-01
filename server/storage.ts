@@ -3,6 +3,7 @@ import type {
   AgentRunStatus,
   Config,
   LogEntry,
+  NewPR,
   PR,
   PRQuestion,
   ReleaseRun,
@@ -19,7 +20,7 @@ export interface IStorage {
   getArchivedPRs(): Promise<PR[]>;
   getPR(id: string): Promise<PR | undefined>;
   getPRByRepoAndNumber(repo: string, number: number): Promise<PR | undefined>;
-  addPR(pr: Omit<PR, "id" | "addedAt">): Promise<PR>;
+  addPR(pr: NewPR): Promise<PR>;
   updatePR(id: string, updates: Partial<PR>): Promise<PR | undefined>;
   removePR(id: string): Promise<boolean>;
 

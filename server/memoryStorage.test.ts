@@ -2,9 +2,9 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { MemStorage } from "./memoryStorage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
-import type { AgentRun, PR } from "@shared/schema";
+import type { AgentRun, NewPR, PR } from "@shared/schema";
 
-function makePRInput(overrides: Partial<Omit<PR, "id" | "addedAt">> = {}): Omit<PR, "id" | "addedAt"> {
+function makePRInput(overrides: Partial<NewPR> = {}): NewPR {
   return {
     number: 1,
     title: "Test PR",
@@ -58,6 +58,7 @@ describe("MemStorage", () => {
       assert.ok(pr.addedAt, "should have addedAt");
       assert.equal(pr.title, "Test PR");
       assert.equal(pr.status, "watching");
+      assert.equal(pr.watchEnabled, true);
     });
   });
 

@@ -321,6 +321,37 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  app.patch("/api/prs/:id/watch", async (req, res) => {
+    try {
+      const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+      const pr = await storage.getPR(req.params.id);
+      if (!pr) {
+        return res.status(404).json({ error: "PR not found" });
+      }
+
+      const updated = await storage.updatePR(pr.id, { watchEnabled: enabled });
+      if (!updated) {
+        return res.status(404).json({ error: "PR not found" });
+      }
+
+      if (pr.watchEnabled !== enabled) {
+        await storage.addLog(pr.id, "info", enabled ? "Background watch resumed" : "Background watch paused");
+        if (enabled) {
+          void runWatcher();
+        }
+      }
+
+      res.json(updated);
+    } catch (err: unknown) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: err.errors[0].message });
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   app.post("/api/prs/:id/fetch", async (req, res) => {
     const pr = await storage.getPR(req.params.id);
     if (!pr) return res.status(404).json({ error: "PR not found" });
