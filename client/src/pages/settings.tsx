@@ -128,6 +128,61 @@ export default function Settings() {
 
           <section>
             <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              CI Healing
+            </h2>
+            <div className="flex flex-col gap-4 rounded border border-border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm">Automatic CI healing</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Classify healable CI failures and run bounded repair attempts in isolated worktrees.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config?.autoHealCI ?? false}
+                  onChange={(e) =>
+                    updateConfigMutation.mutate({
+                      autoHealCI: e.target.checked,
+                    })
+                  }
+                  disabled={updateConfigMutation.isPending}
+                  className="h-4 w-4 accent-foreground"
+                />
+              </div>
+              <SettingRow
+                label="Max healing attempts per session"
+                description="Upper bound on repair attempts for a single healing session"
+                value={config?.maxHealingAttemptsPerSession ?? 3}
+                onChange={(v) => updateConfigMutation.mutate({ maxHealingAttemptsPerSession: v })}
+                disabled={updateConfigMutation.isPending}
+              />
+              <SettingRow
+                label="Max healing attempts per fingerprint"
+                description="Cap retries for the same failure fingerprint"
+                value={config?.maxHealingAttemptsPerFingerprint ?? 2}
+                onChange={(v) => updateConfigMutation.mutate({ maxHealingAttemptsPerFingerprint: v })}
+                disabled={updateConfigMutation.isPending}
+              />
+              <SettingRow
+                label="Max concurrent healing runs"
+                description="How many healing runs can execute at once"
+                value={config?.maxConcurrentHealingRuns ?? 1}
+                onChange={(v) => updateConfigMutation.mutate({ maxConcurrentHealingRuns: v })}
+                disabled={updateConfigMutation.isPending}
+              />
+              <SettingRow
+                label="Healing cooldown (ms)"
+                description="Backoff before a cooldowned session can retry"
+                value={config?.healingCooldownMs ?? 300000}
+                onChange={(v) => updateConfigMutation.mutate({ healingCooldownMs: v })}
+                disabled={updateConfigMutation.isPending}
+              />
+            </div>
+          </section>
+
+          <section>
+            <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Releases
             </h2>
             <div className="flex flex-col gap-4 rounded border border-border p-4">
