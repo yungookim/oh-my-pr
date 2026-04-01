@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { z } from "zod";
 import { addPRSchema, askQuestionSchema, configSchema } from "@shared/schema";
-import { storage } from "./storage";
+import type { IStorage } from "./storage";
 import { PRBabysitter } from "./babysitter";
 import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
 import { createWatcherScheduler } from "./watcherScheduler";
@@ -24,11 +24,20 @@ import {
   resolveNextSemverTag,
 } from "./github";
 
+type RegisterRoutesDependencies = {
+  storage?: IStorage;
+  babysitter?: PRBabysitter;
+  releaseManager?: ReleaseManager;
+  startWatcher?: boolean;
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
+  deps: RegisterRoutesDependencies = {},
 ): Promise<Server> {
-  const releaseManager = new ReleaseManager(storage, {
+  const storage = deps.storage ?? (await import("./storage")).storage;
+  const releaseManager = deps.releaseManager ?? new ReleaseManager(storage, {
     github: {
       buildOctokit,
       findLatestSemverReleaseTag: getLatestSemverTagForRepo,
@@ -82,7 +91,7 @@ export async function registerRoutes(
       },
     },
   });
-  const babysitter = new PRBabysitter(storage, undefined, undefined, releaseManager);
+  const babysitter = deps.babysitter ?? new PRBabysitter(storage, undefined, undefined, releaseManager);
   let watcherTimer: NodeJS.Timeout | null = null;
   let watcherIntervalMs = 0;
 
@@ -121,9 +130,11 @@ export async function registerRoutes(
     }, interval);
   };
 
-  await refreshWatcherSchedule();
-  void babysitter.resumeInterruptedRuns();
-  void runWatcher();
+  if (deps.startWatcher !== false) {
+    await refreshWatcherSchedule();
+    void babysitter.resumeInterruptedRuns();
+    void runWatcher();
+  }
 
   httpServer.on("close", () => {
     if (watcherTimer) {
@@ -537,6 +548,31 @@ export async function registerRoutes(
       if (err instanceof GitHubIntegrationError) {
         return res.status(err.statusCode).json({ error: err.message });
       }
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // ── CI healing sessions ──────────────────────────────────
+
+  app.get("/api/healing-sessions", async (_req, res) => {
+    try {
+      const sessions = await storage.listHealingSessions();
+      res.json(sessions);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  app.get("/api/healing-sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getHealingSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Healing session not found" });
+      }
+      res.json(session);
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
     }
