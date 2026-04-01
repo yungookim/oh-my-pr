@@ -315,6 +315,27 @@ Remove a PR from tracking.
 
 ---
 
+#### `PATCH /api/prs/:id/watch`
+
+Pause or resume background automation for a single tracked PR.
+
+When `enabled` is `false`, the background watcher skips autonomous sync/apply
+cycles for that PR, but manual routes such as `POST /api/prs/:id/fetch`,
+`POST /api/prs/:id/triage`, `POST /api/prs/:id/apply`, and
+`POST /api/prs/:id/babysit` still work. Re-enabling watch schedules an
+immediate watcher pass.
+
+**Body**
+```json
+{ "enabled": false }
+```
+
+**Response** `200` — updated [PR object](#pr)
+**Response** `400` — invalid body
+**Response** `404` — PR not found
+
+---
+
 #### `POST /api/prs/:id/fetch`
 
 Force a fresh pull of comments and reviews from GitHub for this PR.
@@ -600,6 +621,7 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   testsPassed: boolean | null;
   lintPassed: boolean | null;
   lastChecked: string | null;  // ISO 8601
+  watchEnabled: boolean;       // false pauses autonomous watcher runs for this PR
   addedAt: string;             // ISO 8601
 }
 ```

@@ -3,6 +3,7 @@ import type {
   AgentRunStatus,
   Config,
   LogEntry,
+  NewPR,
   PR,
   PRQuestion,
   ReleaseRun,
@@ -67,7 +68,7 @@ export class MemStorage implements IStorage {
     return Array.from(this.prs.values()).find((pr) => pr.repo === repo && pr.number === number);
   }
 
-  async addPR(pr: Omit<PR, "id" | "addedAt">): Promise<PR> {
+  async addPR(pr: NewPR): Promise<PR> {
     const full = createPR(pr);
     this.prs.set(full.id, full);
     return full;

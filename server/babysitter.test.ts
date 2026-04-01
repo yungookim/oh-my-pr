@@ -352,6 +352,7 @@ test("syncAndBabysitTrackedRepos queues release evaluation for merged archived P
     testsPassed: null,
     lintPassed: null,
     lastChecked: null,
+    watchEnabled: false,
   });
 
   const babysitter = new PRBabysitter(
@@ -379,6 +380,117 @@ test("syncAndBabysitTrackedRepos queues release evaluation for merged archived P
   assert.equal(queued.length, 1);
   assert.equal(queued[0]?.triggerMergeSha, "merge123");
   assert.ok(logs.some((log) => log.message.includes("queued release evaluation")));
+});
+
+test("syncAndBabysitTrackedRepos skips automatic babysits when pr watch is paused", async () => {
+  const storage = new MemStorage();
+  const babysitCalls: string[] = [];
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Example PR",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: false,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [{
+        number: 42,
+        title: "Example PR",
+        branch: "feature/example",
+        author: "octocat",
+        url: "https://github.com/octo/example/pull/42",
+      }],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+  babysitter.babysitPR = async (prId) => {
+    babysitCalls.push(prId);
+    return;
+  };
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const updated = await storage.getPR(pr.id);
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(updated?.watchEnabled, false);
+  assert.deepEqual(babysitCalls, []);
+  assert.ok(!logs.some((log) => log.message.includes("Watcher queued autonomous babysitter run")));
+});
+
+test("syncAndBabysitTrackedRepos resumes automatic babysits when pr watch is re-enabled", async () => {
+  const storage = new MemStorage();
+  const babysitCalls: string[] = [];
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Example PR",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: true,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [{
+        number: 42,
+        title: "Example PR",
+        branch: "feature/example",
+        author: "octocat",
+        url: "https://github.com/octo/example/pull/42",
+      }],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+  babysitter.babysitPR = async (prId) => {
+    babysitCalls.push(prId);
+    return;
+  };
+
+  await storage.updatePR(pr.id, { watchEnabled: false });
+  await babysitter.syncAndBabysitTrackedRepos();
+  await storage.updatePR(pr.id, { watchEnabled: true });
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const logs = await storage.getLogs(pr.id);
+  assert.deepEqual(babysitCalls, [pr.id]);
+  assert.ok(logs.some((log) => log.message.includes("Watcher queued autonomous babysitter run")));
 });
 
 test("syncAndBabysitTrackedRepos does not queue release evaluation for closed-unmerged PRs", async () => {

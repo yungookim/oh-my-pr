@@ -1008,6 +1008,10 @@ export class PRBabysitter {
           await this.storage.addLog(local.id, "info", `Auto-registered open PR #${pull.number} from ${repoSlug}`);
         }
 
+        if (!local.watchEnabled) {
+          continue;
+        }
+
         await this.storage.addLog(local.id, "info", "Watcher queued autonomous babysitter run", {
           phase: "watcher",
           metadata: { repo: repoSlug },
