@@ -1,5 +1,26 @@
 import type { FeedbackItem } from "@shared/schema";
 
+export function isFeedbackClosedStatus(status: FeedbackItem["status"]): boolean {
+  return status === "rejected" || status === "resolved";
+}
+
+export function shouldResolveReviewConversation(
+  item: Pick<FeedbackItem, "replyKind" | "status" | "threadResolved">,
+): boolean {
+  return item.replyKind === "review_thread" && !item.threadResolved && isFeedbackClosedStatus(item.status);
+}
+
+export function markReviewConversationResolved(item: FeedbackItem): FeedbackItem {
+  if (item.replyKind !== "review_thread" || item.threadResolved) {
+    return item;
+  }
+
+  return {
+    ...item,
+    threadResolved: true,
+  };
+}
+
 export function applyManualDecision(
   item: FeedbackItem,
   decision: "accept" | "reject" | "flag",

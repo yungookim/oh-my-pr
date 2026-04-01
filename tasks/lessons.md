@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-01 - Treat local feedback closure states as GitHub conversation closure triggers
+- Pattern: I initially scoped PR conversation cleanup too narrowly and paused on whether manual rejection should resolve GitHub review threads immediately.
+- Rule: In oh-my-pr, any feedback item transition to a terminal closed state owned by the app (`rejected` or `resolved`) should immediately attempt to resolve the corresponding GitHub review thread when one exists.
+- Prevention checklist:
+  - When implementing feedback-state transitions, map each terminal local state to its required remote GitHub side effect before coding.
+  - Do not limit conversation cleanup to babysitter-authored follow-ups if the UI can also close items manually.
+  - Verify both manual and automated paths converge on the same review-thread resolution behavior.
+
 ## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
 - Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
 - Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.

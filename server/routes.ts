@@ -4,7 +4,8 @@ import { z } from "zod";
 import { addPRSchema, askQuestionSchema, configSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { PRBabysitter } from "./babysitter";
-import { applyEvaluationDecision, applyFlagDecision, applyManualDecision } from "./feedbackLifecycle";
+import { applyEvaluationDecision, applyFlagDecision } from "./feedbackLifecycle";
+import { applyManualFeedbackDecision } from "./manualFeedback";
 import { createWatcherScheduler } from "./watcherScheduler";
 import { answerPRQuestion } from "./prQuestionAgent";
 import { ReleaseManager } from "./releaseManager";
@@ -423,26 +424,32 @@ export async function registerRoutes(
   });
 
   app.patch("/api/prs/:id/feedback/:feedbackId", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
+    try {
+      const pr = await storage.getPR(req.params.id);
+      if (!pr) return res.status(404).json({ error: "PR not found" });
 
-    const { decision } = req.body;
-    if (!["accept", "reject", "flag"].includes(decision)) {
-      return res.status(400).json({ error: "Invalid decision" });
+      const { decision } = req.body;
+      if (!["accept", "reject", "flag"].includes(decision)) {
+        return res.status(400).json({ error: "Invalid decision" });
+      }
+
+      const manualDecision = decision as "accept" | "reject" | "flag";
+
+      const updated = await applyManualFeedbackDecision({
+        storage,
+        pr,
+        feedbackId: req.params.feedbackId,
+        decision: manualDecision,
+      });
+      res.json(updated);
+    } catch (err: unknown) {
+      if (err instanceof GitHubIntegrationError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
     }
-
-    const feedbackItems = pr.feedbackItems.map((item) =>
-      item.id === req.params.feedbackId
-        ? applyManualDecision(item, decision as "accept" | "reject" | "flag")
-        : item,
-    );
-
-    const accepted = feedbackItems.filter((i) => i.decision === "accept").length;
-    const rejected = feedbackItems.filter((i) => i.decision === "reject").length;
-    const flagged = feedbackItems.filter((i) => i.decision === "flag").length;
-
-    const updated = await storage.updatePR(pr.id, { feedbackItems, accepted, rejected, flagged });
-    res.json(updated);
   });
 
   app.post("/api/prs/:id/feedback/:feedbackId/retry", async (req, res) => {

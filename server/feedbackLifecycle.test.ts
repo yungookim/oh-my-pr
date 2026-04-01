@@ -5,11 +5,14 @@ import {
   applyManualDecision,
   applyEvaluationDecision,
   applyFlagDecision,
+  isFeedbackClosedStatus,
+  markReviewConversationResolved,
   markInProgress,
   markResolved,
   markFailed,
   markWarning,
   markRetry,
+  shouldResolveReviewConversation,
 } from "./feedbackLifecycle";
 
 function applyLegacyTriage(item: FeedbackItem): FeedbackItem {
@@ -105,6 +108,50 @@ test("markResolved maps to resolved", () => {
   const item = makeItem({ status: "in_progress" });
   const result = markResolved(item);
   assert.equal(result.status, "resolved");
+});
+
+test("isFeedbackClosedStatus only treats rejected and resolved as closed", () => {
+  assert.equal(isFeedbackClosedStatus("rejected"), true);
+  assert.equal(isFeedbackClosedStatus("resolved"), true);
+  assert.equal(isFeedbackClosedStatus("queued"), false);
+});
+
+test("shouldResolveReviewConversation closes unresolved review threads for terminal states", () => {
+  assert.equal(
+    shouldResolveReviewConversation(makeItem({ status: "rejected", threadId: "PRRT_kwDO_example", threadResolved: false })),
+    true,
+  );
+  assert.equal(
+    shouldResolveReviewConversation(makeItem({ status: "resolved", threadId: "PRRT_kwDO_example", threadResolved: false })),
+    true,
+  );
+  assert.equal(
+    shouldResolveReviewConversation(makeItem({ status: "queued", threadId: "PRRT_kwDO_example", threadResolved: false })),
+    false,
+  );
+  assert.equal(
+    shouldResolveReviewConversation(makeItem({
+      replyKind: "general_comment",
+      type: "general_comment",
+      status: "resolved",
+      threadResolved: false,
+    })),
+    false,
+  );
+});
+
+test("markReviewConversationResolved sets threadResolved for review threads only", () => {
+  const reviewThread = makeItem({ threadResolved: false });
+  const resolvedThread = markReviewConversationResolved(reviewThread);
+  assert.equal(resolvedThread.threadResolved, true);
+
+  const generalComment = makeItem({
+    replyKind: "general_comment",
+    type: "general_comment",
+    threadResolved: null,
+  });
+  const untouchedComment = markReviewConversationResolved(generalComment);
+  assert.equal(untouchedComment.threadResolved, null);
 });
 
 test("markFailed maps to failed with reason", () => {
