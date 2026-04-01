@@ -1,7 +1,19 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_CONFIG } from "./defaultConfig";
-import { configSchema } from "@shared/schema";
+import {
+  configSchema,
+  failureFingerprintSchema,
+  healingAttemptSchema,
+  healingSessionSchema,
+  checkSnapshotSchema,
+} from "@shared/schema";
+import {
+  createCheckSnapshot,
+  createFailureFingerprint,
+  createHealingAttempt,
+  createHealingSession,
+} from "@shared/models";
 
 describe("DEFAULT_CONFIG", () => {
   it("has all required fields defined by Config type", () => {
@@ -13,7 +25,13 @@ describe("DEFAULT_CONFIG", () => {
       "pollIntervalMs",
       "maxChangesPerRun",
       "autoResolveMergeConflicts",
+      "autoCreateReleases",
       "autoUpdateDocs",
+      "autoHealCI",
+      "maxHealingAttemptsPerSession",
+      "maxHealingAttemptsPerFingerprint",
+      "maxConcurrentHealingRuns",
+      "healingCooldownMs",
       "watchedRepos",
       "trustedReviewers",
       "ignoredBots",
@@ -60,7 +78,16 @@ describe("DEFAULT_CONFIG", () => {
   });
 
   it("has positive numbers for numeric fields", () => {
-    const numericFields = ["maxTurns", "batchWindowMs", "pollIntervalMs", "maxChangesPerRun"] as const;
+    const numericFields = [
+      "maxTurns",
+      "batchWindowMs",
+      "pollIntervalMs",
+      "maxChangesPerRun",
+      "maxHealingAttemptsPerSession",
+      "maxHealingAttemptsPerFingerprint",
+      "maxConcurrentHealingRuns",
+      "healingCooldownMs",
+    ] as const;
     for (const field of numericFields) {
       assert.equal(typeof DEFAULT_CONFIG[field], "number", `${field} should be a number`);
       assert.ok(DEFAULT_CONFIG[field] > 0, `${field} should be positive, got ${DEFAULT_CONFIG[field]}`);
@@ -77,5 +104,70 @@ describe("DEFAULT_CONFIG", () => {
 
   it("enables docs auto-update by default", () => {
     assert.equal(DEFAULT_CONFIG.autoUpdateDocs, true);
+  });
+
+  it("includes CI-healing defaults and validates healing schemas", () => {
+    assert.equal(DEFAULT_CONFIG.autoHealCI, false);
+    assert.equal(DEFAULT_CONFIG.maxHealingAttemptsPerSession, 3);
+    assert.equal(DEFAULT_CONFIG.maxHealingAttemptsPerFingerprint, 2);
+    assert.equal(DEFAULT_CONFIG.maxConcurrentHealingRuns, 1);
+    assert.equal(DEFAULT_CONFIG.healingCooldownMs, 300000);
+
+    const snapshot = createCheckSnapshot({
+      prId: "pr-1",
+      sha: "abc123",
+      provider: "github",
+      context: "build",
+      status: "completed",
+      conclusion: "failure",
+      description: "Build failed",
+      targetUrl: "https://github.com/owner/repo/actions/runs/1",
+      observedAt: "2026-04-01T12:00:00.000Z",
+    });
+
+    const fingerprint = createFailureFingerprint({
+      sessionId: "session-1",
+      sha: "abc123",
+      fingerprint: "build-failure",
+      category: "build",
+      classification: "healable_in_branch",
+      summary: "A build error can be fixed in branch",
+      selectedEvidence: ["line 12", "line 15"],
+    });
+
+    const session = createHealingSession({
+      prId: "pr-1",
+      repo: "owner/repo",
+      prNumber: 42,
+      initialHeadSha: "abc123",
+      currentHeadSha: "abc123",
+      state: "triaging",
+      endedAt: null,
+      blockedReason: null,
+      escalationReason: null,
+      latestFingerprint: null,
+      attemptCount: 0,
+      lastImprovementScore: null,
+    });
+
+    const attempt = createHealingAttempt({
+      sessionId: session.id,
+      attemptNumber: 1,
+      inputSha: "abc123",
+      outputSha: null,
+      status: "queued",
+      endedAt: null,
+      agent: "claude",
+      promptDigest: "digest",
+      targetFingerprints: [fingerprint.fingerprint],
+      summary: null,
+      improvementScore: null,
+      error: null,
+    });
+
+    assert.equal(checkSnapshotSchema.safeParse(snapshot).success, true);
+    assert.equal(failureFingerprintSchema.safeParse(fingerprint).success, true);
+    assert.equal(healingSessionSchema.safeParse(session).success, true);
+    assert.equal(healingAttemptSchema.safeParse(attempt).success, true);
   });
 });
