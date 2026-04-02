@@ -1468,7 +1468,7 @@ export class SqliteStorage implements IStorage {
       WHERE status = 'leased' AND lease_expires_at IS NOT NULL AND datetime(lease_expires_at) <= datetime(?)
     `, now, now);
 
-    return result.changes;
+    return Number(result.changes);
   }
 
   async getAgentRun(id: string): Promise<AgentRun | undefined> {
