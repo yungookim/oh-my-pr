@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BackgroundJobDispatcher } from "./backgroundJobDispatcher";
+import { BackgroundJobDispatcher, CancelBackgroundJobError } from "./backgroundJobDispatcher";
 import { BackgroundJobQueue } from "./backgroundJobQueue";
 import { MemStorage } from "./memoryStorage";
 
@@ -165,6 +165,39 @@ test("BackgroundJobDispatcher waitForIdle reflects active queue handlers", async
     assert.equal(dispatcher.getActiveRunCount(), 0);
   } finally {
     releaseHandler.resolve();
+    dispatcher.stop();
+  }
+});
+
+test("BackgroundJobDispatcher cancels jobs when the handler raises a cancel error", async () => {
+  const storage = new MemStorage();
+  const queue = new BackgroundJobQueue(storage);
+  const job = await queue.enqueue("answer_pr_question", "question-1", "answer_pr_question:question-1", {
+    prId: "missing-pr",
+  });
+
+  const dispatcher = new BackgroundJobDispatcher({
+    storage,
+    queue,
+    workerId: "dispatcher-1",
+    pollIntervalMs: 5,
+    leaseMs: 30_000,
+    heartbeatIntervalMs: 10,
+    handlers: {
+      answer_pr_question: async () => {
+        throw new CancelBackgroundJobError("question disappeared");
+      },
+    },
+  });
+
+  try {
+    await dispatcher.start();
+    await waitForCondition(async () => (await storage.getBackgroundJob(job.id))?.status === "canceled");
+
+    const stored = await storage.getBackgroundJob(job.id);
+    assert.equal(stored?.status, "canceled");
+    assert.equal(stored?.lastError, "question disappeared");
+  } finally {
     dispatcher.stop();
   }
 });

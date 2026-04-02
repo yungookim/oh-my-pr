@@ -110,4 +110,12 @@ export interface IStorage {
   upsertAgentRun(run: AgentRun): Promise<AgentRun>;
 }
 
-export const storage = new SqliteStorage();
+let defaultStorage: IStorage | undefined;
+
+export function getDefaultStorage(): IStorage {
+  if (!defaultStorage) {
+    defaultStorage = new SqliteStorage();
+  }
+
+  return defaultStorage;
+}

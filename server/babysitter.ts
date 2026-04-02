@@ -37,6 +37,7 @@ import {
 import { generateSocialChangelog } from "./socialChangelogAgent";
 import { getCodeFactoryPaths } from "./paths";
 import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
+import { buildBackgroundJobDedupeKey, type ScheduleBackgroundJob } from "./backgroundJobQueue";
 import {
   applyEvaluationDecision,
   markInProgress,
@@ -666,17 +667,20 @@ export class PRBabysitter {
   private readonly github: GitHubService;
   private readonly runtime: BabysitterRuntime;
   private readonly releaseManager?: ReleaseManagerLike;
+  private readonly scheduleBackgroundJob?: ScheduleBackgroundJob;
 
   constructor(
     storage: IStorage,
     github: GitHubService = defaultGitHubService,
     runtime: BabysitterRuntime = defaultBabysitterRuntime,
     releaseManager?: ReleaseManagerLike,
+    scheduleBackgroundJob?: ScheduleBackgroundJob,
   ) {
     this.storage = storage;
     this.github = github;
     this.runtime = runtime;
     this.releaseManager = releaseManager;
+    this.scheduleBackgroundJob = scheduleBackgroundJob;
   }
 
   getActiveRunCount(): number {
@@ -1085,6 +1089,25 @@ export class PRBabysitter {
     console.log(
       `social-changelog: ${totalMergedToday} PRs merged today — generating social post (id=${changelog.id})`,
     );
+
+    if (this.scheduleBackgroundJob) {
+      try {
+        await this.scheduleBackgroundJob(
+          "generate_social_changelog",
+          changelog.id,
+          buildBackgroundJobDedupeKey("generate_social_changelog", changelog.id),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`social-changelog: failed to enqueue post for id=${changelog.id}: ${message}`, err);
+        await this.storage.updateSocialChangelog(changelog.id, {
+          status: "error",
+          error: message.trim().slice(0, 2_000),
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return;
+    }
 
     void generateSocialChangelog({
       storage: this.storage,

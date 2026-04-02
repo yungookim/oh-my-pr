@@ -7,6 +7,13 @@ export type BackgroundJobHandler = (job: BackgroundJob) => Promise<void>;
 
 export type BackgroundJobHandlers = Partial<Record<BackgroundJobKind, BackgroundJobHandler>>;
 
+export class CancelBackgroundJobError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CancelBackgroundJobError";
+  }
+}
+
 export class BackgroundJobDispatcher {
   private readonly storage: IStorage;
   private readonly queue: BackgroundJobQueue;
@@ -181,12 +188,21 @@ export class BackgroundJobDispatcher {
         });
       } catch (error) {
         try {
-          await this.queue.fail({
-            jobId: job.id,
-            leaseToken,
-            error: summarizeError(error),
-            now: this.now(),
-          });
+          if (error instanceof CancelBackgroundJobError) {
+            await this.queue.cancel({
+              jobId: job.id,
+              leaseToken,
+              error: error.message || null,
+              now: this.now(),
+            });
+          } else {
+            await this.queue.fail({
+              jobId: job.id,
+              leaseToken,
+              error: summarizeError(error),
+              now: this.now(),
+            });
+          }
         } catch (finalizeError) {
           this.onError(finalizeError);
         }

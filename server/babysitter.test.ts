@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { FeedbackItem } from "@shared/schema";
 import { PRBabysitter } from "./babysitter";
+import { BackgroundJobQueue } from "./backgroundJobQueue";
 import { MemStorage } from "./memoryStorage";
 
 function makeFeedbackItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
@@ -380,6 +381,66 @@ test("syncAndBabysitTrackedRepos queues release evaluation for merged archived P
   assert.equal(queued.length, 1);
   assert.equal(queued[0]?.triggerMergeSha, "merge123");
   assert.ok(logs.some((log) => log.message.includes("queued release evaluation")));
+});
+
+test("syncAndBabysitTrackedRepos enqueues social changelog generation as a background job", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+
+  await storage.addPR({
+    number: 42,
+    title: "Example PR",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: false,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listMergedPullsToday: async () => Array.from({ length: 5 }, (_, index) => ({
+        number: index + 1,
+        title: `Merged PR ${index + 1}`,
+        url: `https://github.com/octo/example/pull/${index + 1}`,
+        author: "octocat",
+        repo: "octo/example",
+        mergedAt: `2026-03-28T1${index}:00:00.000Z`,
+      })),
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => backgroundJobQueue.enqueue(...args),
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const changelogs = await storage.getSocialChangelogs();
+  assert.equal(changelogs.length, 1);
+  assert.equal(changelogs[0].triggerCount, 5);
+  assert.equal(changelogs[0].status, "generating");
+
+  const jobs = await storage.listBackgroundJobs({
+    kind: "generate_social_changelog",
+    targetId: changelogs[0].id,
+  });
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].status, "queued");
 });
 
 test("syncAndBabysitTrackedRepos skips automatic babysits when pr watch is paused", async () => {

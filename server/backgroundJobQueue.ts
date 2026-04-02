@@ -37,6 +37,14 @@ export type BackgroundJobCancelParams = BackgroundJobFinalizeParams & {
   error?: string | null;
 };
 
+export type ScheduleBackgroundJob = (
+  kind: BackgroundJobKind,
+  targetId: string,
+  dedupeKey: string,
+  payload?: Record<string, unknown>,
+  options?: BackgroundJobEnqueueOptions,
+) => Promise<BackgroundJob>;
+
 export class BackgroundJobQueue {
   private readonly storage: IStorage;
   private readonly now: () => Date;
@@ -125,6 +133,10 @@ export class BackgroundJobQueue {
   private resolveNow(value?: QueueDateInput): string {
     return toIsoString(value ?? this.now());
   }
+}
+
+export function buildBackgroundJobDedupeKey(kind: BackgroundJobKind, targetId: string): string {
+  return kind === "sync_watched_repos" ? kind : `${kind}:${targetId}`;
 }
 
 function addMs(value: QueueDateInput, ms: number): string {

@@ -2,12 +2,15 @@ import type { Express, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
 import { addPRSchema, askQuestionSchema, configSchema } from "@shared/schema";
-import { storage } from "./storage";
+import type { IStorage } from "./storage";
+import { getDefaultStorage } from "./storage";
 import { PRBabysitter } from "./babysitter";
 import { applyEvaluationDecision, applyFlagDecision } from "./feedbackLifecycle";
 import { applyManualFeedbackDecision } from "./manualFeedback";
-import { createWatcherScheduler } from "./watcherScheduler";
-import { answerPRQuestion } from "./prQuestionAgent";
+import { createBackgroundJobHandlers } from "./backgroundJobHandlers";
+import { BackgroundJobDispatcher } from "./backgroundJobDispatcher";
+import { BackgroundJobQueue, buildBackgroundJobDedupeKey } from "./backgroundJobQueue";
+import { createWatcherScheduler, type WatcherScheduler } from "./watcherScheduler";
 import { ReleaseManager } from "./releaseManager";
 import {
   buildOctokit,
@@ -38,11 +41,31 @@ function sendGitHubAwareError(res: Response, error: unknown): void {
   res.status(500).json({ error: getErrorMessage(error) });
 }
 
+export type RouteDependencies = {
+  storage?: IStorage;
+  backgroundJobQueue?: BackgroundJobQueue;
+  backgroundJobDispatcher?: BackgroundJobDispatcher;
+  releaseManager?: ReleaseManager;
+  babysitter?: PRBabysitter;
+  watcherScheduler?: WatcherScheduler;
+  startBackgroundServices?: boolean;
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
+  dependencies: RouteDependencies = {},
 ): Promise<Server> {
-  const releaseManager = new ReleaseManager(storage, {
+  const storage = dependencies.storage ?? getDefaultStorage();
+  const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
+  let backgroundJobDispatcher: BackgroundJobDispatcher;
+  const scheduleBackgroundJob = async (...args: Parameters<BackgroundJobQueue["enqueue"]>) => {
+    const job = await backgroundJobQueue.enqueue(...args);
+    backgroundJobDispatcher.wake();
+    return job;
+  };
+
+  const releaseManager = dependencies.releaseManager ?? new ReleaseManager(storage, {
     github: {
       buildOctokit,
       findLatestSemverReleaseTag: getLatestSemverTagForRepo,
@@ -96,17 +119,29 @@ export async function registerRoutes(
       },
     },
   });
-  const babysitter = new PRBabysitter(storage, undefined, undefined, releaseManager);
+  const babysitter = dependencies.babysitter ?? new PRBabysitter(
+    storage,
+    undefined,
+    undefined,
+    releaseManager,
+    scheduleBackgroundJob,
+  );
+  backgroundJobDispatcher = dependencies.backgroundJobDispatcher ?? new BackgroundJobDispatcher({
+    storage,
+    queue: backgroundJobQueue,
+    handlers: createBackgroundJobHandlers({ storage }),
+  });
   let watcherTimer: NodeJS.Timeout | null = null;
   let watcherIntervalMs = 0;
 
-  const watcherScheduler = createWatcherScheduler(
+  const watcherScheduler = dependencies.watcherScheduler ?? createWatcherScheduler(
     () => babysitter.syncAndBabysitTrackedRepos(),
     (error) => {
       console.error("Repository babysitter watcher failed", error);
     },
   );
   const runWatcher = watcherScheduler.run;
+  const startBackgroundServices = dependencies.startBackgroundServices ?? true;
 
   const getRuntimeSnapshot = async () => {
     const state = await storage.getRuntimeState();
@@ -114,6 +149,16 @@ export async function registerRoutes(
       ...state,
       activeRuns: babysitter.getActiveRunCount(),
     };
+  };
+
+  const waitForBackgroundIdle = async (timeoutMs: number): Promise<boolean> => {
+    const [dispatcherIdle, babysitterIdle, releaseIdle] = await Promise.all([
+      backgroundJobDispatcher.waitForIdle(timeoutMs),
+      babysitter.waitForIdle(timeoutMs),
+      releaseManager.waitForIdle(timeoutMs),
+    ]);
+
+    return dispatcherIdle && babysitterIdle && releaseIdle;
   };
 
   const refreshWatcherSchedule = async () => {
@@ -135,11 +180,15 @@ export async function registerRoutes(
     }, interval);
   };
 
-  await refreshWatcherSchedule();
-  void babysitter.resumeInterruptedRuns();
-  void runWatcher();
+  if (startBackgroundServices) {
+    await refreshWatcherSchedule();
+    await backgroundJobDispatcher.start();
+    void babysitter.resumeInterruptedRuns();
+    void runWatcher();
+  }
 
   httpServer.on("close", () => {
+    backgroundJobDispatcher.stop();
     if (watcherTimer) {
       clearInterval(watcherTimer);
       watcherTimer = null;
@@ -166,7 +215,7 @@ export async function registerRoutes(
       });
 
       if (payload.enabled && payload.waitForIdle) {
-        const drained = await babysitter.waitForIdle(payload.timeoutMs ?? 120000);
+        const drained = await waitForBackgroundIdle(payload.timeoutMs ?? 120000);
         const snapshot = await getRuntimeSnapshot();
         return res.status(drained ? 200 : 202).json({
           ...updated,
@@ -522,14 +571,21 @@ export async function registerRoutes(
       const { question } = askQuestionSchema.parse(req.body);
       const entry = await storage.addQuestion(pr.id, question);
 
-      const config = await storage.getConfig();
-      void answerPRQuestion({
-        storage,
-        prId: pr.id,
-        questionId: entry.id,
-        question,
-        preferredAgent: config.codingAgent,
-      });
+      try {
+        await scheduleBackgroundJob(
+          "answer_pr_question",
+          entry.id,
+          buildBackgroundJobDedupeKey("answer_pr_question", entry.id),
+          { prId: pr.id },
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await storage.updateQuestion(entry.id, {
+          status: "error",
+          error: message.trim().slice(0, 2_000),
+        });
+        throw error;
+      }
 
       res.status(201).json(entry);
     } catch (err: unknown) {
