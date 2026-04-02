@@ -244,10 +244,47 @@
 <p>The settings page in the dashboard provides a UI for:</p>
 <ul>
 <li><strong>GitHub Token management</strong> — Add, update, or rotate tokens.</li>
-<li><strong>Repository preferences</strong> — Per-repo agent and poll interval settings.</li>
-<li><strong>Model discovery</strong> — View and refresh available AI models.</li>
+<li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
+<li><strong>CI healing</strong> — Enable autonomous CI repair and tune retry/session limits.</li>
 <li><strong>Theme</strong> — Toggle between light and dark mode.</li>
 </ul>
+<h2>CI Healing Settings</h2>
+<p>Code Factory can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Automatic CI healing</code></td>
+<td><code>false</code></td>
+<td>Enables healable CI failure classification and autonomous repair attempts</td>
+</tr>
+<tr>
+<td><code>Max healing attempts per session</code></td>
+<td><code>3</code></td>
+<td>Caps total repair attempts for one healing session</td>
+</tr>
+<tr>
+<td><code>Max healing attempts per fingerprint</code></td>
+<td><code>2</code></td>
+<td>Prevents retry loops on the same normalized failure fingerprint</td>
+</tr>
+<tr>
+<td><code>Max concurrent healing runs</code></td>
+<td><code>1</code></td>
+<td>Limits how many healing repairs can execute at once</td>
+</tr>
+<tr>
+<td><code>Healing cooldown (ms)</code></td>
+<td><code>300000</code></td>
+<td>Backoff window before a cooldowned session can retry</td>
+</tr>
+</tbody></table>
+<p>The dashboard shows healing state on each tracked PR, while the local API exposes <code>GET /api/healing-sessions</code> and <code>GET /api/healing-sessions/:id</code> for external tooling.</p>
 <h2>Build &amp; Deploy</h2>
 <h3>Development</h3>
 <pre><code class="language-bash">npm run dev          # Start dev server with hot reload

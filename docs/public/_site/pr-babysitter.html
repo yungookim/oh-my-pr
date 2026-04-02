@@ -178,7 +178,7 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">PR Babysitter</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is oh-my-pr&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is oh-my-pr&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing loops without manual intervention.</p>
 </header>
 
 <article class="doc-prose">
@@ -188,6 +188,7 @@
 <ul>
 <li>New PRs opened against the repository.</li>
 <li>Review comments and change requests on existing PRs.</li>
+<li>Failing CI checks on the current PR head SHA.</li>
 <li>Status changes (approvals, dismissals, re-requests).</li>
 <li>A per-PR watch state so you can pause background automation for one tracked PR without removing it.</li>
 </ul>
@@ -238,6 +239,16 @@
 <li>The agent makes changes, runs tests, and validates the fix.</li>
 <li>Changes are <strong>committed and pushed</strong> back to the PR branch.</li>
 </ol>
+<h3>5. CI Healing</h3>
+<p>When <strong>Automatic CI healing</strong> is enabled, the babysitter also watches failing checks and creates a healing session for the current PR head SHA. Each normalized failure fingerprint is classified as one of:</p>
+<ul>
+<li><strong><code>healable_in_branch</code></strong> — safe to attempt inside the PR branch with a bounded repair loop.</li>
+<li><strong><code>blocked_external</code></strong> — likely missing secrets, auth failures, or upstream outages the agent should not try to fix in-branch.</li>
+<li><strong><code>flaky_or_ambiguous</code></strong> — likely transient or inconclusive failures that should not immediately trigger an automated code change.</li>
+<li><strong><code>unknown</code></strong> — failures that do not match the current classifier heuristics and are surfaced for operator review.</li>
+</ul>
+<p>Only <code>healable_in_branch</code> failures queue a dedicated repair attempt. Healing sessions move through explicit states such as <code>triaging</code>, <code>awaiting_repair_slot</code>, <code>repairing</code>, <code>awaiting_ci</code>, <code>verifying</code>, <code>healed</code>, <code>cooldown</code>, <code>blocked</code>, <code>escalated</code>, and <code>superseded</code>.</p>
+<p>The dashboard shows the latest session for each tracked PR, including the current state badge, attempt summary, latest fingerprint, reason text, and current head SHA. The local API exposes session history via <code>GET /api/healing-sessions</code> and <code>GET /api/healing-sessions/:id</code>.</p>
 <h2>Feedback Lifecycle</h2>
 <p>Each feedback item moves through a defined state machine:</p>
 <pre><code>pending → triaged → dispatched → resolved

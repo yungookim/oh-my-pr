@@ -194,7 +194,7 @@ export function extractCIHealingSummary(stdout: string): string {
   }
 
   const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return trimLine(lines.slice(-3).join(" "), 240);
+  return trimLine(lines.slice(-1).join(" "), 240);
 }
 
 async function readHeadSha(

@@ -72,6 +72,17 @@ test("extractCIHealingSummary prefers the summary marker", () => {
   assert.equal(summary, "fixed the tsconfig path");
 });
 
+test("extractCIHealingSummary falls back to the last non-empty line", () => {
+  const summary = extractCIHealingSummary([
+    "collecting context",
+    "",
+    "still working through the failure",
+    "fixed the tsconfig path",
+  ].join("\n"));
+
+  assert.equal(summary, "fixed the tsconfig path");
+});
+
 test("runCIHealingRepairAttempt captures verification metadata when the push lands", async () => {
   const callLog: Array<{ command: string; args: string[] }> = [];
   let cleanupCalled = false;

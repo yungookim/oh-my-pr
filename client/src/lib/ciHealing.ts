@@ -204,7 +204,7 @@ export function getLatestHealingSessionForPR(
   }
 
   return matchingSessions.reduce((latest, session) => {
-    if (Date.parse(session.updatedAt) > Date.parse(latest.updatedAt)) {
+    if (session.updatedAt > latest.updatedAt) {
       return session;
     }
 

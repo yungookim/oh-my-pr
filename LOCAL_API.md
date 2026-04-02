@@ -20,6 +20,7 @@
    - [Feedback items](#feedback-items)
    - [PR Q&A](#pr-qa)
    - [Logs](#logs)
+   - [CI healing sessions](#ci-healing-sessions)
    - [Configuration](#configuration)
    - [Agent models](#agent-models)
    - [Runtime & drain mode](#runtime--drain-mode)
@@ -442,6 +443,25 @@ Retrieve activity logs, optionally filtered by PR.
 
 ---
 
+### CI healing sessions
+
+#### `GET /api/healing-sessions`
+
+List all persisted healing sessions, newest first.
+
+**Response** `200` — array of [HealingSession objects](#healingsession)
+
+---
+
+#### `GET /api/healing-sessions/:id`
+
+Get one healing session by its internal Code Factory ID.
+
+**Response** `200` — [HealingSession object](#healingsession)
+**Response** `404` — `{ "error": "Healing session not found" }`
+
+---
+
 ### Configuration
 
 #### `GET /api/config`
@@ -461,12 +481,18 @@ Partially update the configuration.  Only the provided fields are changed.
 {
   "githubToken": "ghp_xxxxxxxxxxxx",
   "codingAgent": "claude",
-  "model": "claude-sonnet-4-6",
   "maxTurns": 15,
   "batchWindowMs": 300000,
   "pollIntervalMs": 120000,
   "maxChangesPerRun": 10,
   "autoResolveMergeConflicts": true,
+  "autoCreateReleases": true,
+  "autoUpdateDocs": true,
+  "autoHealCI": false,
+  "maxHealingAttemptsPerSession": 3,
+  "maxHealingAttemptsPerFingerprint": 2,
+  "maxConcurrentHealingRuns": 1,
+  "healingCooldownMs": 300000,
   "watchedRepos": ["owner/repo"],
   "trustedReviewers": ["alice", "bob"],
   "ignoredBots": ["dependabot", "codecov"]
@@ -689,15 +715,54 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
 {
   githubToken: string;         // Redacted to "***xxxx" in GET responses
   codingAgent: "claude" | "codex";
-  model: string;
   maxTurns: number;
   batchWindowMs: number;
   pollIntervalMs: number;
   maxChangesPerRun: number;
   autoResolveMergeConflicts: boolean;
+  autoCreateReleases: boolean;
+  autoUpdateDocs: boolean;
+  autoHealCI: boolean;
+  maxHealingAttemptsPerSession: number;
+  maxHealingAttemptsPerFingerprint: number;
+  maxConcurrentHealingRuns: number;
+  healingCooldownMs: number;
   watchedRepos: string[];
   trustedReviewers: string[];
   ignoredBots: string[];
+}
+```
+
+### HealingSession
+
+```typescript
+{
+  id: string;
+  prId: string;
+  repo: string;                // "owner/repo"
+  prNumber: number;
+  initialHeadSha: string;
+  currentHeadSha: string;
+  state:
+    | "idle"
+    | "triaging"
+    | "awaiting_repair_slot"
+    | "repairing"
+    | "awaiting_ci"
+    | "verifying"
+    | "healed"
+    | "cooldown"
+    | "blocked"
+    | "escalated"
+    | "superseded";
+  startedAt: string;           // ISO 8601
+  updatedAt: string;           // ISO 8601
+  endedAt: string | null;      // ISO 8601
+  blockedReason: string | null;
+  escalationReason: string | null;
+  latestFingerprint: string | null;
+  attemptCount: number;
+  lastImprovementScore: number | null;
 }
 ```
 

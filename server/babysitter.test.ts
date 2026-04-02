@@ -3453,6 +3453,51 @@ test("syncAndBabysitTrackedRepos creates a healing session for failing watched P
   assert.equal(sessions[0]?.initialHeadSha, "abc123");
 });
 
+test("syncAndBabysitTrackedRepos uses the injected clock for fallback healing snapshots", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    watchedRepos: ["alex-morgan-o/lolodex"],
+    autoHealCI: false,
+    autoUpdateDocs: false,
+  });
+
+  const pullUrl = "https://github.com/alex-morgan-o/lolodex/pull/107";
+  const observedAt = "2026-04-02T15:04:05.000Z";
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [{
+        number: 107,
+        title: "Fallback snapshots",
+        branch: "feature/fallback-snapshots",
+        author: "octocat",
+        url: pullUrl,
+      }],
+      fetchPullSummary: async () => makePullSummary({ url: pullUrl }),
+      listFailingStatuses: async () => [{
+        context: "build",
+        description: "TypeScript compilation failed",
+        targetUrl: "https://github.com/octo/example/actions/runs/1",
+      }],
+    }),
+    {
+      now: () => new Date(observedAt),
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const prs = await storage.getPRs();
+  const snapshots = await storage.listCheckSnapshots({ prId: prs[0]?.id, sha: "abc123" });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.observedAt, observedAt);
+});
+
 test("babysitPR blocks external CI failures without launching the healing agent", async () => {
   const storage = new MemStorage();
   await storage.updateConfig({ autoHealCI: true, autoUpdateDocs: false });

@@ -1,6 +1,6 @@
 # PR Babysitter
 
-The PR Babysitter is oh-my-pr's core feature — an autonomous system that continuously monitors your GitHub pull requests and takes action on review feedback without manual intervention.
+The PR Babysitter is oh-my-pr's core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing loops without manual intervention.
 
 ## How It Works
 
@@ -10,6 +10,7 @@ When you add a repository to oh-my-pr, the babysitter begins polling for open pu
 
 - New PRs opened against the repository.
 - Review comments and change requests on existing PRs.
+- Failing CI checks on the current PR head SHA.
 - Status changes (approvals, dismissals, re-requests).
 - A per-PR watch state so you can pause background automation for one tracked PR without removing it.
 
@@ -42,6 +43,19 @@ For actionable feedback, oh-my-pr:
 2. Dispatches an **AI agent** (Claude Code or OpenAI Codex) with the feedback context.
 3. The agent makes changes, runs tests, and validates the fix.
 4. Changes are **committed and pushed** back to the PR branch.
+
+### 5. CI Healing
+
+When **Automatic CI healing** is enabled, the babysitter also watches failing checks and creates a healing session for the current PR head SHA. Each normalized failure fingerprint is classified as one of:
+
+- **`healable_in_branch`** — safe to attempt inside the PR branch with a bounded repair loop.
+- **`blocked_external`** — likely missing secrets, auth failures, or upstream outages the agent should not try to fix in-branch.
+- **`flaky_or_ambiguous`** — likely transient or inconclusive failures that should not immediately trigger an automated code change.
+- **`unknown`** — failures that do not match the current classifier heuristics and are surfaced for operator review.
+
+Only `healable_in_branch` failures queue a dedicated repair attempt. Healing sessions move through explicit states such as `triaging`, `awaiting_repair_slot`, `repairing`, `awaiting_ci`, `verifying`, `healed`, `cooldown`, `blocked`, `escalated`, and `superseded`.
+
+The dashboard shows the latest session for each tracked PR, including the current state badge, attempt summary, latest fingerprint, reason text, and current head SHA. The local API exposes session history via `GET /api/healing-sessions` and `GET /api/healing-sessions/:id`.
 
 ## Feedback Lifecycle
 

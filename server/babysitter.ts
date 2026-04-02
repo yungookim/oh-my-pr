@@ -82,6 +82,7 @@ type BabysitterRuntime = {
   runCommand: typeof runCommand;
   runCIHealingRepairAttempt?: typeof runCIHealingRepairAttempt;
   ciPollIntervalMs?: number;
+  now?: () => Date;
 };
 
 type ReleaseManagerLike = {
@@ -768,6 +769,7 @@ export class PRBabysitter {
   private readonly github: GitHubService;
   private readonly runtime: BabysitterRuntime;
   private readonly releaseManager?: ReleaseManagerLike;
+  private readonly clock: () => Date;
 
   constructor(
     storage: IStorage,
@@ -779,6 +781,11 @@ export class PRBabysitter {
     this.github = github;
     this.runtime = runtime;
     this.releaseManager = releaseManager;
+    this.clock = runtime.now ?? (() => new Date());
+  }
+
+  private now(): Date {
+    return this.clock();
   }
 
   getActiveRunCount(): number {
@@ -1506,6 +1513,7 @@ export class PRBabysitter {
         });
       }
       const failingStatuses = await this.github.listFailingStatuses(octokit, parsedRepo, pullSummary.headSha);
+      const observedAt = this.now().toISOString();
       const checkSnapshots = this.github.fetchCheckSnapshotsForRef
         ? await this.github.fetchCheckSnapshotsForRef(octokit, parsedRepo, pr.id, pullSummary.headSha)
         : failingStatuses.map((status) => ({
@@ -1518,13 +1526,13 @@ export class PRBabysitter {
             conclusion: null,
             description: status.description,
             targetUrl: status.targetUrl,
-            observedAt: new Date().toISOString(),
+            observedAt,
           }));
       const failingCheckSnapshots = checkSnapshots.filter((snapshot) => isFailingCheckSnapshot(snapshot));
       const classifiedHealingFailures = classifyCIFailures(failingCheckSnapshots);
       const healableHealingFailures = classifiedHealingFailures.filter((failure) => failure.classification === "healable_in_branch");
       const blockedHealingFailures = classifiedHealingFailures.filter((failure) => failure.classification === "blocked_external");
-      const healingManager = new CIHealingManager(this.storage);
+      const healingManager = new CIHealingManager(this.storage, () => this.now());
       let healingSession: HealingSession | null = null;
 
       if (failingCheckSnapshots.length > 0) {
@@ -2678,6 +2686,7 @@ export class PRBabysitter {
               currentHeadSha: headShaForFollowUp,
             });
 
+            const postHealingObservedAt = this.now().toISOString();
             const postHealingSnapshots = this.github.fetchCheckSnapshotsForRef
               ? await this.github.fetchCheckSnapshotsForRef(octokit, parsedRepo, pr.id, headShaForFollowUp)
               : ciResult.failures.map((status) => ({
@@ -2690,7 +2699,7 @@ export class PRBabysitter {
                   conclusion: null,
                   description: status.description,
                   targetUrl: status.targetUrl,
-                  observedAt: new Date().toISOString(),
+                  observedAt: postHealingObservedAt,
                 }));
             const postHealingFailingSnapshots = postHealingSnapshots.filter((snapshot) => isFailingCheckSnapshot(snapshot));
             const postHealingFailures = classifyCIFailures(postHealingFailingSnapshots);
