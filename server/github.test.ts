@@ -280,26 +280,24 @@ test("fetchFeedbackItemsForPR keeps review bots that are not explicitly ignored"
         },
       ];
     },
-    request: async () => ({
-      data: {
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: [
-                {
-                  id: "THREAD_node_123",
-                  isResolved: false,
-                  comments: {
-                    nodes: [
-                      { databaseId: 1 },
-                    ],
-                  },
+    graphql: async () => ({
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: [
+              {
+                id: "THREAD_node_123",
+                isResolved: false,
+                comments: {
+                  nodes: [
+                    { databaseId: 1 },
+                  ],
                 },
-              ],
-              pageInfo: {
-                hasNextPage: false,
-                endCursor: null,
               },
+            ],
+            pageInfo: {
+              hasNextPage: false,
+              endCursor: null,
             },
           },
         },
@@ -397,38 +395,36 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
 
       throw new Error("Unexpected paginate call");
     },
-    request: async (_route: string, params: { query: string; variables?: { threadId?: string; cursor?: string | null } }) => {
+    graphql: async (query: string, params: { threadId?: string; cursor?: string | null }) => {
       graphqlCalls.push({
-        query: params.query,
-        threadId: params.variables?.threadId,
-        cursor: params.variables?.cursor ?? null,
+        query,
+        threadId: params.threadId,
+        cursor: params.cursor ?? null,
       });
 
-      if (params.query.includes("CodeFactoryReviewThreads")) {
+      if (query.includes("CodeFactoryReviewThreads")) {
         return {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  nodes: [
-                    {
-                      id: "THREAD_node_999",
-                      isResolved: true,
-                      comments: {
-                        nodes: Array.from({ length: 100 }, (_unused, index) => ({
-                          databaseId: index + 1,
-                        })),
-                        pageInfo: {
-                          hasNextPage: true,
-                          endCursor: "cursor-100",
-                        },
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [
+                  {
+                    id: "THREAD_node_999",
+                    isResolved: true,
+                    comments: {
+                      nodes: Array.from({ length: 100 }, (_unused, index) => ({
+                        databaseId: index + 1,
+                      })),
+                      pageInfo: {
+                        hasNextPage: true,
+                        endCursor: "cursor-100",
                       },
                     },
-                  ],
-                  pageInfo: {
-                    hasNextPage: false,
-                    endCursor: null,
                   },
+                ],
+                pageInfo: {
+                  hasNextPage: false,
+                  endCursor: null,
                 },
               },
             },
@@ -436,22 +432,20 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
         };
       }
 
-      assert.equal(params.variables?.threadId, "THREAD_node_999");
-      assert.equal(params.variables?.cursor, "cursor-100");
+      assert.equal(params.threadId, "THREAD_node_999");
+      assert.equal(params.cursor, "cursor-100");
 
       return {
-        data: {
-          node: {
-            id: "THREAD_node_999",
-            isResolved: true,
-            comments: {
-              nodes: [
-                { databaseId: 101 },
-              ],
-              pageInfo: {
-                hasNextPage: false,
-                endCursor: null,
-              },
+        node: {
+          id: "THREAD_node_999",
+          isResolved: true,
+          comments: {
+            nodes: [
+              { databaseId: 101 },
+            ],
+            pageInfo: {
+              hasNextPage: false,
+              endCursor: null,
             },
           },
         },
@@ -494,16 +488,12 @@ test("fetchFeedbackItemsForPR paginates review thread comments beyond the first 
 });
 
 test("postFollowUpForFeedbackItem replies to review threads and resolveReviewThread resolves them", async () => {
-  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+  const requests: Array<{ query: string; params: Record<string, unknown> }> = [];
 
   const octokit = {
-    request: async (route: string, params: Record<string, unknown>) => {
-      requests.push({ route, params });
-      return {
-        data: {
-          ok: true,
-        },
-      };
+    graphql: async (query: string, params: Record<string, unknown>) => {
+      requests.push({ query, params });
+      return { ok: true };
     },
     issues: {
       createComment: async () => {
@@ -525,31 +515,23 @@ test("postFollowUpForFeedbackItem replies to review threads and resolveReviewThr
   );
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[0]?.route, "POST /graphql");
-  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
-  const vars0 = requests[0]?.params.variables as { threadId?: string; body?: string } | undefined;
-  assert.equal(vars0?.threadId, "THREAD_node_123");
+  assert.match(String(requests[0]?.query || ""), /addPullRequestReviewThreadReply/);
+  assert.equal(requests[0]?.params.threadId, "THREAD_node_123");
   assert.equal(
-    vars0?.body,
+    requests[0]?.params.body,
     "Addressed in the latest babysitter update.\n\ncodefactory-feedback:gh-review-comment-1",
   );
-  assert.equal(requests[1]?.route, "POST /graphql");
-  assert.match(String(requests[1]?.params.query || ""), /resolveReviewThread/);
-  const vars1 = requests[1]?.params.variables as { threadId?: string } | undefined;
-  assert.equal(vars1?.threadId, "THREAD_node_123");
+  assert.match(String(requests[1]?.query || ""), /resolveReviewThread/);
+  assert.equal(requests[1]?.params.threadId, "THREAD_node_123");
 });
 
 test("postFollowUpForFeedbackItem replies and resolves review thread in one call when resolve option is set", async () => {
-  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+  const requests: Array<{ query: string; params: Record<string, unknown> }> = [];
 
   const octokit = {
-    request: async (route: string, params: Record<string, unknown>) => {
-      requests.push({ route, params });
-      return {
-        data: {
-          ok: true,
-        },
-      };
+    graphql: async (query: string, params: Record<string, unknown>) => {
+      requests.push({ query, params });
+      return { ok: true };
     },
     issues: {
       createComment: async () => {
@@ -567,19 +549,18 @@ test("postFollowUpForFeedbackItem replies and resolves review thread in one call
   );
 
   assert.equal(requests.length, 2, "expected both a reply and a resolve request");
-  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
-  assert.match(String(requests[1]?.params.query || ""), /resolveReviewThread/);
-  const vars1 = requests[1]?.params.variables as { threadId?: string } | undefined;
-  assert.equal(vars1?.threadId, "THREAD_node_123");
+  assert.match(String(requests[0]?.query || ""), /addPullRequestReviewThreadReply/);
+  assert.match(String(requests[1]?.query || ""), /resolveReviewThread/);
+  assert.equal(requests[1]?.params.threadId, "THREAD_node_123");
 });
 
 test("postFollowUpForFeedbackItem does not resolve when resolve option is false", async () => {
-  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+  const requests: Array<{ query: string; params: Record<string, unknown> }> = [];
 
   const octokit = {
-    request: async (route: string, params: Record<string, unknown>) => {
-      requests.push({ route, params });
-      return { data: { ok: true } };
+    graphql: async (query: string, params: Record<string, unknown>) => {
+      requests.push({ query, params });
+      return { ok: true };
     },
     issues: {
       createComment: async () => {
@@ -597,14 +578,14 @@ test("postFollowUpForFeedbackItem does not resolve when resolve option is false"
   );
 
   assert.equal(requests.length, 1, "expected only a reply, no resolve");
-  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
+  assert.match(String(requests[0]?.query || ""), /addPullRequestReviewThreadReply/);
 });
 
 test("postFollowUpForFeedbackItem routes review and general comments to PR comments", async () => {
   const comments: Array<Record<string, unknown>> = [];
 
   const octokit = {
-    request: async () => {
+    graphql: async () => {
       throw new Error("unexpected graphql request");
     },
     issues: {
@@ -664,7 +645,7 @@ test("postFollowUpForFeedbackItem falls back to PR comment when review thread ID
   const comments: Array<Record<string, unknown>> = [];
 
   const octokit = {
-    request: async () => {
+    graphql: async () => {
       throw new Error("should not call graphql when falling back");
     },
     issues: {
@@ -703,7 +684,7 @@ test("postStatusReplyForFeedbackItem falls back to PR comment when review thread
   const issueCommentUpdates: Array<Record<string, unknown>> = [];
 
   const octokit = {
-    request: async () => {
+    graphql: async () => {
       throw new Error("should not call graphql when falling back");
     },
     pulls: {
@@ -770,18 +751,16 @@ test("postStatusReplyForFeedbackItem falls back to PR comment when review thread
 });
 
 test("postStatusReplyForFeedbackItem validates review-thread replies and updateStatusReply mutates the local ref", async () => {
-  const requests: Array<{ route: string; params: Record<string, unknown> }> = [];
+  const requests: Array<{ query: string; params: Record<string, unknown> }> = [];
   const updatedReviewComments: Array<Record<string, unknown>> = [];
 
   const octokit = {
-    request: async (route: string, params: Record<string, unknown>) => {
-      requests.push({ route, params });
+    graphql: async (query: string, params: Record<string, unknown>) => {
+      requests.push({ query, params });
       return {
-        data: {
-          addPullRequestReviewThreadReply: {
-            comment: {
-              databaseId: 456,
-            },
+        addPullRequestReviewThreadReply: {
+          comment: {
+            databaseId: 456,
           },
         },
       };
@@ -814,11 +793,9 @@ test("postStatusReplyForFeedbackItem validates review-thread replies and updateS
   );
 
   assert.equal(requests.length, 1);
-  assert.equal(requests[0]?.route, "POST /graphql");
-  assert.match(String(requests[0]?.params.query || ""), /addPullRequestReviewThreadReply/);
-  const statusVars = requests[0]?.params.variables as { threadId?: string; body?: string } | undefined;
-  assert.equal(statusVars?.threadId, "THREAD_node_123");
-  assert.equal(statusVars?.body, "Queued for processing");
+  assert.match(String(requests[0]?.query || ""), /addPullRequestReviewThreadReply/);
+  assert.equal(requests[0]?.params.threadId, "THREAD_node_123");
+  assert.equal(requests[0]?.params.body, "Queued for processing");
   assert.deepEqual(ref, {
     commentDatabaseId: 456,
     replyKind: "review_thread",
@@ -849,12 +826,10 @@ test("postStatusReplyForFeedbackItem validates review-thread replies and updateS
 
 test("postStatusReplyForFeedbackItem rejects malformed review-thread reply payloads", async () => {
   const octokit = {
-    request: async () => ({
-      data: {
-        addPullRequestReviewThreadReply: {
-          comment: {
-            databaseId: "not-a-number",
-          },
+    graphql: async () => ({
+      addPullRequestReviewThreadReply: {
+        comment: {
+          databaseId: "not-a-number",
         },
       },
     }),
