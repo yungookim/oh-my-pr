@@ -22,6 +22,7 @@ import type {
   HealingAttempt,
   HealingSession,
   LogEntry,
+  NewPR,
   PR,
   PRQuestion,
   ReleaseRun,
@@ -30,7 +31,7 @@ import type {
 
 // ── PR ───────────────────────────────────────────────────────────────────────
 
-export function createPR(data: Omit<PR, "id" | "addedAt">): PR {
+export function createPR(data: NewPR): PR {
   return prSchema.parse({
     ...data,
     id: randomUUID(),

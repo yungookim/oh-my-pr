@@ -11,6 +11,9 @@ When you add a repository to oh-my-pr, the babysitter begins polling for open pu
 - New PRs opened against the repository.
 - Review comments and change requests on existing PRs.
 - Status changes (approvals, dismissals, re-requests).
+- A per-PR watch state so you can pause background automation for one tracked PR without removing it.
+
+Paused PRs stay tracked locally and can still be run manually from the dashboard or API. While paused, the background watcher skips autonomous sync and babysitter runs for that PR until you resume watch.
 
 ### 2. Review Sync
 
@@ -71,5 +74,6 @@ You can control babysitter behavior per repository:
 - **Poll interval** — How often to check for new reviews (default: 60 seconds).
 - **Auto-dispatch** — Whether to automatically dispatch agents or require approval.
 - **Agent preference** — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.
+- **Per-PR watch toggle** — Pause one tracked PR's background automation while keeping manual runs available.
 
 See [Configuration](./configuration.md) for details.

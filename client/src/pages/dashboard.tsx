@@ -28,6 +28,10 @@ function formatClock(timestamp: string | null): string | null {
   return new Date(timestamp).toLocaleTimeString("en-US", { hour12: false });
 }
 
+function isPRWatchEnabled(pr: PR): boolean {
+  return pr.watchEnabled;
+}
+
 function formatStatusLabel(status: PR["status"]): string {
   if (status === "processing") {
     return "autonomous run active";
@@ -76,6 +80,14 @@ function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
   return (
     <span className={`inline-block border px-1.5 py-0 text-[11px] uppercase tracking-wide ${cls}`}>
       {formatFeedbackStatusLabel(status)}
+    </span>
+  );
+}
+
+function WatchPausedIndicator() {
+  return (
+    <span className="border border-border px-1.5 py-0 text-[10px] uppercase tracking-wider text-muted-foreground">
+      watch paused
     </span>
   );
 }
@@ -149,6 +161,7 @@ function AgentIndicator({ pr }: { pr: PR }) {
 
 function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSelect: () => void }) {
   const checkedAt = formatClock(pr.lastChecked);
+  const watchEnabled = isPRWatchEnabled(pr);
   const agentActive = pr.status === "processing" || countActiveFeedbackStatuses(pr.feedbackItems).inProgress > 0;
   const readyToMerge = !agentActive && isPRReadyToMerge(pr.feedbackItems);
 
@@ -203,6 +216,7 @@ function PRRow({ pr, isSelected, onSelect }: { pr: PR; isSelected: boolean; onSe
               {pr.repo}
             </a>
             <span>{formatStatusLabel(pr.status)}</span>
+            {!watchEnabled && <WatchPausedIndicator />}
             {pr.feedbackItems.length > 0 && (() => {
               const counts = countActiveFeedbackStatuses(pr.feedbackItems);
               const parts: string[] = [];
@@ -702,6 +716,7 @@ export default function Dashboard() {
   }, [displayedPRs, selectedPRId]);
 
   const selectedPR = displayedPRs.find((pr) => pr.id === selectedPRId) ?? null;
+  const selectedPRWatchEnabled = selectedPR ? isPRWatchEnabled(selectedPR) : true;
 
   const addMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -729,6 +744,21 @@ export default function Dashboard() {
     },
     onError: (error) => {
       showMutationError("Could not run babysitter", error);
+    },
+  });
+
+  const watchMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/prs/${id}/watch`, { enabled });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/prs/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/logs"] });
+    },
+    onError: (error) => {
+      showMutationError("Could not update PR watch state", error);
     },
   });
 
@@ -1014,6 +1044,7 @@ export default function Dashboard() {
                       <StatusDot status={selectedPR.status} />
                       <span className="truncate font-medium">{selectedPR.title}</span>
                       <AgentIndicator pr={selectedPR} />
+                      {!selectedPRWatchEnabled && <WatchPausedIndicator />}
                       <a
                         href={selectedPR.url}
                         target="_blank"
@@ -1025,6 +1056,7 @@ export default function Dashboard() {
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                       <span>status: {formatStatusLabel(selectedPR.status)}</span>
+                      {!selectedPRWatchEnabled && <WatchPausedIndicator />}
                       <span>{selectedPR.feedbackItems.length} items</span>
                       {selectedPR.feedbackItems.length > 0 && (() => {
                         const counts = countActiveFeedbackStatuses(selectedPR.feedbackItems);
@@ -1047,14 +1079,24 @@ export default function Dashboard() {
                     </div>
                   </div>
                   {!isArchived && (
-                    <button
-                      onClick={() => applyMutation.mutate(selectedPR.id)}
-                      disabled={applyMutation.isPending || selectedPR.status === "processing"}
-                      data-testid="button-apply"
-                      className="border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background disabled:opacity-30"
-                    >
-                      {selectedPR.status === "processing" ? "Running" : "Run now"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => applyMutation.mutate(selectedPR.id)}
+                        disabled={applyMutation.isPending || selectedPR.status === "processing"}
+                        data-testid="button-apply"
+                        className="border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background disabled:opacity-30"
+                      >
+                        {selectedPR.status === "processing" ? "Running" : "Run now"}
+                      </button>
+                      <button
+                        onClick={() => watchMutation.mutate({ id: selectedPR.id, enabled: !selectedPRWatchEnabled })}
+                        disabled={watchMutation.isPending}
+                        data-testid="button-toggle-watch"
+                        className="border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-30"
+                      >
+                        {selectedPRWatchEnabled ? "Pause watch" : "Resume watch"}
+                      </button>
+                    </div>
                   )}
                 </div>
                 {isPRReadyToMerge(selectedPR.feedbackItems) && selectedPR.status !== "processing" && countActiveFeedbackStatuses(selectedPR.feedbackItems).inProgress === 0 && (
@@ -1069,7 +1111,9 @@ export default function Dashboard() {
                   />
                 )}
                 <div className="text-[11px] text-muted-foreground">
-                  Background watcher syncs GitHub feedback and pushes approved fixes automatically.
+                  {selectedPRWatchEnabled
+                    ? "Background watcher syncs GitHub feedback and pushes approved fixes automatically."
+                    : "Background watch is paused for this PR; manual runs still work."}
                 </div>
               </div>
 
@@ -1078,7 +1122,9 @@ export default function Dashboard() {
               <div className="flex-1 overflow-y-auto">
                 {selectedPR.feedbackItems.length === 0 ? (
                   <div className="p-4 text-[12px] text-muted-foreground">
-                    No feedback yet. The watcher will sync GitHub comments automatically.
+                    {selectedPRWatchEnabled
+                      ? "No feedback yet. The watcher will sync GitHub comments automatically."
+                      : "No feedback yet. Background watch is paused for this PR."}
                   </div>
                 ) : (
                   selectedPR.feedbackItems.map((item) => (

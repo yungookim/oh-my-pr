@@ -71,10 +71,17 @@ export const prSchema = z.object({
   testsPassed: z.boolean().nullable(),
   lintPassed: z.boolean().nullable(),
   lastChecked: z.string().nullable(),
+  watchEnabled: z.boolean().default(true),
   docsAssessment: docsAssessmentSchema.nullable().optional(),
   addedAt: z.string(),
 });
 export type PR = z.infer<typeof prSchema>;
+
+export const newPRSchema = prSchema.omit({
+  id: true,
+  addedAt: true,
+});
+export type NewPR = z.input<typeof newPRSchema>;
 
 export const addPRSchema = z.object({
   url: z.string().url(),

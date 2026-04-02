@@ -105,6 +105,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     testsPassed: null,
     lintPassed: null,
     lastChecked: null,
+    watchEnabled: false,
   });
   await first.updatePR(pr.id, {
     feedbackItems: [
@@ -212,6 +213,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(reloadedPr?.feedbackItems[0]?.threadId, "PRRT_kwDO_thread");
   assert.equal(reloadedPr?.feedbackItems[0]?.auditToken, "codefactory-feedback:feedback-1");
   assert.equal(reloadedPr?.accepted, 1);
+  assert.equal(reloadedPr?.watchEnabled, false);
   assert.equal(reloadedPr?.docsAssessment?.headSha, "abc123");
   assert.equal(reloadedPr?.docsAssessment?.status, "needed");
   assert.match(reloadedPr?.docsAssessment?.summary || "", /README/);
@@ -272,6 +274,36 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
     });
   } finally {
     db.close();
+    storage.close();
+  }
+});
+
+test("SqliteStorage defaults watchEnabled to true for new PRs", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  try {
+    const pr = await storage.addPR({
+      number: 107,
+      title: "Watch defaults on",
+      repo: "alex-morgan-o/lolodex",
+      branch: "feature/default-watch",
+      author: "octocat",
+      url: "https://github.com/alex-morgan-o/lolodex/pull/107",
+      status: "watching",
+      feedbackItems: [],
+      accepted: 0,
+      rejected: 0,
+      flagged: 0,
+      testsPassed: null,
+      lintPassed: null,
+      lastChecked: null,
+    });
+
+    const reloaded = await storage.getPR(pr.id);
+    assert.equal(pr.watchEnabled, true);
+    assert.equal(reloaded?.watchEnabled, true);
+  } finally {
     storage.close();
   }
 });

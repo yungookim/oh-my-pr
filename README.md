@@ -22,6 +22,7 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 
 - Watch multiple repositories or add a single PR by URL.
 - Auto-register open PRs, archive closed or merged PRs, and keep syncing review activity.
+- Pause background automation for an individual tracked PR while keeping manual runs available.
 - Store PR state, questions, logs, and social changelogs in SQLite with mirrored log files.
 - Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
 - Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
@@ -38,7 +39,7 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 <img width="969" height="572" alt="Code Factory workflow" src="https://github.com/user-attachments/assets/b9dbd102-ae2e-4837-a862-a0282bdfa0b8" />
 
 1. Add a repository to the watch list or register a PR directly by URL.
-2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, and queues babysitter runs.
+2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, and queues babysitter runs for tracked PRs whose background watch is enabled.
 3. Accepted work is executed in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
 4. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
 

@@ -49,6 +49,7 @@ import {
   markFailed,
   markRetry,
   markWarning,
+  shouldResolveReviewConversation,
 } from "./feedbackLifecycle";
 
 const DEFAULT_GIT_USER_NAME = "PR Babysitter";
@@ -554,7 +555,7 @@ function needsGitHubFollowUp(item: FeedbackItem, feedbackItems: FeedbackItem[]):
     return true;
   }
 
-  return item.replyKind === "review_thread" && !item.threadResolved;
+  return shouldResolveReviewConversation(markResolved(item));
 }
 
 function collectGitHubFollowUpTasks(pr: PR): FeedbackItem[] {
@@ -1108,6 +1109,10 @@ export class PRBabysitter {
           });
 
           await this.storage.addLog(local.id, "info", `Auto-registered open PR #${pull.number} from ${repoSlug}`);
+        }
+
+        if (!local.watchEnabled) {
+          continue;
         }
 
         await this.storage.addLog(local.id, "info", "Watcher queued autonomous babysitter run", {
@@ -2532,7 +2537,7 @@ export class PRBabysitter {
 
       for (const item of followUpTasks) {
         const shouldPostFollowUp = !hasAuditTrail(item, pr.feedbackItems);
-        const shouldResolveThread = item.replyKind === "review_thread" && !item.threadResolved;
+        const shouldResolveThread = shouldResolveReviewConversation(markResolved(item));
 
         if (shouldPostFollowUp) {
           await queueLog(pr.id, "info", `Posting GitHub follow-up for ${item.id}${shouldResolveThread ? " and resolving conversation" : ""}`, {
