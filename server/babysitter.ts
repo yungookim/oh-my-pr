@@ -183,6 +183,12 @@ function mergeFeedbackItems(existing: FeedbackItem[], incoming: FeedbackItem[]):
   return { merged, newCount };
 }
 
+function hasMissingReviewThreadMetadata(pr: PR): boolean {
+  return pr.feedbackItems.some((item) =>
+    item.replyKind === "review_thread" && (item.threadId === null || item.threadResolved === null),
+  );
+}
+
 function formatFeedbackSyncLogMessage(total: number, newCount: number): string {
   const suffix = total === 1 ? "" : "s";
   return `GitHub sync complete: ${total} feedback item${suffix} (${newCount} new)`;
@@ -974,6 +980,23 @@ export class PRBabysitter {
     const runtimeState = await this.storage.getRuntimeState();
     if (runtimeState.drainMode) {
       return;
+    }
+
+    const repairCandidates = [
+      ...(await this.storage.getPRs()),
+      ...(await this.storage.getArchivedPRs()),
+    ].filter(hasMissingReviewThreadMetadata);
+
+    for (const pr of repairCandidates) {
+      try {
+        await this.syncFeedbackForPR(pr.id, {
+          phase: "repair",
+        });
+      } catch (error) {
+        await this.storage.addLog(pr.id, "warn", `Could not repair missing GitHub review-thread metadata: ${summarizeUnknownError(error)}`, {
+          phase: "repair",
+        });
+      }
     }
 
     const config = await this.storage.getConfig();

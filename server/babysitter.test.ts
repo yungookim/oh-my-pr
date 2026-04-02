@@ -398,6 +398,102 @@ test("syncAndBabysitTrackedRepos queues release evaluation for merged archived P
   assert.ok(logs.some((log) => log.message.includes("queued release evaluation")));
 });
 
+test("syncAndBabysitTrackedRepos repairs missing review-thread metadata on archived PRs", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Repair review-thread metadata",
+    repo: "octo/example",
+    branch: "feature/repair",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "archived",
+    feedbackItems: [
+      {
+        id: "gh-review-comment-1",
+        author: "reviewer",
+        body: "Please reply in thread",
+        bodyHtml: "<p>Please reply in thread</p>",
+        replyKind: "review_thread",
+        sourceId: "101",
+        sourceNodeId: null,
+        sourceUrl: "https://github.com/octo/example/pull/42#discussion_r101",
+        threadId: null,
+        threadResolved: null,
+        auditToken: "codefactory-feedback:gh-review-comment-1",
+        file: "server/github.ts",
+        line: 100,
+        type: "review_comment",
+        createdAt: "2026-04-02T10:00:00Z",
+        decision: null,
+        decisionReason: null,
+        action: null,
+        status: "pending",
+        statusReason: null,
+      },
+    ],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: false,
+  });
+
+  const babysitter = new PRBabysitter(storage, {
+    buildOctokit: async () => ({}) as never,
+    fetchFeedbackItemsForPR: async () => [
+      {
+        id: "gh-review-comment-1",
+        author: "reviewer",
+        body: "Please reply in thread",
+        bodyHtml: "<p>Please reply in thread</p>",
+        replyKind: "review_thread",
+        sourceId: "101",
+        sourceNodeId: null,
+        sourceUrl: "https://github.com/octo/example/pull/42#discussion_r101",
+        threadId: "THREAD_node_101",
+        threadResolved: false,
+        auditToken: "codefactory-feedback:gh-review-comment-1",
+        file: "server/github.ts",
+        line: 100,
+        type: "review_comment",
+        createdAt: "2026-04-02T10:00:00Z",
+        decision: null,
+        decisionReason: null,
+        action: null,
+        status: "pending",
+        statusReason: null,
+      },
+    ],
+    fetchPullSummary: async () => {
+      throw new Error("unused in this test");
+    },
+    listFailingStatuses: async () => [],
+    listOpenPullsForRepo: async () => [],
+    postFollowUpForFeedbackItem: async () => undefined,
+    postPRComment: async () => undefined,
+    resolveReviewThread: async () => undefined,
+    resolveGitHubAuthToken: async () => undefined,
+    addReactionToComment: async () => {},
+    postStatusReplyForFeedbackItem: async () => null,
+    updateStatusReply: async () => {},
+    checkCISettled: async () => true,
+    fetchCheckSnapshotsForRef: async () => [],
+  });
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const repaired = await storage.getArchivedPRs();
+  const repairedPr = repaired.find((candidate) => candidate.id === pr.id);
+  const repairedItem = repairedPr?.feedbackItems.find((candidate) => candidate.id === "gh-review-comment-1");
+
+  assert.equal(repairedItem?.threadId, "THREAD_node_101");
+  assert.equal(repairedItem?.threadResolved, false);
+  assert.equal(repairedPr?.status, "archived");
+});
+
 test("syncAndBabysitTrackedRepos skips automatic babysits when pr watch is paused", async () => {
   const storage = new MemStorage();
   const babysitCalls: string[] = [];
