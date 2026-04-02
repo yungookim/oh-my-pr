@@ -2,7 +2,14 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { MemStorage } from "./memoryStorage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
-import type { AgentRun, NewPR } from "@shared/schema";
+import type {
+  AgentRun,
+  CheckSnapshot,
+  FailureFingerprint,
+  HealingAttempt,
+  HealingSession,
+  NewPR,
+} from "@shared/schema";
 
 function makePRInput(overrides: Partial<NewPR> = {}): NewPR {
   return {
@@ -57,6 +64,70 @@ function makeBackgroundJobInput(overrides: Partial<{
     payload: { prId: "pr-1" },
     priority: 100,
     availableAt: "2026-04-02T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeHealingSession(overrides: Partial<HealingSession> = {}): Omit<HealingSession, "id" | "startedAt" | "updatedAt"> {
+  return {
+    prId: "pr-1",
+    repo: "owner/repo",
+    prNumber: 1,
+    initialHeadSha: "abc123",
+    currentHeadSha: "abc123",
+    state: "triaging",
+    endedAt: null,
+    blockedReason: null,
+    escalationReason: null,
+    latestFingerprint: null,
+    attemptCount: 0,
+    lastImprovementScore: null,
+    ...overrides,
+  };
+}
+
+function makeHealingAttempt(overrides: Partial<HealingAttempt> = {}): Omit<HealingAttempt, "id" | "startedAt"> {
+  return {
+    sessionId: "session-1",
+    attemptNumber: 1,
+    inputSha: "abc123",
+    outputSha: null,
+    status: "queued",
+    endedAt: null,
+    agent: "claude",
+    promptDigest: "digest",
+    targetFingerprints: ["build-failure"],
+    summary: null,
+    improvementScore: null,
+    error: null,
+    ...overrides,
+  };
+}
+
+function makeCheckSnapshot(overrides: Partial<CheckSnapshot> = {}): Omit<CheckSnapshot, "id"> {
+  return {
+    prId: "pr-1",
+    sha: "abc123",
+    provider: "github",
+    context: "build",
+    status: "completed",
+    conclusion: "failure",
+    description: "Build failed",
+    targetUrl: "https://github.com/owner/repo/actions/runs/1",
+    observedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeFailureFingerprint(overrides: Partial<FailureFingerprint> = {}): Omit<FailureFingerprint, "id" | "createdAt"> {
+  return {
+    sessionId: "session-1",
+    sha: "abc123",
+    fingerprint: "build-failure",
+    category: "build",
+    classification: "healable_in_branch",
+    summary: "Build error can be fixed in branch",
+    selectedEvidence: ["line 12"],
     ...overrides,
   };
 }
@@ -350,6 +421,11 @@ describe("MemStorage", () => {
       assert.equal(config.maxTurns, DEFAULT_CONFIG.maxTurns);
       assert.equal(config.autoCreateReleases, DEFAULT_CONFIG.autoCreateReleases);
       assert.equal(config.autoUpdateDocs, DEFAULT_CONFIG.autoUpdateDocs);
+      assert.equal(config.autoHealCI, DEFAULT_CONFIG.autoHealCI);
+      assert.equal(config.maxHealingAttemptsPerSession, DEFAULT_CONFIG.maxHealingAttemptsPerSession);
+      assert.equal(config.maxHealingAttemptsPerFingerprint, DEFAULT_CONFIG.maxHealingAttemptsPerFingerprint);
+      assert.equal(config.maxConcurrentHealingRuns, DEFAULT_CONFIG.maxConcurrentHealingRuns);
+      assert.equal(config.healingCooldownMs, DEFAULT_CONFIG.healingCooldownMs);
       assert.deepEqual(config.watchedRepos, []);
     });
   });
@@ -362,10 +438,19 @@ describe("MemStorage", () => {
       assert.equal(updated.codingAgent, "claude");
       assert.equal(updated.autoUpdateDocs, true);
       assert.equal(updated.autoCreateReleases, true);
+      assert.equal(updated.autoHealCI, false);
+      assert.equal(updated.maxHealingAttemptsPerSession, 3);
     });
 
     it("returns the updated config", async () => {
-      const updated = await storage.updateConfig({ githubToken: "tok_123" });
+      const updated = await storage.updateConfig({
+        githubToken: "tok_123",
+        autoHealCI: true,
+        maxHealingAttemptsPerSession: 5,
+        maxHealingAttemptsPerFingerprint: 4,
+        maxConcurrentHealingRuns: 2,
+        healingCooldownMs: 123456,
+      });
       const fetched = await storage.getConfig();
       assert.deepEqual(updated, fetched);
     });
@@ -509,6 +594,95 @@ describe("MemStorage", () => {
       );
       assert.equal(canceled?.status, "canceled");
       assert.equal(canceled?.lastError, "no-op");
+    });
+  });
+
+  // ── CI healing ──────────────────────────────────────────
+
+  describe("healing sessions", () => {
+    it("creates, fetches, updates, and lists sessions", async () => {
+      const created = await storage.createHealingSession(makeHealingSession());
+      assert.ok(created.id);
+      assert.equal(created.state, "triaging");
+
+      const fetched = await storage.getHealingSession(created.id);
+      assert.deepEqual(fetched, created);
+      assert.notEqual(fetched, created);
+
+      const byHead = await storage.getHealingSessionByPrAndHead(created.prId, created.initialHeadSha);
+      assert.equal(byHead?.id, created.id);
+
+      const updated = await storage.updateHealingSession(created.id, {
+        state: "awaiting_repair_slot",
+        attemptCount: 1,
+        latestFingerprint: "build-failure",
+      });
+      assert.equal(updated?.state, "awaiting_repair_slot");
+      assert.equal(updated?.attemptCount, 1);
+      assert.equal(updated?.latestFingerprint, "build-failure");
+
+      const sessions = await storage.listHealingSessions({ prId: created.prId });
+      assert.equal(sessions.length, 1);
+      assert.equal(sessions[0]?.id, created.id);
+    });
+  });
+
+  describe("healing attempts", () => {
+    it("creates, fetches, updates, and lists attempts", async () => {
+      const session = await storage.createHealingSession(makeHealingSession());
+      const created = await storage.createHealingAttempt({
+        ...makeHealingAttempt({ sessionId: session.id }),
+        sessionId: session.id,
+      });
+      assert.ok(created.id);
+      assert.equal(created.status, "queued");
+
+      const fetched = await storage.getHealingAttempt(created.id);
+      assert.deepEqual(fetched, created);
+      assert.notEqual(fetched, created);
+
+      const updated = await storage.updateHealingAttempt(created.id, {
+        status: "verified",
+        outputSha: "def456",
+        improvementScore: 2,
+      });
+      assert.equal(updated?.status, "verified");
+      assert.equal(updated?.outputSha, "def456");
+      assert.equal(updated?.improvementScore, 2);
+
+      const attempts = await storage.listHealingAttempts({ sessionId: session.id });
+      assert.equal(attempts.length, 1);
+      assert.equal(attempts[0]?.id, created.id);
+    });
+  });
+
+  describe("check snapshots", () => {
+    it("creates and lists check snapshots", async () => {
+      const snapshot = await storage.createCheckSnapshot(makeCheckSnapshot());
+      assert.ok(snapshot.id);
+      assert.equal(snapshot.status, "completed");
+
+      const snapshots = await storage.listCheckSnapshots({ prId: snapshot.prId, sha: snapshot.sha });
+      assert.equal(snapshots.length, 1);
+      assert.equal(snapshots[0]?.id, snapshot.id);
+      assert.notEqual(snapshots[0], snapshot);
+    });
+  });
+
+  describe("failure fingerprints", () => {
+    it("creates and lists failure fingerprints", async () => {
+      const session = await storage.createHealingSession(makeHealingSession());
+      const fingerprint = await storage.createFailureFingerprint({
+        ...makeFailureFingerprint({ sessionId: session.id }),
+        sessionId: session.id,
+      });
+      assert.ok(fingerprint.id);
+      assert.equal(fingerprint.classification, "healable_in_branch");
+
+      const fingerprints = await storage.listFailureFingerprints({ sessionId: session.id, sha: fingerprint.sha });
+      assert.equal(fingerprints.length, 1);
+      assert.equal(fingerprints[0]?.id, fingerprint.id);
+      assert.notEqual(fingerprints[0], fingerprint);
     });
   });
 

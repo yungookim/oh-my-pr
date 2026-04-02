@@ -5,7 +5,13 @@ import type {
   BackgroundJobKind,
   BackgroundJobStatus,
   Config,
+  CheckSnapshot,
   LogEntry,
+  FailureFingerprint,
+  HealingAttempt,
+  HealingAttemptStatus,
+  HealingSession,
+  HealingSessionState,
   NewPR,
   PR,
   PRQuestion,
@@ -49,6 +55,37 @@ export interface IStorage {
   // Config
   getConfig(): Promise<Config>;
   updateConfig(updates: Partial<Config>): Promise<Config>;
+
+  // CI healing
+  getHealingSession(id: string): Promise<HealingSession | undefined>;
+  getHealingSessionByPrAndHead(prId: string, initialHeadSha: string): Promise<HealingSession | undefined>;
+  listHealingSessions(filters?: {
+    status?: HealingSessionState;
+    prId?: string;
+    repo?: string;
+  }): Promise<HealingSession[]>;
+  createHealingSession(data: Omit<HealingSession, "id" | "startedAt" | "updatedAt">): Promise<HealingSession>;
+  updateHealingSession(id: string, updates: Partial<HealingSession>): Promise<HealingSession | undefined>;
+
+  getHealingAttempt(id: string): Promise<HealingAttempt | undefined>;
+  listHealingAttempts(filters?: {
+    sessionId?: string;
+    status?: HealingAttemptStatus;
+  }): Promise<HealingAttempt[]>;
+  createHealingAttempt(data: Omit<HealingAttempt, "id" | "startedAt">): Promise<HealingAttempt>;
+  updateHealingAttempt(id: string, updates: Partial<HealingAttempt>): Promise<HealingAttempt | undefined>;
+
+  listCheckSnapshots(filters?: {
+    prId?: string;
+    sha?: string;
+  }): Promise<CheckSnapshot[]>;
+  createCheckSnapshot(data: Omit<CheckSnapshot, "id">): Promise<CheckSnapshot>;
+
+  listFailureFingerprints(filters?: {
+    sessionId?: string;
+    sha?: string;
+  }): Promise<FailureFingerprint[]>;
+  createFailureFingerprint(data: Omit<FailureFingerprint, "id" | "createdAt">): Promise<FailureFingerprint>;
 
   // Runtime lifecycle
   getRuntimeState(): Promise<RuntimeState>;

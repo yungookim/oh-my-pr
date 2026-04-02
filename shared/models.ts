@@ -1,9 +1,13 @@
 import { randomUUID } from "crypto";
 import {
+  checkSnapshotSchema,
   agentRunSchema,
   backgroundJobSchema,
   configSchema,
   feedbackItemSchema,
+  failureFingerprintSchema,
+  healingAttemptSchema,
+  healingSessionSchema,
   logEntrySchema,
   prQuestionSchema,
   prSchema,
@@ -14,7 +18,11 @@ import type {
   AgentRun,
   BackgroundJob,
   Config,
+  CheckSnapshot,
   FeedbackItem,
+  FailureFingerprint,
+  HealingAttempt,
+  HealingSession,
   LogEntry,
   NewPR,
   PR,
@@ -221,6 +229,74 @@ export function applyReleaseRunUpdate(
     id: existing.id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
+  });
+}
+
+// ── CI healing ───────────────────────────────────────────────────────────────
+
+export function createCheckSnapshot(data: Omit<CheckSnapshot, "id">): CheckSnapshot {
+  return checkSnapshotSchema.parse({
+    ...data,
+    id: randomUUID(),
+  });
+}
+
+export function createFailureFingerprint(
+  data: Omit<FailureFingerprint, "id" | "createdAt">,
+): FailureFingerprint {
+  return failureFingerprintSchema.parse({
+    ...data,
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+  });
+}
+
+export function createHealingSession(
+  data: Omit<HealingSession, "id" | "startedAt" | "updatedAt">,
+): HealingSession {
+  const now = new Date().toISOString();
+  return healingSessionSchema.parse({
+    ...data,
+    id: randomUUID(),
+    startedAt: now,
+    updatedAt: now,
+  });
+}
+
+export function applyHealingSessionUpdate(
+  existing: HealingSession,
+  updates: Partial<HealingSession>,
+): HealingSession {
+  return healingSessionSchema.parse({
+    ...existing,
+    ...updates,
+    id: existing.id,
+    startedAt: existing.startedAt,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export function createHealingAttempt(
+  data: Omit<HealingAttempt, "id" | "startedAt">,
+): HealingAttempt {
+  return healingAttemptSchema.parse({
+    ...data,
+    id: randomUUID(),
+    startedAt: new Date().toISOString(),
+  });
+}
+
+export function applyHealingAttemptUpdate(
+  existing: HealingAttempt,
+  updates: Partial<HealingAttempt>,
+): HealingAttempt {
+  return healingAttemptSchema.parse({
+    ...existing,
+    ...updates,
+    id: existing.id,
+    sessionId: existing.sessionId,
+    attemptNumber: existing.attemptNumber,
+    startedAt: existing.startedAt,
   });
 }
 

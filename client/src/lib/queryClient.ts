@@ -9,6 +9,12 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${url}`, init);
+  await throwIfResNotOk(res);
+  return await res.json();
+}
+
 export async function apiRequest(
   method: string,
   url: string,

@@ -5,10 +5,16 @@ import type {
   BackgroundJobKind,
   BackgroundJobStatus,
   Config,
+  CheckSnapshot,
   LogEntry,
+  FailureFingerprint,
+  HealingAttempt,
+  HealingAttemptStatus,
   NewPR,
   PR,
   PRQuestion,
+  HealingSession,
+  HealingSessionState,
   ReleaseRun,
   ReleaseRunStatus,
   RuntimeState,
@@ -19,10 +25,16 @@ import {
   applyBackgroundJobUpdate,
   applyPRQuestionUpdate,
   applyPRUpdate,
+  applyHealingAttemptUpdate,
+  applyHealingSessionUpdate,
   applyReleaseRunUpdate,
   applySocialChangelogUpdate,
   createLogEntry,
   createBackgroundJob,
+  createCheckSnapshot,
+  createFailureFingerprint,
+  createHealingAttempt,
+  createHealingSession,
   createPR,
   createPRQuestion,
   createReleaseRun,
@@ -42,10 +54,36 @@ export class MemStorage implements IStorage {
     drainRequestedAt: null,
     drainReason: null,
   };
+  private healingSessions: Map<string, HealingSession> = new Map();
+  private healingAttempts: Map<string, HealingAttempt> = new Map();
+  private checkSnapshots: Map<string, CheckSnapshot> = new Map();
+  private failureFingerprints: Map<string, FailureFingerprint> = new Map();
   private releaseRuns: Map<string, ReleaseRun> = new Map();
   private agentRuns: Map<string, AgentRun> = new Map();
   private socialChangelogs: Map<string, SocialChangelog> = new Map();
   private backgroundJobs: Map<string, BackgroundJob> = new Map();
+
+  private cloneHealingSession(session: HealingSession): HealingSession {
+    return { ...session };
+  }
+
+  private cloneHealingAttempt(attempt: HealingAttempt): HealingAttempt {
+    return {
+      ...attempt,
+      targetFingerprints: [...attempt.targetFingerprints],
+    };
+  }
+
+  private cloneCheckSnapshot(snapshot: CheckSnapshot): CheckSnapshot {
+    return { ...snapshot };
+  }
+
+  private cloneFailureFingerprint(fingerprint: FailureFingerprint): FailureFingerprint {
+    return {
+      ...fingerprint,
+      selectedEvidence: [...fingerprint.selectedEvidence],
+    };
+  }
 
   private cloneReleaseRun(run: ReleaseRun): ReleaseRun {
     return {
@@ -160,6 +198,125 @@ export class MemStorage implements IStorage {
   async updateConfig(updates: Partial<Config>): Promise<Config> {
     this.config = applyConfigUpdate(this.config, updates);
     return { ...this.config };
+  }
+
+  async getHealingSession(id: string): Promise<HealingSession | undefined> {
+    const session = this.healingSessions.get(id);
+    return session ? this.cloneHealingSession(session) : undefined;
+  }
+
+  async getHealingSessionByPrAndHead(prId: string, initialHeadSha: string): Promise<HealingSession | undefined> {
+    const session = Array.from(this.healingSessions.values()).find(
+      (candidate) => candidate.prId === prId && candidate.initialHeadSha === initialHeadSha,
+    );
+    return session ? this.cloneHealingSession(session) : undefined;
+  }
+
+  async listHealingSessions(filters?: {
+    status?: HealingSessionState;
+    prId?: string;
+    repo?: string;
+  }): Promise<HealingSession[]> {
+    return Array.from(this.healingSessions.values())
+      .filter((session) => {
+        if (filters?.status && session.state !== filters.status) return false;
+        if (filters?.prId && session.prId !== filters.prId) return false;
+        if (filters?.repo && session.repo !== filters.repo) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .map((session) => this.cloneHealingSession(session));
+  }
+
+  async createHealingSession(data: Omit<HealingSession, "id" | "startedAt" | "updatedAt">): Promise<HealingSession> {
+    const entry = createHealingSession(data);
+    this.healingSessions.set(entry.id, entry);
+    return this.cloneHealingSession(entry);
+  }
+
+  async updateHealingSession(id: string, updates: Partial<HealingSession>): Promise<HealingSession | undefined> {
+    const existing = this.healingSessions.get(id);
+    if (!existing) return undefined;
+    const updated = applyHealingSessionUpdate(existing, updates);
+    this.healingSessions.set(id, updated);
+    return this.cloneHealingSession(updated);
+  }
+
+  async getHealingAttempt(id: string): Promise<HealingAttempt | undefined> {
+    const attempt = this.healingAttempts.get(id);
+    return attempt ? this.cloneHealingAttempt(attempt) : undefined;
+  }
+
+  async listHealingAttempts(filters?: {
+    sessionId?: string;
+    status?: HealingAttemptStatus;
+  }): Promise<HealingAttempt[]> {
+    return Array.from(this.healingAttempts.values())
+      .filter((attempt) => {
+        if (filters?.sessionId && attempt.sessionId !== filters.sessionId) return false;
+        if (filters?.status && attempt.status !== filters.status) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const attemptDiff = a.attemptNumber - b.attemptNumber;
+        if (attemptDiff !== 0) return attemptDiff;
+        return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
+      })
+      .map((attempt) => this.cloneHealingAttempt(attempt));
+  }
+
+  async createHealingAttempt(data: Omit<HealingAttempt, "id" | "startedAt">): Promise<HealingAttempt> {
+    const entry = createHealingAttempt(data);
+    this.healingAttempts.set(entry.id, entry);
+    return this.cloneHealingAttempt(entry);
+  }
+
+  async updateHealingAttempt(id: string, updates: Partial<HealingAttempt>): Promise<HealingAttempt | undefined> {
+    const existing = this.healingAttempts.get(id);
+    if (!existing) return undefined;
+    const updated = applyHealingAttemptUpdate(existing, updates);
+    this.healingAttempts.set(id, updated);
+    return this.cloneHealingAttempt(updated);
+  }
+
+  async listCheckSnapshots(filters?: {
+    prId?: string;
+    sha?: string;
+  }): Promise<CheckSnapshot[]> {
+    return Array.from(this.checkSnapshots.values())
+      .filter((snapshot) => {
+        if (filters?.prId && snapshot.prId !== filters.prId) return false;
+        if (filters?.sha && snapshot.sha !== filters.sha) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
+      .map((snapshot) => this.cloneCheckSnapshot(snapshot));
+  }
+
+  async createCheckSnapshot(data: Omit<CheckSnapshot, "id">): Promise<CheckSnapshot> {
+    const entry = createCheckSnapshot(data);
+    this.checkSnapshots.set(entry.id, entry);
+    return this.cloneCheckSnapshot(entry);
+  }
+
+  async listFailureFingerprints(filters?: {
+    sessionId?: string;
+    sha?: string;
+  }): Promise<FailureFingerprint[]> {
+    return Array.from(this.failureFingerprints.values())
+      .filter((fingerprint) => {
+        if (filters?.sessionId && fingerprint.sessionId !== filters.sessionId) return false;
+        if (filters?.sha && fingerprint.sha !== filters.sha) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((fingerprint) => this.cloneFailureFingerprint(fingerprint));
+  }
+
+  async createFailureFingerprint(data: Omit<FailureFingerprint, "id" | "createdAt">): Promise<FailureFingerprint> {
+    const entry = createFailureFingerprint(data);
+    this.failureFingerprints.set(entry.id, entry);
+    return this.cloneFailureFingerprint(entry);
   }
 
   async getRuntimeState(): Promise<RuntimeState> {

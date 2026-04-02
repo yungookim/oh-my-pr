@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, fetchJson } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
-import type { Config, FeedbackItem, LogEntry, PR, PRQuestion } from "@shared/schema";
+import type { Config, FeedbackItem, HealingSession, LogEntry, PR, PRQuestion } from "@shared/schema";
 import { OnboardingPanel } from "@/components/OnboardingPanel";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
@@ -15,6 +15,10 @@ import {
   countActiveFeedbackStatuses,
   isPRReadyToMerge,
 } from "@/lib/feedbackStatus";
+import {
+  getHealingSessionView,
+  selectRelevantHealingSession,
+} from "@/lib/ciHealing";
 
 function formatClock(timestamp: string | null): string | null {
   if (!timestamp) {
@@ -52,6 +56,14 @@ function formatPollInterval(pollIntervalMs?: number): string {
   const seconds = Math.max(1, Math.round((pollIntervalMs ?? 120000) / 1000));
   return `${seconds}s`;
 }
+
+const HEALING_TONE_CLASSES: Record<"neutral" | "info" | "warning" | "success" | "danger", string> = {
+  neutral: "border-border text-muted-foreground",
+  info: "border-foreground text-foreground",
+  warning: "border-yellow-600 text-yellow-600",
+  success: "border-green-600 text-green-600",
+  danger: "border-destructive text-destructive",
+};
 
 function StatusDot({ status }: { status: PR["status"] }) {
   const cls =
@@ -391,6 +403,97 @@ function LogPanel({ prId }: { prId: string | null }) {
   );
 }
 
+function HealingPanel({
+  pr,
+  config,
+  healingSessions,
+}: {
+  pr: PR;
+  config: Config | undefined;
+  healingSessions: HealingSession[];
+}) {
+  const session = selectRelevantHealingSession(healingSessions, pr.id);
+  const view = session ? getHealingSessionView(session, config) : null;
+  const toneClass = view ? HEALING_TONE_CLASSES[view.tone] : HEALING_TONE_CLASSES.neutral;
+
+  return (
+    <div
+      className="shrink-0 border-b border-border px-4 py-3"
+      data-testid="panel-ci-healing"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CI healing</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {view ? (
+              <>
+                <span className={`inline-flex border px-1.5 py-0.5 text-[11px] uppercase tracking-wider ${toneClass}`}>
+                  {view.stateLabel}
+                </span>
+                <span className="text-[11px] text-muted-foreground">{view.attemptSummary}</span>
+              </>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">
+                {config?.autoHealCI === false
+                  ? "Automatic CI healing is disabled in settings."
+                  : "No healing session yet for this PR."}
+              </span>
+            )}
+          </div>
+        </div>
+        {session && (
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            head {session.currentHeadSha.slice(0, 7)}
+          </span>
+        )}
+      </div>
+
+      {view ? (
+        <>
+          <div className="mt-2 grid gap-1 text-[11px] text-muted-foreground">
+            {view.reasonSummary && <div>Reason: {view.reasonSummary}</div>}
+            <div>{view.statusHint}</div>
+            <div>
+              Attempts: {view.attemptSummary}
+              {session?.latestFingerprint ? ` · fingerprint ${session.latestFingerprint}` : ""}
+            </div>
+          </div>
+          {view.actions.length > 0 && (
+            <>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {view.actions.map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    disabled
+                    title={action.hint}
+                    className={`border px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors ${
+                      action.available
+                        ? "border-border text-foreground/70 hover:bg-muted"
+                        : "border-border text-muted-foreground/60"
+                    } disabled:opacity-100`}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                Operator controls are read-only until healing action endpoints are added.
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        config?.autoHealCI !== false && (
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            The watcher will create a healing session when a failing check is classified as healable.
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function RightPanel({ prId }: { prId: string | null }) {
   const [tab, setTab] = useState<"activity" | "ask">("ask");
 
@@ -582,6 +685,12 @@ export default function Dashboard() {
 
   const { data: config } = useQuery<Config>({
     queryKey: ["/api/config"],
+    refetchInterval: 5000,
+  });
+
+  const { data: healingSessions = [] } = useQuery<HealingSession[]>({
+    queryKey: ["/api/healing-sessions"],
+    queryFn: async () => fetchJson<HealingSession[]>("/api/healing-sessions"),
     refetchInterval: 5000,
   });
 
@@ -1007,6 +1116,8 @@ export default function Dashboard() {
                     : "Background watch is paused for this PR; manual runs still work."}
                 </div>
               </div>
+
+              <HealingPanel pr={selectedPR} config={config} healingSessions={healingSessions} />
 
               <div className="flex-1 overflow-y-auto">
                 {selectedPR.feedbackItems.length === 0 ? (

@@ -49,6 +49,7 @@ export type RouteDependencies = {
   babysitter?: PRBabysitter;
   watcherScheduler?: WatcherScheduler;
   startBackgroundServices?: boolean;
+  startWatcher?: boolean;
 };
 
 export async function registerRoutes(
@@ -153,6 +154,7 @@ export async function registerRoutes(
   );
   const runWatcher = watcherScheduler.run;
   const startBackgroundServices = dependencies.startBackgroundServices ?? true;
+  const startWatcher = dependencies.startWatcher ?? startBackgroundServices;
 
   const getRuntimeSnapshot = async () => {
     const state = await storage.getRuntimeState();
@@ -192,8 +194,11 @@ export async function registerRoutes(
   };
 
   if (startBackgroundServices) {
-    await refreshWatcherSchedule();
     await backgroundJobDispatcher.start();
+  }
+
+  if (startWatcher) {
+    await refreshWatcherSchedule();
     void babysitter.resumeInterruptedRuns();
     void runWatcher();
   }
@@ -658,6 +663,31 @@ export async function registerRoutes(
         return res.status(400).json({ error: err.errors[0].message });
       }
       sendGitHubAwareError(res, err);
+    }
+  });
+
+  // ── CI healing sessions ──────────────────────────────────
+
+  app.get("/api/healing-sessions", async (_req, res) => {
+    try {
+      const sessions = await storage.listHealingSessions();
+      res.json(sessions);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  app.get("/api/healing-sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getHealingSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Healing session not found" });
+      }
+      res.json(session);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
     }
   });
 

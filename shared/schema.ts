@@ -209,6 +209,103 @@ export const socialChangelogSchema = z.object({
 });
 export type SocialChangelog = z.infer<typeof socialChangelogSchema>;
 
+export const healingSessionStateEnum = z.enum([
+  "idle",
+  "triaging",
+  "awaiting_repair_slot",
+  "repairing",
+  "awaiting_ci",
+  "verifying",
+  "healed",
+  "cooldown",
+  "blocked",
+  "escalated",
+  "superseded",
+]);
+export type HealingSessionState = z.infer<typeof healingSessionStateEnum>;
+
+export const healingClassificationEnum = z.enum([
+  "healable_in_branch",
+  "blocked_external",
+  "flaky_or_ambiguous",
+  "unknown",
+]);
+export type HealingClassification = z.infer<typeof healingClassificationEnum>;
+
+export const healingAttemptStatusEnum = z.enum([
+  "queued",
+  "running",
+  "awaiting_ci",
+  "verified",
+  "failed",
+  "canceled",
+]);
+export type HealingAttemptStatus = z.infer<typeof healingAttemptStatusEnum>;
+
+export const checkSnapshotSchema = z.object({
+  id: z.string(),
+  prId: z.string(),
+  sha: z.string(),
+  provider: z.string(),
+  context: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  description: z.string(),
+  targetUrl: z.string().nullable(),
+  observedAt: z.string(),
+});
+export type CheckSnapshot = z.infer<typeof checkSnapshotSchema>;
+
+export const failureFingerprintSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  sha: z.string(),
+  fingerprint: z.string(),
+  category: z.string(),
+  classification: healingClassificationEnum,
+  summary: z.string(),
+  selectedEvidence: z.array(z.string()),
+  createdAt: z.string(),
+});
+export type FailureFingerprint = z.infer<typeof failureFingerprintSchema>;
+
+export const healingSessionSchema = z.object({
+  id: z.string(),
+  prId: z.string(),
+  repo: z.string(),
+  prNumber: z.number(),
+  initialHeadSha: z.string(),
+  currentHeadSha: z.string(),
+  state: healingSessionStateEnum,
+  startedAt: z.string(),
+  updatedAt: z.string(),
+  endedAt: z.string().nullable(),
+  blockedReason: z.string().nullable(),
+  escalationReason: z.string().nullable(),
+  latestFingerprint: z.string().nullable(),
+  attemptCount: z.number(),
+  lastImprovementScore: z.number().nullable(),
+});
+export type HealingSession = z.infer<typeof healingSessionSchema>;
+
+export const healingAttemptSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  attemptNumber: z.number(),
+  inputSha: z.string(),
+  outputSha: z.string().nullable(),
+  status: healingAttemptStatusEnum,
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  agent: z.enum(["codex", "claude"]),
+  promptDigest: z.string(),
+  targetFingerprints: z.array(z.string()),
+  summary: z.string().nullable(),
+  improvementScore: z.number().nullable(),
+  error: z.string().nullable(),
+});
+export type HealingAttempt = z.infer<typeof healingAttemptSchema>;
+
 export const releaseRunStatusEnum = z.enum([
   "detected",
   "evaluating",
@@ -269,6 +366,11 @@ export const configSchema = z.object({
   autoResolveMergeConflicts: z.boolean(),
   autoCreateReleases: z.boolean(),
   autoUpdateDocs: z.boolean(),
+  autoHealCI: z.boolean(),
+  maxHealingAttemptsPerSession: z.number(),
+  maxHealingAttemptsPerFingerprint: z.number(),
+  maxConcurrentHealingRuns: z.number(),
+  healingCooldownMs: z.number(),
   watchedRepos: z.array(z.string()),
   trustedReviewers: z.array(z.string()),
   ignoredBots: z.array(z.string()),

@@ -54,9 +54,23 @@ These logs mirror the dashboard activity feed and are useful for debugging or au
 The settings page in the dashboard provides a UI for:
 
 - **GitHub Token management** — Add, update, or rotate tokens.
-- **Repository preferences** — Per-repo agent and poll interval settings.
-- **Model discovery** — View and refresh available AI models.
+- **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
+- **CI healing** — Enable autonomous CI repair and tune retry/session limits.
 - **Theme** — Toggle between light and dark mode.
+
+## CI Healing Settings
+
+Code Factory can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Automatic CI healing` | `false` | Enables healable CI failure classification and autonomous repair attempts |
+| `Max healing attempts per session` | `3` | Caps total repair attempts for one healing session |
+| `Max healing attempts per fingerprint` | `2` | Prevents retry loops on the same normalized failure fingerprint |
+| `Max concurrent healing runs` | `1` | Limits how many healing repairs can execute at once |
+| `Healing cooldown (ms)` | `300000` | Backoff window before a cooldowned session can retry |
+
+The dashboard shows healing state on each tracked PR, while the local API exposes `GET /api/healing-sessions` and `GET /api/healing-sessions/:id` for external tooling.
 
 ## Build & Deploy
 

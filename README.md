@@ -26,10 +26,10 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 - Store PR state, questions, logs, and social changelogs in SQLite with mirrored log files.
 - Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
 - Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
-- Evaluate review comments and failing CI statuses, post GitHub follow-ups, and resolve review threads.
+- Evaluate review comments and failing CI statuses, post GitHub follow-ups, resolve review threads, and persist CI healing sessions per PR head.
 - Detect merge conflicts and optionally let the agent resolve them automatically.
 - Ask natural-language questions about any tracked PR from the dashboard or via MCP.
-- Configure trusted reviewers, ignored bots, polling, batching, and run limits from settings.
+- Configure trusted reviewers, ignored bots, polling, batching, run limits, and CI-healing retry budgets from settings.
 - Enable drain mode to pause new work and wait for active runs to finish before deploys or upgrades.
 - Check onboarding status, install Claude or Codex review workflows, and generate social changelogs every 5 PRs merged to `main`.
 - Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.
@@ -39,9 +39,13 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 <img width="969" height="572" alt="Code Factory workflow" src="https://github.com/user-attachments/assets/b9dbd102-ae2e-4837-a862-a0282bdfa0b8" />
 
 1. Add a repository to the watch list or register a PR directly by URL.
-2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, and queues babysitter runs for tracked PRs whose background watch is enabled.
+2. The watcher polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, records failing CI on the current head SHA, and queues babysitter runs for tracked PRs whose background watch is enabled.
 3. Accepted work is executed in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
 4. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
+
+## CI Healing
+
+When `Automatic CI healing` is enabled, Code Factory creates a healing session for each failing PR head SHA, classifies failures as safe to fix in-branch or blocked external, and runs bounded repair attempts in isolated worktrees. The dashboard surfaces the current session state and retry budget, and the local API exposes `GET /api/healing-sessions` plus `GET /api/healing-sessions/:id` for operator visibility.
 
 ## Quick Start
 

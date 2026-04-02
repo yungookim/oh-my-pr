@@ -1,7 +1,8 @@
 import { Octokit } from "@octokit/rest";
-import type { Config, FeedbackItem } from "@shared/schema";
+import type { CheckSnapshot, Config, FeedbackItem } from "@shared/schema";
 import { z } from "zod";
 import { runCommand } from "./agentRunner";
+import { normalizeCheckSnapshotsFromRef } from "./ciCheckIngestor";
 import { renderGitHubMarkdown } from "./markdown";
 
 export type ParsedPRUrl = {
@@ -35,6 +36,28 @@ export type GitHubStatusFailure = {
   context: string;
   description: string;
   targetUrl: string | null;
+};
+
+type GitHubCommitStatusResponse = {
+  state?: string | null;
+  context?: string | null;
+  description?: string | null;
+  target_url?: string | null;
+  updated_at?: string | null;
+};
+
+type GitHubCheckRunResponse = {
+  name?: string | null;
+  status?: string | null;
+  conclusion?: string | null;
+  html_url?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  updated_at?: string | null;
+  output?: {
+    title?: string | null;
+    summary?: string | null;
+  } | null;
 };
 
 export type GitHubPullCloseState = {
@@ -235,6 +258,35 @@ type ReviewThreadNode = {
 
 export function buildFeedbackAuditToken(feedbackId: string): string {
   return `codefactory-feedback:${feedbackId}`;
+}
+
+export async function fetchCheckSnapshotsForRef(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+  prId: string,
+  headSha: string,
+): Promise<CheckSnapshot[]> {
+  if (!headSha) return [];
+
+  const [statusResponse, checkRunsResponse] = await Promise.all([
+    withGitHubErrorHandling("commit statuses", repo, () => octokit.repos.getCombinedStatusForRef({
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: headSha,
+    })),
+    withGitHubErrorHandling("check runs", repo, () => octokit.checks.listForRef({
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: headSha,
+    })),
+  ]);
+
+  return normalizeCheckSnapshotsFromRef({
+    prId,
+    sha: headSha,
+    statuses: (statusResponse.data.statuses ?? []) as GitHubCommitStatusResponse[],
+    checkRuns: (checkRunsResponse.data.check_runs ?? []) as GitHubCheckRunResponse[],
+  });
 }
 
 export async function resolveGitHubAuthToken(config: Config): Promise<string | undefined> {
@@ -904,18 +956,14 @@ async function appendPaginatedReviewThreadComments(
 
   while (cursor) {
     const response = await withGitHubErrorHandling("review thread comments", parsed, () =>
-      octokit.request("POST /graphql", {
-        query: REVIEW_THREAD_COMMENTS_QUERY,
-        variables: {
-          threadId: thread.id,
-          cursor,
-        },
+      octokit.graphql<{
+        node?: ReviewThreadNode | null;
+      }>(REVIEW_THREAD_COMMENTS_QUERY, {
+        threadId: thread.id,
+        cursor,
       }),
     );
-
-    const paginatedThread = (response.data as {
-      node?: ReviewThreadNode | null;
-    }).node;
+    const paginatedThread = response.node;
 
     if (!paginatedThread?.id) {
       break;
@@ -948,30 +996,27 @@ async function fetchReviewThreadLookup(
 
   while (true) {
     const response = await withGitHubErrorHandling("review threads", parsed, () =>
-      octokit.request("POST /graphql", {
-        query: REVIEW_THREADS_QUERY,
-        variables: {
-          owner: parsed.owner,
-          repo: parsed.repo,
-          number: parsed.number,
-          cursor,
-        },
-      }),
-    );
-
-    const reviewThreads = (response.data as {
-      repository?: {
-        pullRequest?: {
-          reviewThreads?: {
-            nodes?: ReviewThreadNode[];
-            pageInfo?: {
-              hasNextPage?: boolean | null;
-              endCursor?: string | null;
+      octokit.graphql<{
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: {
+              nodes?: ReviewThreadNode[];
+              pageInfo?: {
+                hasNextPage?: boolean | null;
+                endCursor?: string | null;
+              };
             };
           };
         };
-      };
-    }).repository?.pullRequest?.reviewThreads;
+      }>(REVIEW_THREADS_QUERY, {
+        owner: parsed.owner,
+        repo: parsed.repo,
+        number: parsed.number,
+        cursor,
+      }),
+    );
+
+    const reviewThreads = response.repository?.pullRequest?.reviewThreads;
 
     for (const thread of reviewThreads?.nodes || []) {
       if (!thread?.id) {
@@ -1000,12 +1045,9 @@ export async function replyToReviewThread(
   body: string,
 ): Promise<void> {
   await withGitHubErrorHandling("review thread reply", parsed, () =>
-    octokit.request("POST /graphql", {
-      query: REVIEW_THREAD_REPLY_MUTATION,
-      variables: {
-        threadId,
-        body,
-      },
+    octokit.graphql(REVIEW_THREAD_REPLY_MUTATION, {
+      threadId,
+      body,
     }),
   );
 }
@@ -1016,11 +1058,8 @@ export async function resolveReviewThread(
   threadId: string,
 ): Promise<void> {
   await withGitHubErrorHandling("review thread resolution", parsed, () =>
-    octokit.request("POST /graphql", {
-      query: RESOLVE_REVIEW_THREAD_MUTATION,
-      variables: {
-        threadId,
-      },
+    octokit.graphql(RESOLVE_REVIEW_THREAD_MUTATION, {
+      threadId,
     }),
   );
 }
@@ -1329,16 +1368,13 @@ export async function postStatusReplyForFeedbackItem(
     }
 
     const result = await withGitHubErrorHandling("status reply in review thread", parsed, () =>
-      octokit.request("POST /graphql", {
-        query: REVIEW_THREAD_REPLY_MUTATION,
-        variables: {
-          threadId: item.threadId,
-          body,
-        },
+      octokit.graphql(REVIEW_THREAD_REPLY_MUTATION, {
+        threadId: item.threadId,
+        body,
       }),
     );
 
-    const parsedResult = statusReplyMutationSchema.safeParse(result.data);
+    const parsedResult = statusReplyMutationSchema.safeParse(result);
     if (!parsedResult.success) {
       throw new GitHubIntegrationError(
         `GitHub returned an unexpected payload while creating a status reply for feedback item ${item.id} on ${formatGitHubTarget(parsed)}.`,

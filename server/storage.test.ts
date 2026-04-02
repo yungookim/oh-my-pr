@@ -53,6 +53,23 @@ async function waitForStdout(child: ReturnType<typeof spawn>, expected: string):
   });
 }
 
+function makeHealingSessionInput(prId: string) {
+  return {
+    prId,
+    repo: "owner/repo",
+    prNumber: 42,
+    initialHeadSha: "abc123",
+    currentHeadSha: "abc123",
+    state: "triaging" as const,
+    endedAt: null,
+    blockedReason: null,
+    escalationReason: null,
+    latestFingerprint: null,
+    attemptCount: 0,
+    lastImprovementScore: null,
+  };
+}
+
 test("SqliteStorage reloads config and PR state from the same root", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
   const first = new SqliteStorage(root);
@@ -60,6 +77,11 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     pollIntervalMs: 45000,
     autoCreateReleases: false,
     autoUpdateDocs: false,
+    autoHealCI: true,
+    maxHealingAttemptsPerSession: 5,
+    maxHealingAttemptsPerFingerprint: 4,
+    maxConcurrentHealingRuns: 2,
+    healingCooldownMs: 123456,
     watchedRepos: ["alex-morgan-o/lolodex"],
   });
   await first.updateRuntimeState({
@@ -175,6 +197,11 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(config.pollIntervalMs, 45000);
   assert.equal(config.autoCreateReleases, false);
   assert.equal(config.autoUpdateDocs, false);
+  assert.equal(config.autoHealCI, true);
+  assert.equal(config.maxHealingAttemptsPerSession, 5);
+  assert.equal(config.maxHealingAttemptsPerFingerprint, 4);
+  assert.equal(config.maxConcurrentHealingRuns, 2);
+  assert.equal(config.healingCooldownMs, 123456);
   assert.deepEqual(config.watchedRepos, ["alex-morgan-o/lolodex"]);
   assert.equal(runtime.drainMode, true);
   assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
@@ -215,6 +242,11 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
       githubToken: "tok_123",
       autoCreateReleases: false,
       autoUpdateDocs: false,
+      autoHealCI: true,
+      maxHealingAttemptsPerSession: 8,
+      maxHealingAttemptsPerFingerprint: 7,
+      maxConcurrentHealingRuns: 3,
+      healingCooldownMs: 654321,
       watchedRepos: ["alex-morgan-o/lolodex"],
       trustedReviewers: ["octocat"],
       ignoredBots: ["custom[bot]"],
@@ -545,6 +577,133 @@ test("SqliteStorage release run lookup is idempotent and list is newest-first", 
   assert.equal(runs[0]?.triggerPrNumber, 2);
   assert.equal(runs[1]?.triggerPrNumber, 1);
   storage.close();
+});
+
+test("SqliteStorage persists healing sessions and attempts", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  const pr = await storage.addPR({
+    number: 90,
+    title: "Healing session PR",
+    repo: "owner/repo",
+    branch: "feature/healing",
+    author: "octocat",
+    url: "https://github.com/owner/repo/pull/90",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const session = await storage.createHealingSession(makeHealingSessionInput(pr.id));
+  const attempt = await storage.createHealingAttempt({
+    sessionId: session.id,
+    attemptNumber: 1,
+    inputSha: "abc123",
+    outputSha: null,
+    status: "queued",
+    endedAt: null,
+    agent: "claude",
+    promptDigest: "digest",
+    targetFingerprints: ["build-failure"],
+    summary: null,
+    improvementScore: null,
+    error: null,
+  });
+
+  const updatedSession = await storage.updateHealingSession(session.id, {
+    state: "awaiting_repair_slot",
+    attemptCount: 1,
+    latestFingerprint: "build-failure",
+  });
+  const updatedAttempt = await storage.updateHealingAttempt(attempt.id, {
+    status: "verified",
+    outputSha: "def456",
+    improvementScore: 2,
+  });
+
+  assert.equal(updatedSession?.state, "awaiting_repair_slot");
+  assert.equal(updatedAttempt?.status, "verified");
+
+  storage.close();
+
+  const reloaded = new SqliteStorage(root);
+  const fetchedSession = await reloaded.getHealingSession(session.id);
+  const byHead = await reloaded.getHealingSessionByPrAndHead(pr.id, "abc123");
+  const sessions = await reloaded.listHealingSessions({ prId: pr.id });
+  const fetchedAttempt = await reloaded.getHealingAttempt(attempt.id);
+  const attempts = await reloaded.listHealingAttempts({ sessionId: session.id });
+
+  assert.equal(fetchedSession?.state, "awaiting_repair_slot");
+  assert.equal(byHead?.id, session.id);
+  assert.equal(sessions.length, 1);
+  assert.equal(fetchedAttempt?.status, "verified");
+  assert.equal(fetchedAttempt?.outputSha, "def456");
+  assert.equal(attempts.length, 1);
+  assert.deepEqual(attempts[0]?.targetFingerprints, ["build-failure"]);
+  reloaded.close();
+});
+
+test("SqliteStorage persists check snapshots and failure fingerprints", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  const pr = await storage.addPR({
+    number: 91,
+    title: "Snapshot PR",
+    repo: "owner/repo",
+    branch: "feature/snapshots",
+    author: "octocat",
+    url: "https://github.com/owner/repo/pull/91",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const session = await storage.createHealingSession(makeHealingSessionInput(pr.id));
+  const snapshot = await storage.createCheckSnapshot({
+    prId: pr.id,
+    sha: "abc123",
+    provider: "github",
+    context: "build",
+    status: "completed",
+    conclusion: "failure",
+    description: "Build failed",
+    targetUrl: "https://github.com/owner/repo/actions/runs/1",
+    observedAt: "2026-04-01T12:00:00.000Z",
+  });
+  const fingerprint = await storage.createFailureFingerprint({
+    sessionId: session.id,
+    sha: "abc123",
+    fingerprint: "build-failure",
+    category: "build",
+    classification: "healable_in_branch",
+    summary: "Build failed in a fixable way",
+    selectedEvidence: ["line 12", "line 15"],
+  });
+
+  storage.close();
+
+  const reloaded = new SqliteStorage(root);
+  const snapshots = await reloaded.listCheckSnapshots({ prId: pr.id, sha: "abc123" });
+  const fingerprints = await reloaded.listFailureFingerprints({ sessionId: session.id, sha: "abc123" });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.id, snapshot.id);
+  assert.equal(fingerprints.length, 1);
+  assert.equal(fingerprints[0]?.id, fingerprint.id);
+  assert.deepEqual(fingerprints[0]?.selectedEvidence, ["line 12", "line 15"]);
+  reloaded.close();
 });
 
 test("SqliteStorage allows getPR during a concurrent write transaction", async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { AgentRun, FeedbackItem, PR } from "@shared/schema";
+import type { AgentRun, CheckSnapshot, FeedbackItem, HealingSession, PR } from "@shared/schema";
 import type { IStorage } from "./storage";
 import {
   applyFixesWithAgent,
@@ -12,6 +12,7 @@ import {
   addReactionToComment,
   buildOctokit,
   checkCISettled,
+  fetchCheckSnapshotsForRef,
   fetchFeedbackItemsForPR,
   fetchPullCloseState,
   fetchPullSummary,
@@ -34,6 +35,10 @@ import {
   type ParsedRepoSlug,
   type StatusReplyRef,
 } from "./github";
+import { CIHealingManager } from "./ciHealingManager";
+import { classifyCIFailures, type ClassifiedCIFailure } from "./ciFailureClassifier";
+import { isFailingCheckSnapshot } from "./ciCheckIngestor";
+import { runCIHealingRepairAttempt } from "./ciHealingAgent";
 import { generateSocialChangelog } from "./socialChangelogAgent";
 import { getCodeFactoryPaths } from "./paths";
 import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
@@ -59,6 +64,7 @@ type GitHubService = {
   fetchFeedbackItemsForPR: typeof fetchFeedbackItemsForPR;
   fetchPullCloseState?: typeof fetchPullCloseState;
   fetchPullSummary: typeof fetchPullSummary;
+  fetchCheckSnapshotsForRef?: typeof fetchCheckSnapshotsForRef;
   listFailingStatuses: typeof listFailingStatuses;
   listMergedPullsToday?: typeof listMergedPullsToday; // optional — absent in test mocks
   listOpenPullsForRepo: typeof listOpenPullsForRepo;
@@ -75,7 +81,9 @@ type BabysitterRuntime = {
   evaluateFixNecessityWithAgent: typeof evaluateFixNecessityWithAgent;
   resolveAgent: typeof resolveAgent;
   runCommand: typeof runCommand;
+  runCIHealingRepairAttempt?: typeof runCIHealingRepairAttempt;
   ciPollIntervalMs?: number;
+  now?: () => Date;
 };
 
 type ReleaseManagerLike = {
@@ -94,6 +102,7 @@ const defaultGitHubService: GitHubService = {
   addReactionToComment,
   buildOctokit,
   checkCISettled,
+  fetchCheckSnapshotsForRef,
   fetchFeedbackItemsForPR,
   fetchPullCloseState,
   fetchPullSummary,
@@ -113,6 +122,7 @@ const defaultBabysitterRuntime: BabysitterRuntime = {
   evaluateFixNecessityWithAgent,
   resolveAgent,
   runCommand,
+  runCIHealingRepairAttempt,
 };
 
 const STATUS_MESSAGES = {
@@ -172,6 +182,12 @@ function mergeFeedbackItems(existing: FeedbackItem[], incoming: FeedbackItem[]):
   merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   return { merged, newCount };
+}
+
+function hasMissingReviewThreadMetadata(pr: PR): boolean {
+  return pr.feedbackItems.some((item) =>
+    item.replyKind === "review_thread" && (item.threadId === null || item.threadResolved === null),
+  );
 }
 
 function formatFeedbackSyncLogMessage(total: number, newCount: number): string {
@@ -554,6 +570,99 @@ function collectGitHubFollowUpTasks(pr: PR): FeedbackItem[] {
   return pr.feedbackItems.filter((item) => needsGitHubFollowUp(item, pr.feedbackItems));
 }
 
+function snapshotIdentity(snapshot: CheckSnapshot): string {
+  return [
+    snapshot.prId,
+    snapshot.sha,
+    snapshot.provider,
+    snapshot.context,
+    snapshot.status,
+    snapshot.conclusion || "",
+    snapshot.description,
+    snapshot.targetUrl || "",
+  ].join("|");
+}
+
+async function persistCheckSnapshotsIfMissing(storage: IStorage, snapshots: CheckSnapshot[]): Promise<void> {
+  if (snapshots.length === 0) {
+    return;
+  }
+
+  const existing = await storage.listCheckSnapshots({
+    prId: snapshots[0].prId,
+    sha: snapshots[0].sha,
+  });
+  const seen = new Set(existing.map((snapshot) => snapshotIdentity(snapshot)));
+
+  for (const snapshot of snapshots) {
+    const identity = snapshotIdentity(snapshot);
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    const { id: _snapshotId, ...snapshotData } = snapshot;
+    await storage.createCheckSnapshot(snapshotData);
+    seen.add(identity);
+  }
+}
+
+async function persistFailureFingerprintsIfMissing(
+  storage: IStorage,
+  sessionId: string,
+  sha: string,
+  failures: ClassifiedCIFailure[],
+): Promise<void> {
+  const existing = await storage.listFailureFingerprints({ sessionId, sha });
+  const seen = new Set(existing.map((fingerprint) => fingerprint.fingerprint));
+
+  for (const failure of failures) {
+    if (seen.has(failure.fingerprint)) {
+      continue;
+    }
+
+    await storage.createFailureFingerprint({
+      sessionId,
+      sha,
+      fingerprint: failure.fingerprint,
+      category: failure.category,
+      classification: failure.classification,
+      summary: failure.summary,
+      selectedEvidence: failure.selectedEvidence,
+    });
+    seen.add(failure.fingerprint);
+  }
+}
+
+function computeHealingImprovementScore(
+  targetFingerprints: string[],
+  currentFailures: ClassifiedCIFailure[],
+): {
+  removedTargetFingerprints: string[];
+  remainingTargetFingerprints: string[];
+  newUnrelatedFingerprints: string[];
+  improvementScore: number;
+} {
+  const targetSet = new Set(targetFingerprints);
+  const currentSet = new Set(currentFailures.map((failure) => failure.fingerprint));
+
+  const removedTargetFingerprints = targetFingerprints.filter((fingerprint) => !currentSet.has(fingerprint));
+  const remainingTargetFingerprints = targetFingerprints.filter((fingerprint) => currentSet.has(fingerprint));
+  const newUnrelatedFingerprints = currentFailures
+    .map((failure) => failure.fingerprint)
+    .filter((fingerprint) => !targetSet.has(fingerprint));
+
+  const improvementScore = (removedTargetFingerprints.length * 2)
+    - (remainingTargetFingerprints.length * 2)
+    - (newUnrelatedFingerprints.length * 3);
+
+  return {
+    removedTargetFingerprints,
+    remainingTargetFingerprints,
+    newUnrelatedFingerprints,
+    improvementScore,
+  };
+}
+
 function buildFeedbackFollowUpBody(headSha: string, item: FeedbackItem, agentSummary?: string): string {
   const shortSha = headSha.trim() ? headSha.trim().slice(0, 7) : "";
   const headline = shortSha
@@ -668,6 +777,7 @@ export class PRBabysitter {
   private readonly runtime: BabysitterRuntime;
   private readonly releaseManager?: ReleaseManagerLike;
   private readonly scheduleBackgroundJob?: ScheduleBackgroundJob;
+  private readonly clock: () => Date;
 
   constructor(
     storage: IStorage,
@@ -681,6 +791,11 @@ export class PRBabysitter {
     this.runtime = runtime;
     this.releaseManager = releaseManager;
     this.scheduleBackgroundJob = scheduleBackgroundJob;
+    this.clock = runtime.now ?? (() => new Date());
+  }
+
+  private now(): Date {
+    return this.clock();
   }
 
   getActiveRunCount(): number {
@@ -934,6 +1049,23 @@ export class PRBabysitter {
     const runtimeState = await this.storage.getRuntimeState();
     if (runtimeState.drainMode) {
       return;
+    }
+
+    const repairCandidates = [
+      ...(await this.storage.getPRs()),
+      ...(await this.storage.getArchivedPRs()),
+    ].filter(hasMissingReviewThreadMetadata);
+
+    for (const pr of repairCandidates) {
+      try {
+        await this.syncFeedbackForPR(pr.id, {
+          phase: "repair",
+        });
+      } catch (error) {
+        await this.storage.addLog(pr.id, "warn", `Could not repair missing GitHub review-thread metadata: ${summarizeUnknownError(error)}`, {
+          phase: "repair",
+        });
+      }
     }
 
     const config = await this.storage.getConfig();
@@ -1501,6 +1633,85 @@ export class PRBabysitter {
         });
       }
       const failingStatuses = await this.github.listFailingStatuses(octokit, parsedRepo, pullSummary.headSha);
+      const observedAt = this.now().toISOString();
+      const checkSnapshots = this.github.fetchCheckSnapshotsForRef
+        ? await this.github.fetchCheckSnapshotsForRef(octokit, parsedRepo, pr.id, pullSummary.headSha)
+        : failingStatuses.map((status) => ({
+            id: `${status.context}:${status.description}:${pullSummary.headSha}`,
+            prId: pr.id,
+            sha: pullSummary.headSha,
+            provider: "github.commit_status",
+            context: status.context,
+            status: "failure",
+            conclusion: null,
+            description: status.description,
+            targetUrl: status.targetUrl,
+            observedAt,
+          }));
+      const failingCheckSnapshots = checkSnapshots.filter((snapshot) => isFailingCheckSnapshot(snapshot));
+      const classifiedHealingFailures = classifyCIFailures(failingCheckSnapshots);
+      const healableHealingFailures = classifiedHealingFailures.filter((failure) => failure.classification === "healable_in_branch");
+      const blockedHealingFailures = classifiedHealingFailures.filter((failure) => failure.classification === "blocked_external");
+      const healingManager = new CIHealingManager(this.storage, () => this.now());
+      let healingSession: HealingSession | null = null;
+
+      if (failingCheckSnapshots.length > 0) {
+        healingSession = await healingManager.ensureSessionForHead({
+          prId: pr.id,
+          repo: pr.repo,
+          prNumber: pr.number,
+          headSha: pullSummary.headSha,
+        });
+
+        await persistCheckSnapshotsIfMissing(this.storage, failingCheckSnapshots);
+        await persistFailureFingerprintsIfMissing(
+          this.storage,
+          healingSession.id,
+          pullSummary.headSha,
+          classifiedHealingFailures,
+        );
+
+        if (blockedHealingFailures.length > 0) {
+          healingSession = await healingManager.markBlocked(
+            healingSession.id,
+            blockedHealingFailures[0]?.summary ?? "CI failure classified as blocked_external",
+            {
+              latestFingerprint: blockedHealingFailures[0]?.fingerprint ?? null,
+              currentHeadSha: pullSummary.headSha,
+            },
+          );
+        } else if (healableHealingFailures.length > 0) {
+          healingSession = await healingManager.markAwaitingRepairSlot(healingSession.id, {
+            latestFingerprint: healableHealingFailures[0]?.fingerprint ?? null,
+            currentHeadSha: pullSummary.headSha,
+          });
+        } else {
+          healingSession = await healingManager.markEscalated(
+            healingSession.id,
+            "CI failure could not be classified as healable in branch",
+            {
+              latestFingerprint: classifiedHealingFailures[0]?.fingerprint ?? null,
+              currentHeadSha: pullSummary.headSha,
+            },
+          );
+        }
+      } else {
+        const existingHealingSession = await healingManager.getSessionByPrAndHead(pr.id, pullSummary.headSha);
+        const canMarkHealthy = existingHealingSession
+          && ["triaging", "awaiting_repair_slot", "repairing", "awaiting_ci", "verifying", "cooldown"].includes(existingHealingSession.state);
+
+        if (canMarkHealthy) {
+          healingSession = await healingManager.markVerifying(existingHealingSession.id, {
+            currentHeadSha: pullSummary.headSha,
+          });
+          healingSession = await healingManager.markHealed(healingSession.id, {
+            currentHeadSha: pullSummary.headSha,
+            lastImprovementScore: healingSession.lastImprovementScore ?? 0,
+          });
+        } else {
+          healingSession = existingHealingSession ?? null;
+        }
+      }
 
       // Track status reply comments so we can update them with progress.
       const statusReplies = new Map<string, StatusReplyRef>();
@@ -1640,38 +1851,48 @@ export class PRBabysitter {
       }
 
       const statusTasks: { context: string; description: string; targetUrl: string | null }[] = [];
-      await queueLog(pr.id, "info", `Evaluating ${failingStatuses.length} failing status check(s)`, {
-        phase: "evaluate.status",
-      });
-      for (const status of failingStatuses) {
-        const statusEvalPrompt = buildStatusEvaluationPrompt({
-          pr,
-          context: status.context,
-          description: status.description,
-          targetUrl: status.targetUrl,
-        });
-        await queueLog(pr.id, "info", `Evaluating failing status ${status.context} with ${agent}`, {
+      if (config.autoHealCI && healingSession) {
+        await queueLog(pr.id, "info", `Skipping legacy status-task evaluation because CI healing session ${healingSession.id} is active`, {
           phase: "evaluate.status",
-          metadata: { context: status.context, agent, prompt: statusEvalPrompt },
+          metadata: {
+            healingSessionId: healingSession.id,
+            healingState: healingSession.state,
+          },
         });
-
-        const evaluation = await this.runtime.evaluateFixNecessityWithAgent({
-          agent,
-          cwd: process.cwd(),
-          prompt: statusEvalPrompt,
+      } else {
+        await queueLog(pr.id, "info", `Evaluating ${failingStatuses.length} failing status check(s)`, {
+          phase: "evaluate.status",
         });
+        for (const status of failingStatuses) {
+          const statusEvalPrompt = buildStatusEvaluationPrompt({
+            pr,
+            context: status.context,
+            description: status.description,
+            targetUrl: status.targetUrl,
+          });
+          await queueLog(pr.id, "info", `Evaluating failing status ${status.context} with ${agent}`, {
+            phase: "evaluate.status",
+            metadata: { context: status.context, agent, prompt: statusEvalPrompt },
+          });
 
-        if (evaluation.needsFix) {
-          statusTasks.push(status);
-          await queueLog(pr.id, "info", `Accepted failing status ${status.context}: ${evaluation.reason}`, {
-            phase: "evaluate.status",
-            metadata: { context: status.context, decision: "accept" },
+          const evaluation = await this.runtime.evaluateFixNecessityWithAgent({
+            agent,
+            cwd: process.cwd(),
+            prompt: statusEvalPrompt,
           });
-        } else {
-          await queueLog(pr.id, "info", `Rejected failing status ${status.context}: ${evaluation.reason}`, {
-            phase: "evaluate.status",
-            metadata: { context: status.context, decision: "reject" },
-          });
+
+          if (evaluation.needsFix) {
+            statusTasks.push(status);
+            await queueLog(pr.id, "info", `Accepted failing status ${status.context}: ${evaluation.reason}`, {
+              phase: "evaluate.status",
+              metadata: { context: status.context, decision: "accept" },
+            });
+          } else {
+            await queueLog(pr.id, "info", `Rejected failing status ${status.context}: ${evaluation.reason}`, {
+              phase: "evaluate.status",
+              metadata: { context: status.context, decision: "reject" },
+            });
+          }
         }
       }
 
@@ -1722,6 +1943,16 @@ export class PRBabysitter {
         : null;
       let hasDocsTask = Boolean(docsTaskSummary);
       const needsWorktree = hasCommentOrStatusAgentWork || hasConflicts || docsAssessmentNeeded || hasDocsTask;
+      const shouldRunCIHealingAgent = Boolean(
+        config.autoHealCI
+        && healingSession
+        && healingSession.state === "awaiting_repair_slot"
+        && !disableAgentExecution
+        && !hasCommentOrStatusAgentWork
+        && !hasConflicts
+        && !docsAssessmentNeeded
+        && !hasDocsTask,
+      );
 
       if (config.autoUpdateDocs && currentHeadDocsAssessment && !docsAssessmentNeeded) {
         await queueLog(
@@ -1738,7 +1969,7 @@ export class PRBabysitter {
         );
       }
 
-      if (!needsWorktree && followUpTasks.length === 0 && !hasConflicts) {
+      if (!needsWorktree && !shouldRunCIHealingAgent && followUpTasks.length === 0 && !hasConflicts && failingCheckSnapshots.length === 0) {
         await queueLog(pr.id, "info", `Babysitter checked PR #${pr.number}; no necessary fixes identified`, {
           phase: "run",
         });
@@ -1760,6 +1991,9 @@ export class PRBabysitter {
       let remoteNameForLogs: string | null = null;
       let agentSummaries = new Map<string, string>();
       let docsTaskOutcome: DocsTaskOutcome | null = null;
+      let healingAttemptMade = false;
+      let healingAttemptRecordId: string | null = null;
+      let healingAttemptResult: Awaited<ReturnType<typeof runCIHealingRepairAttempt>> | null = null;
 
       if (hasConflicts) {
         await queueLog(pr.id, "info", `PR #${pr.number} has merge conflicts with base branch ${pullSummary.baseRef}`, {
@@ -2338,6 +2572,93 @@ export class PRBabysitter {
         );
       }
 
+      if (shouldRunCIHealingAgent && healingSession) {
+        const targetFingerprints = healableHealingFailures.map((failure) => failure.fingerprint);
+
+        await queueLog(pr.id, "info", `Launching dedicated CI healing attempt for ${targetFingerprints.length} fingerprint(s)`, {
+          phase: "healing.run",
+          metadata: {
+            healingSessionId: healingSession.id,
+            targetFingerprints,
+          },
+        });
+
+        healingSession = await healingManager.markRepairing(healingSession.id, {
+          currentHeadSha: pullSummary.headSha,
+          latestFingerprint: targetFingerprints[0] ?? healingSession.latestFingerprint,
+        });
+
+        const githubToken = await this.github.resolveGitHubAuthToken(config);
+        const healingAgentEnv = githubToken
+          ? {
+              ...process.env,
+              GITHUB_TOKEN: githubToken,
+              GH_TOKEN: githubToken,
+            }
+          : undefined;
+
+        healingAttemptResult = await this.runtime.runCIHealingRepairAttempt?.({
+          prNumber: pr.number,
+          repoFullName: pullSummary.repoFullName,
+          repoCloneUrl: pullSummary.repoCloneUrl,
+          headRepoFullName: pullSummary.headRepoFullName,
+          headRepoCloneUrl: pullSummary.headRepoCloneUrl,
+          headRef: pullSummary.headRef,
+          baseRef: pullSummary.baseRef,
+          headSha: pullSummary.headSha,
+          title: pullSummary.title,
+          url: pullSummary.url,
+          author: pullSummary.author,
+          branch: pr.branch,
+          agent,
+          failures: healableHealingFailures,
+          runId: `${runId}-ci-healing`,
+          rootDir: getCodeFactoryPaths().rootDir,
+          env: healingAgentEnv,
+        }) ?? null;
+
+        if (!healingAttemptResult) {
+          throw new Error("CI healing runtime is unavailable");
+        }
+
+        const healingAttempt = await this.storage.createHealingAttempt({
+          sessionId: healingSession.id,
+          attemptNumber: healingSession.attemptCount,
+          inputSha: pullSummary.headSha,
+          outputSha: healingAttemptResult.accepted ? healingAttemptResult.verification.remoteHeadSha : null,
+          status: healingAttemptResult.accepted ? "awaiting_ci" : "failed",
+          endedAt: healingAttemptResult.accepted ? null : new Date().toISOString(),
+          agent,
+          promptDigest: healingAttemptResult.promptDigest,
+          targetFingerprints: healingAttemptResult.targetFingerprints,
+          summary: healingAttemptResult.summary,
+          improvementScore: null,
+          error: healingAttemptResult.rejectionReason,
+        });
+        healingAttemptRecordId = healingAttempt.id;
+
+        healingAttemptMade = true;
+
+        if (healingAttemptResult.accepted) {
+          healingSession = await healingManager.markAwaitingCi(healingSession.id, {
+            currentHeadSha: healingAttemptResult.verification.remoteHeadSha,
+            latestFingerprint: healingAttemptResult.targetFingerprints[0] ?? healingSession.latestFingerprint,
+          });
+          branchMoved = healingAttemptResult.verification.pushedNewSha;
+          headShaForFollowUp = healingAttemptResult.verification.remoteHeadSha;
+          remoteNameForLogs = healingAttemptResult.remoteName;
+        } else {
+          healingSession = await healingManager.markEscalated(
+            healingSession.id,
+            healingAttemptResult.rejectionReason ?? "CI healing attempt failed",
+            {
+              currentHeadSha: pullSummary.headSha,
+              latestFingerprint: healingAttemptResult.targetFingerprints[0] ?? healingSession.latestFingerprint,
+            },
+          );
+        }
+      }
+
       await updateRunRecord({
         phase: "run.reconcile",
       });
@@ -2479,6 +2800,70 @@ export class PRBabysitter {
             testsPassed: false,
             lastChecked: new Date().toISOString(),
           });
+
+          if (healingAttemptMade && healingAttemptResult && healingAttemptRecordId && healingSession) {
+            healingSession = await healingManager.markVerifying(healingSession.id, {
+              currentHeadSha: headShaForFollowUp,
+            });
+
+            const postHealingObservedAt = this.now().toISOString();
+            const postHealingSnapshots = this.github.fetchCheckSnapshotsForRef
+              ? await this.github.fetchCheckSnapshotsForRef(octokit, parsedRepo, pr.id, headShaForFollowUp)
+              : ciResult.failures.map((status) => ({
+                  id: `${status.context}:${status.description}:${headShaForFollowUp}`,
+                  prId: pr.id,
+                  sha: headShaForFollowUp,
+                  provider: "github.commit_status",
+                  context: status.context,
+                  status: "failure",
+                  conclusion: null,
+                  description: status.description,
+                  targetUrl: status.targetUrl,
+                  observedAt: postHealingObservedAt,
+                }));
+            const postHealingFailingSnapshots = postHealingSnapshots.filter((snapshot) => isFailingCheckSnapshot(snapshot));
+            const postHealingFailures = classifyCIFailures(postHealingFailingSnapshots);
+            await persistCheckSnapshotsIfMissing(this.storage, postHealingFailingSnapshots);
+            await persistFailureFingerprintsIfMissing(
+              this.storage,
+              healingSession.id,
+              headShaForFollowUp,
+              postHealingFailures,
+            );
+
+            const comparison = computeHealingImprovementScore(
+              healingAttemptResult.targetFingerprints,
+              postHealingFailures,
+            );
+
+            await this.storage.updateHealingAttempt(healingAttemptRecordId, {
+              outputSha: headShaForFollowUp,
+              status: "verified",
+              endedAt: new Date().toISOString(),
+              improvementScore: comparison.improvementScore,
+              error: comparison.improvementScore > 0
+                ? null
+                : `CI failures remained unchanged or worsened after repair: ${failureDetails}`,
+            });
+
+            if (comparison.improvementScore > 0) {
+              healingSession = await healingManager.markAwaitingRepairSlot(healingSession.id, {
+                currentHeadSha: headShaForFollowUp,
+                latestFingerprint: comparison.remainingTargetFingerprints[0] ?? postHealingFailures[0]?.fingerprint ?? null,
+                lastImprovementScore: comparison.improvementScore,
+              });
+            } else {
+              healingSession = await healingManager.markEscalated(
+                healingSession.id,
+                `CI failures remained unchanged or worsened after repair: ${failureDetails}`,
+                {
+                  currentHeadSha: headShaForFollowUp,
+                  latestFingerprint: comparison.remainingTargetFingerprints[0] ?? postHealingFailures[0]?.fingerprint ?? null,
+                  lastImprovementScore: comparison.improvementScore,
+                },
+              );
+            }
+          }
         } else if (ciResult.status === "success") {
           await queueLog(pr.id, "info", "All CI/CD checks passed on new commit", {
             phase: "verify.ci",
@@ -2488,6 +2873,24 @@ export class PRBabysitter {
             testsPassed: true,
             lastChecked: new Date().toISOString(),
           });
+
+          if (healingAttemptMade && healingAttemptResult && healingAttemptRecordId && healingSession) {
+            healingSession = await healingManager.markVerifying(healingSession.id, {
+              currentHeadSha: headShaForFollowUp,
+            });
+            await this.storage.updateHealingAttempt(healingAttemptRecordId, {
+              outputSha: headShaForFollowUp,
+              status: "verified",
+              endedAt: new Date().toISOString(),
+              improvementScore: Math.max(2, healingAttemptResult.targetFingerprints.length * 2),
+              error: null,
+            });
+            healingSession = await healingManager.markHealed(healingSession.id, {
+              currentHeadSha: headShaForFollowUp,
+              latestFingerprint: null,
+              lastImprovementScore: Math.max(2, healingAttemptResult.targetFingerprints.length * 2),
+            });
+          }
         } else {
           // Timed out waiting for CI — log it and move on.
           await queueLog(pr.id, "info", "CI/CD checks did not complete within polling window; will re-check on next cycle", {

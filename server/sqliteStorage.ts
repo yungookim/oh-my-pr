@@ -9,11 +9,17 @@ import type {
   BackgroundJobKind,
   BackgroundJobStatus,
   Config,
+  CheckSnapshot,
   FeedbackItem,
+  FailureFingerprint,
   LogEntry,
+  HealingAttempt,
+  HealingAttemptStatus,
   NewPR,
   PR,
   PRQuestion,
+  HealingSession,
+  HealingSessionState,
   ReleaseRun,
   ReleaseRunStatus,
   RuntimeState,
@@ -22,12 +28,18 @@ import type {
 import {
   applyBackgroundJobUpdate,
   applyConfigUpdate,
+  applyHealingAttemptUpdate,
+  applyHealingSessionUpdate,
   applyPRQuestionUpdate,
   applyPRUpdate,
   applyReleaseRunUpdate,
   applySocialChangelogUpdate,
+  createCheckSnapshot,
   createLogEntry,
   createBackgroundJob,
+  createFailureFingerprint,
+  createHealingAttempt,
+  createHealingSession,
   createPR,
   createPRQuestion,
   createReleaseRun,
@@ -49,6 +61,11 @@ type ConfigRow = {
   auto_resolve_merge_conflicts: number;
   auto_create_releases: number;
   auto_update_docs: number;
+  auto_heal_ci: number;
+  max_healing_attempts_per_session: number;
+  max_healing_attempts_per_fingerprint: number;
+  max_concurrent_healing_runs: number;
+  healing_cooldown_ms: number;
   trusted_reviewers_json: string;
   ignored_bots_json: string;
 };
@@ -187,6 +204,66 @@ type SocialChangelogRow = {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+};
+
+type HealingSessionRow = {
+  id: string;
+  pr_id: string;
+  repo: string;
+  pr_number: number;
+  initial_head_sha: string;
+  current_head_sha: string;
+  state: HealingSessionState;
+  started_at: string;
+  updated_at: string;
+  ended_at: string | null;
+  blocked_reason: string | null;
+  escalation_reason: string | null;
+  latest_fingerprint: string | null;
+  attempt_count: number;
+  last_improvement_score: number | null;
+};
+
+type HealingAttemptRow = {
+  id: string;
+  session_id: string;
+  attempt_number: number;
+  input_sha: string;
+  output_sha: string | null;
+  status: HealingAttemptStatus;
+  started_at: string;
+  ended_at: string | null;
+  agent: Config["codingAgent"];
+  prompt_digest: string;
+  target_fingerprints_json: string;
+  summary: string | null;
+  improvement_score: number | null;
+  error: string | null;
+};
+
+type CheckSnapshotRow = {
+  id: string;
+  pr_id: string;
+  sha: string;
+  provider: string;
+  context: string;
+  status: string;
+  conclusion: string | null;
+  description: string;
+  target_url: string | null;
+  observed_at: string;
+};
+
+type FailureFingerprintRow = {
+  id: string;
+  session_id: string;
+  sha: string;
+  fingerprint: string;
+  category: string;
+  classification: string;
+  summary: string;
+  selected_evidence_json: string;
+  created_at: string;
 };
 
 type ReleaseRunRow = {
@@ -362,6 +439,11 @@ export class SqliteStorage implements IStorage {
         auto_resolve_merge_conflicts INTEGER NOT NULL DEFAULT 1,
         auto_create_releases INTEGER NOT NULL DEFAULT 1,
         auto_update_docs INTEGER NOT NULL DEFAULT 1,
+        auto_heal_ci INTEGER NOT NULL DEFAULT 0,
+        max_healing_attempts_per_session INTEGER NOT NULL DEFAULT 3,
+        max_healing_attempts_per_fingerprint INTEGER NOT NULL DEFAULT 2,
+        max_concurrent_healing_runs INTEGER NOT NULL DEFAULT 1,
+        healing_cooldown_ms INTEGER NOT NULL DEFAULT 300000,
         trusted_reviewers_json TEXT NOT NULL,
         ignored_bots_json TEXT NOT NULL
       );
@@ -496,6 +578,73 @@ export class SqliteStorage implements IStorage {
         UNIQUE(date, trigger_count)
       );
 
+      CREATE TABLE IF NOT EXISTS healing_sessions (
+        id TEXT PRIMARY KEY,
+        pr_id TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        pr_number INTEGER NOT NULL,
+        initial_head_sha TEXT NOT NULL,
+        current_head_sha TEXT NOT NULL,
+        state TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        ended_at TEXT,
+        blocked_reason TEXT,
+        escalation_reason TEXT,
+        latest_fingerprint TEXT,
+        attempt_count INTEGER NOT NULL,
+        last_improvement_score INTEGER,
+        FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE,
+        UNIQUE(pr_id, initial_head_sha)
+      );
+
+      CREATE TABLE IF NOT EXISTS healing_attempts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        input_sha TEXT NOT NULL,
+        output_sha TEXT,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        agent TEXT NOT NULL,
+        prompt_digest TEXT NOT NULL,
+        target_fingerprints_json TEXT NOT NULL,
+        summary TEXT,
+        improvement_score INTEGER,
+        error TEXT,
+        FOREIGN KEY(session_id) REFERENCES healing_sessions(id) ON DELETE CASCADE,
+        UNIQUE(session_id, attempt_number)
+      );
+
+      CREATE TABLE IF NOT EXISTS check_snapshots (
+        id TEXT PRIMARY KEY,
+        pr_id TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        context TEXT NOT NULL,
+        status TEXT NOT NULL,
+        conclusion TEXT,
+        description TEXT NOT NULL,
+        target_url TEXT,
+        observed_at TEXT NOT NULL,
+        FOREIGN KEY(pr_id) REFERENCES prs(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS failure_fingerprints (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        category TEXT NOT NULL,
+        classification TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        selected_evidence_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES healing_sessions(id) ON DELETE CASCADE,
+        UNIQUE(session_id, fingerprint)
+      );
+
       CREATE TABLE IF NOT EXISTS release_runs (
         id TEXT PRIMARY KEY,
         repo TEXT NOT NULL,
@@ -531,6 +680,12 @@ export class SqliteStorage implements IStorage {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_background_jobs_dedupe_active ON background_jobs(dedupe_key) WHERE status IN ('queued', 'leased');
       CREATE INDEX IF NOT EXISTS idx_pr_questions_pr_id ON pr_questions(pr_id);
       CREATE INDEX IF NOT EXISTS idx_social_changelogs_date ON social_changelogs(date);
+      CREATE INDEX IF NOT EXISTS idx_healing_sessions_pr_id ON healing_sessions(pr_id);
+      CREATE INDEX IF NOT EXISTS idx_healing_sessions_state_updated_at ON healing_sessions(state, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_healing_attempts_session_id ON healing_attempts(session_id);
+      CREATE INDEX IF NOT EXISTS idx_healing_attempts_status_started_at ON healing_attempts(status, started_at);
+      CREATE INDEX IF NOT EXISTS idx_check_snapshots_pr_id_sha ON check_snapshots(pr_id, sha);
+      CREATE INDEX IF NOT EXISTS idx_failure_fingerprints_session_id_sha ON failure_fingerprints(session_id, sha);
       CREATE INDEX IF NOT EXISTS idx_release_runs_created_at ON release_runs(created_at);
       CREATE INDEX IF NOT EXISTS idx_release_runs_status_created_at ON release_runs(status, created_at);
       CREATE INDEX IF NOT EXISTS idx_release_runs_repo_trigger_merge_sha ON release_runs(repo, trigger_merge_sha);
@@ -548,6 +703,11 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("config", "auto_resolve_merge_conflicts", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("config", "auto_create_releases", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("config", "auto_update_docs", "INTEGER NOT NULL DEFAULT 1");
+    this.ensureColumn("config", "auto_heal_ci", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("config", "max_healing_attempts_per_session", "INTEGER NOT NULL DEFAULT 3");
+    this.ensureColumn("config", "max_healing_attempts_per_fingerprint", "INTEGER NOT NULL DEFAULT 2");
+    this.ensureColumn("config", "max_concurrent_healing_runs", "INTEGER NOT NULL DEFAULT 1");
+    this.ensureColumn("config", "healing_cooldown_ms", "INTEGER NOT NULL DEFAULT 300000");
     this.ensureColumn("prs", "watch_enabled", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "docs_assessment_json", "TEXT");
 
@@ -594,6 +754,11 @@ export class SqliteStorage implements IStorage {
       autoResolveMergeConflicts: Boolean(row.auto_resolve_merge_conflicts),
       autoCreateReleases: Boolean(row.auto_create_releases ?? 1),
       autoUpdateDocs: Boolean(row.auto_update_docs ?? 1),
+      autoHealCI: Boolean(row.auto_heal_ci ?? Number(DEFAULT_CONFIG.autoHealCI)),
+      maxHealingAttemptsPerSession: row.max_healing_attempts_per_session ?? DEFAULT_CONFIG.maxHealingAttemptsPerSession,
+      maxHealingAttemptsPerFingerprint: row.max_healing_attempts_per_fingerprint ?? DEFAULT_CONFIG.maxHealingAttemptsPerFingerprint,
+      maxConcurrentHealingRuns: row.max_concurrent_healing_runs ?? DEFAULT_CONFIG.maxConcurrentHealingRuns,
+      healingCooldownMs: row.healing_cooldown_ms ?? DEFAULT_CONFIG.healingCooldownMs,
       watchedRepos,
       trustedReviewers: JSON.parse(row.trusted_reviewers_json),
       ignoredBots: JSON.parse(row.ignored_bots_json),
@@ -619,9 +784,14 @@ export class SqliteStorage implements IStorage {
           auto_resolve_merge_conflicts,
           auto_create_releases,
           auto_update_docs,
+          auto_heal_ci,
+          max_healing_attempts_per_session,
+          max_healing_attempts_per_fingerprint,
+          max_concurrent_healing_runs,
+          healing_cooldown_ms,
           trusted_reviewers_json,
           ignored_bots_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           github_token = excluded.github_token,
           coding_agent = excluded.coding_agent,
@@ -633,6 +803,11 @@ export class SqliteStorage implements IStorage {
           auto_resolve_merge_conflicts = excluded.auto_resolve_merge_conflicts,
           auto_create_releases = excluded.auto_create_releases,
           auto_update_docs = excluded.auto_update_docs,
+          auto_heal_ci = excluded.auto_heal_ci,
+          max_healing_attempts_per_session = excluded.max_healing_attempts_per_session,
+          max_healing_attempts_per_fingerprint = excluded.max_healing_attempts_per_fingerprint,
+          max_concurrent_healing_runs = excluded.max_concurrent_healing_runs,
+          healing_cooldown_ms = excluded.healing_cooldown_ms,
           trusted_reviewers_json = excluded.trusted_reviewers_json,
           ignored_bots_json = excluded.ignored_bots_json
       `,
@@ -647,6 +822,11 @@ export class SqliteStorage implements IStorage {
         Number(config.autoResolveMergeConflicts),
         Number(config.autoCreateReleases),
         Number(config.autoUpdateDocs),
+        Number(config.autoHealCI),
+        config.maxHealingAttemptsPerSession,
+        config.maxHealingAttemptsPerFingerprint,
+        config.maxConcurrentHealingRuns,
+        config.healingCooldownMs,
         JSON.stringify(config.trustedReviewers),
         JSON.stringify(config.ignoredBots),
       );
@@ -797,6 +977,74 @@ export class SqliteStorage implements IStorage {
 
       return updated;
     });
+  }
+
+  private parseHealingSessionRow(row: HealingSessionRow): HealingSession {
+    return {
+      id: row.id,
+      prId: row.pr_id,
+      repo: row.repo,
+      prNumber: row.pr_number,
+      initialHeadSha: row.initial_head_sha,
+      currentHeadSha: row.current_head_sha,
+      state: row.state,
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+      endedAt: row.ended_at,
+      blockedReason: row.blocked_reason,
+      escalationReason: row.escalation_reason,
+      latestFingerprint: row.latest_fingerprint,
+      attemptCount: row.attempt_count,
+      lastImprovementScore: row.last_improvement_score,
+    };
+  }
+
+  private parseHealingAttemptRow(row: HealingAttemptRow): HealingAttempt {
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      attemptNumber: row.attempt_number,
+      inputSha: row.input_sha,
+      outputSha: row.output_sha,
+      status: row.status,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      agent: row.agent,
+      promptDigest: row.prompt_digest,
+      targetFingerprints: JSON.parse(row.target_fingerprints_json) as string[],
+      summary: row.summary,
+      improvementScore: row.improvement_score,
+      error: row.error,
+    };
+  }
+
+  private parseCheckSnapshotRow(row: CheckSnapshotRow): CheckSnapshot {
+    return {
+      id: row.id,
+      prId: row.pr_id,
+      sha: row.sha,
+      provider: row.provider,
+      context: row.context,
+      status: row.status,
+      conclusion: row.conclusion,
+      description: row.description,
+      targetUrl: row.target_url,
+      observedAt: row.observed_at,
+    };
+  }
+
+  private parseFailureFingerprintRow(row: FailureFingerprintRow): FailureFingerprint {
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      sha: row.sha,
+      fingerprint: row.fingerprint,
+      category: row.category,
+      classification: row.classification as FailureFingerprint["classification"],
+      summary: row.summary,
+      selectedEvidence: JSON.parse(row.selected_evidence_json) as string[],
+      createdAt: row.created_at,
+    };
   }
 
   private getFeedbackItemsForPRIds(prIds: string[]): Map<string, FeedbackItem[]> {
@@ -1151,7 +1399,8 @@ export class SqliteStorage implements IStorage {
     const row = this.get<ConfigRow>(`
       SELECT github_token, coding_agent, model, max_turns, batch_window_ms,
              poll_interval_ms, max_changes_per_run, auto_resolve_merge_conflicts, auto_create_releases,
-             auto_update_docs,
+             auto_update_docs, auto_heal_ci, max_healing_attempts_per_session,
+             max_healing_attempts_per_fingerprint, max_concurrent_healing_runs, healing_cooldown_ms,
              trusted_reviewers_json, ignored_bots_json
       FROM config
       WHERE id = 1
@@ -1165,6 +1414,335 @@ export class SqliteStorage implements IStorage {
     const next = applyConfigUpdate(current, updates);
     this.writeConfig(next);
     return next;
+  }
+
+  async getHealingSession(id: string): Promise<HealingSession | undefined> {
+    const row = this.get<HealingSessionRow>(`
+      SELECT id, pr_id, repo, pr_number, initial_head_sha, current_head_sha, state,
+             started_at, updated_at, ended_at, blocked_reason, escalation_reason,
+             latest_fingerprint, attempt_count, last_improvement_score
+      FROM healing_sessions
+      WHERE id = ?
+    `, id);
+
+    return row ? this.parseHealingSessionRow(row) : undefined;
+  }
+
+  async getHealingSessionByPrAndHead(prId: string, initialHeadSha: string): Promise<HealingSession | undefined> {
+    const row = this.get<HealingSessionRow>(`
+      SELECT id, pr_id, repo, pr_number, initial_head_sha, current_head_sha, state,
+             started_at, updated_at, ended_at, blocked_reason, escalation_reason,
+             latest_fingerprint, attempt_count, last_improvement_score
+      FROM healing_sessions
+      WHERE pr_id = ? AND initial_head_sha = ?
+    `, prId, initialHeadSha);
+
+    return row ? this.parseHealingSessionRow(row) : undefined;
+  }
+
+  async listHealingSessions(filters?: {
+    status?: HealingSessionState;
+    prId?: string;
+    repo?: string;
+  }): Promise<HealingSession[]> {
+    const clauses: string[] = [];
+    const values: Array<string> = [];
+
+    if (filters?.status) {
+      clauses.push("state = ?");
+      values.push(filters.status);
+    }
+
+    if (filters?.prId) {
+      clauses.push("pr_id = ?");
+      values.push(filters.prId);
+    }
+
+    if (filters?.repo) {
+      clauses.push("repo = ?");
+      values.push(filters.repo);
+    }
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.all<HealingSessionRow>(`
+      SELECT id, pr_id, repo, pr_number, initial_head_sha, current_head_sha, state,
+             started_at, updated_at, ended_at, blocked_reason, escalation_reason,
+             latest_fingerprint, attempt_count, last_improvement_score
+      FROM healing_sessions
+      ${whereClause}
+      ORDER BY datetime(updated_at) DESC
+    `, ...values);
+
+    return rows.map((row) => this.parseHealingSessionRow(row));
+  }
+
+  async createHealingSession(data: Omit<HealingSession, "id" | "startedAt" | "updatedAt">): Promise<HealingSession> {
+    const entry = createHealingSession(data);
+
+    this.run(`
+      INSERT INTO healing_sessions (
+        id, pr_id, repo, pr_number, initial_head_sha, current_head_sha, state,
+        started_at, updated_at, ended_at, blocked_reason, escalation_reason,
+        latest_fingerprint, attempt_count, last_improvement_score
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      entry.id,
+      entry.prId,
+      entry.repo,
+      entry.prNumber,
+      entry.initialHeadSha,
+      entry.currentHeadSha,
+      entry.state,
+      entry.startedAt,
+      entry.updatedAt,
+      entry.endedAt,
+      entry.blockedReason,
+      entry.escalationReason,
+      entry.latestFingerprint,
+      entry.attemptCount,
+      entry.lastImprovementScore,
+    );
+
+    return entry;
+  }
+
+  async updateHealingSession(id: string, updates: Partial<HealingSession>): Promise<HealingSession | undefined> {
+    const existing = await this.getHealingSession(id);
+    if (!existing) {
+      return undefined;
+    }
+
+    const updated = applyHealingSessionUpdate(existing, updates);
+
+    this.run(`
+      UPDATE healing_sessions
+      SET pr_id = ?, repo = ?, pr_number = ?, initial_head_sha = ?, current_head_sha = ?, state = ?,
+          updated_at = ?, ended_at = ?, blocked_reason = ?, escalation_reason = ?,
+          latest_fingerprint = ?, attempt_count = ?, last_improvement_score = ?
+      WHERE id = ?
+    `,
+      updated.prId,
+      updated.repo,
+      updated.prNumber,
+      updated.initialHeadSha,
+      updated.currentHeadSha,
+      updated.state,
+      updated.updatedAt,
+      updated.endedAt,
+      updated.blockedReason,
+      updated.escalationReason,
+      updated.latestFingerprint,
+      updated.attemptCount,
+      updated.lastImprovementScore,
+      updated.id,
+    );
+
+    return updated;
+  }
+
+  async getHealingAttempt(id: string): Promise<HealingAttempt | undefined> {
+    const row = this.get<HealingAttemptRow>(`
+      SELECT id, session_id, attempt_number, input_sha, output_sha, status,
+             started_at, ended_at, agent, prompt_digest, target_fingerprints_json,
+             summary, improvement_score, error
+      FROM healing_attempts
+      WHERE id = ?
+    `, id);
+
+    return row ? this.parseHealingAttemptRow(row) : undefined;
+  }
+
+  async listHealingAttempts(filters?: {
+    sessionId?: string;
+    status?: HealingAttemptStatus;
+  }): Promise<HealingAttempt[]> {
+    const clauses: string[] = [];
+    const values: Array<string> = [];
+
+    if (filters?.sessionId) {
+      clauses.push("session_id = ?");
+      values.push(filters.sessionId);
+    }
+
+    if (filters?.status) {
+      clauses.push("status = ?");
+      values.push(filters.status);
+    }
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.all<HealingAttemptRow>(`
+      SELECT id, session_id, attempt_number, input_sha, output_sha, status,
+             started_at, ended_at, agent, prompt_digest, target_fingerprints_json,
+             summary, improvement_score, error
+      FROM healing_attempts
+      ${whereClause}
+      ORDER BY attempt_number ASC, datetime(started_at) ASC
+    `, ...values);
+
+    return rows.map((row) => this.parseHealingAttemptRow(row));
+  }
+
+  async createHealingAttempt(data: Omit<HealingAttempt, "id" | "startedAt">): Promise<HealingAttempt> {
+    const entry = createHealingAttempt(data);
+
+    this.run(`
+      INSERT INTO healing_attempts (
+        id, session_id, attempt_number, input_sha, output_sha, status, started_at,
+        ended_at, agent, prompt_digest, target_fingerprints_json, summary,
+        improvement_score, error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      entry.id,
+      entry.sessionId,
+      entry.attemptNumber,
+      entry.inputSha,
+      entry.outputSha,
+      entry.status,
+      entry.startedAt,
+      entry.endedAt,
+      entry.agent,
+      entry.promptDigest,
+      JSON.stringify(entry.targetFingerprints),
+      entry.summary,
+      entry.improvementScore,
+      entry.error,
+    );
+
+    return entry;
+  }
+
+  async updateHealingAttempt(id: string, updates: Partial<HealingAttempt>): Promise<HealingAttempt | undefined> {
+    const existing = await this.getHealingAttempt(id);
+    if (!existing) {
+      return undefined;
+    }
+
+    const updated = applyHealingAttemptUpdate(existing, updates);
+
+    this.run(`
+      UPDATE healing_attempts
+      SET session_id = ?, input_sha = ?, output_sha = ?, status = ?, ended_at = ?, agent = ?,
+          prompt_digest = ?, target_fingerprints_json = ?, summary = ?, improvement_score = ?, error = ?
+      WHERE id = ?
+    `,
+      updated.sessionId,
+      updated.inputSha,
+      updated.outputSha,
+      updated.status,
+      updated.endedAt,
+      updated.agent,
+      updated.promptDigest,
+      JSON.stringify(updated.targetFingerprints),
+      updated.summary,
+      updated.improvementScore,
+      updated.error,
+      updated.id,
+    );
+
+    return updated;
+  }
+
+  async listCheckSnapshots(filters?: {
+    prId?: string;
+    sha?: string;
+  }): Promise<CheckSnapshot[]> {
+    const clauses: string[] = [];
+    const values: Array<string> = [];
+
+    if (filters?.prId) {
+      clauses.push("pr_id = ?");
+      values.push(filters.prId);
+    }
+
+    if (filters?.sha) {
+      clauses.push("sha = ?");
+      values.push(filters.sha);
+    }
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.all<CheckSnapshotRow>(`
+      SELECT id, pr_id, sha, provider, context, status, conclusion, description, target_url, observed_at
+      FROM check_snapshots
+      ${whereClause}
+      ORDER BY datetime(observed_at) ASC
+    `, ...values);
+
+    return rows.map((row) => this.parseCheckSnapshotRow(row));
+  }
+
+  async createCheckSnapshot(data: Omit<CheckSnapshot, "id">): Promise<CheckSnapshot> {
+    const entry = createCheckSnapshot(data);
+
+    this.run(`
+      INSERT INTO check_snapshots (
+        id, pr_id, sha, provider, context, status, conclusion, description, target_url, observed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      entry.id,
+      entry.prId,
+      entry.sha,
+      entry.provider,
+      entry.context,
+      entry.status,
+      entry.conclusion,
+      entry.description,
+      entry.targetUrl,
+      entry.observedAt,
+    );
+
+    return entry;
+  }
+
+  async listFailureFingerprints(filters?: {
+    sessionId?: string;
+    sha?: string;
+  }): Promise<FailureFingerprint[]> {
+    const clauses: string[] = [];
+    const values: Array<string> = [];
+
+    if (filters?.sessionId) {
+      clauses.push("session_id = ?");
+      values.push(filters.sessionId);
+    }
+
+    if (filters?.sha) {
+      clauses.push("sha = ?");
+      values.push(filters.sha);
+    }
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.all<FailureFingerprintRow>(`
+      SELECT id, session_id, sha, fingerprint, category, classification, summary,
+             selected_evidence_json, created_at
+      FROM failure_fingerprints
+      ${whereClause}
+      ORDER BY datetime(created_at) ASC
+    `, ...values);
+
+    return rows.map((row) => this.parseFailureFingerprintRow(row));
+  }
+
+  async createFailureFingerprint(data: Omit<FailureFingerprint, "id" | "createdAt">): Promise<FailureFingerprint> {
+    const entry = createFailureFingerprint(data);
+
+    this.run(`
+      INSERT INTO failure_fingerprints (
+        id, session_id, sha, fingerprint, category, classification, summary,
+        selected_evidence_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      entry.id,
+      entry.sessionId,
+      entry.sha,
+      entry.fingerprint,
+      entry.category,
+      entry.classification,
+      entry.summary,
+      JSON.stringify(entry.selectedEvidence),
+      entry.createdAt,
+    );
+
+    return entry;
   }
 
   async getRuntimeState(): Promise<RuntimeState> {
