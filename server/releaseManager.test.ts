@@ -123,7 +123,7 @@ test("ReleaseManager enqueues a durable release job and still executes the relea
   await storage.updateConfig(makeConfig());
 
   let createCalls = 0;
-  const { queue, manager } = createQueuedManager({
+  const { manager } = createQueuedManager({
     storage,
     github: {
       createGitHubRelease: async (_octokit, _repo, params) => {
@@ -179,7 +179,7 @@ test("ReleaseManager reuses an active release row and the durable process job", 
   await storage.updateConfig(makeConfig());
 
   let evaluateCalls = 0;
-  const { queue, manager } = createQueuedManager({
+  const { manager } = createQueuedManager({
     storage,
     evaluateRelease: async (): Promise<ReleaseEvaluationDecision> => {
       evaluateCalls += 1;
@@ -231,7 +231,7 @@ test("ReleaseManager retryReleaseRun resets state and enqueues the durable proce
   await storage.updateConfig(makeConfig());
 
   const queuedRun = await storage.createReleaseRun(makeReleaseRun());
-  const { queue, manager } = createQueuedManager({ storage });
+  const { manager } = createQueuedManager({ storage });
 
   const retried = await manager.retryReleaseRun(queuedRun.id);
   const jobs = await storage.listBackgroundJobs({
@@ -250,4 +250,43 @@ test("ReleaseManager retryReleaseRun resets state and enqueues the durable proce
   assert.equal(jobs[0].targetId, queuedRun.id);
   assert.equal(jobs[0].dedupeKey, buildBackgroundJobDedupeKey("process_release_run", queuedRun.id));
   assert.equal(await manager.waitForIdle(), true);
+});
+
+test("ReleaseManager logs release job scheduling failures", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig(makeConfig());
+
+  const schedulingError = new Error("queue unavailable");
+  const manager = new ReleaseManager(storage, {
+    github: makeGitHubService(),
+    scheduleBackgroundJob: async () => {
+      throw schedulingError;
+    },
+  });
+
+  const originalConsoleError = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+
+  try {
+    const created = await manager.enqueueMergedPullReleaseEvaluation({
+      repo: "yungookim/oh-my-pr",
+      baseBranch: "main",
+      triggerPrNumber: 75,
+      triggerPrTitle: "Queue failure logging",
+      triggerPrUrl: "https://github.com/yungookim/oh-my-pr/pull/75",
+      triggerMergeSha: "queue-failure-sha",
+      triggerMergedAt: "2026-03-28T19:00:00.000Z",
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0][0], `Failed to schedule release run ${created.id}:`);
+    assert.equal(logged[0][1], schedulingError);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

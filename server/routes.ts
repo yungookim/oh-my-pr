@@ -59,7 +59,6 @@ export async function registerRoutes(
 ): Promise<Server> {
   const storage = dependencies.storage ?? getDefaultStorage();
   const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
-  let backgroundJobDispatcher: BackgroundJobDispatcher;
   const scheduleBackgroundJob = async (...args: Parameters<BackgroundJobQueue["enqueue"]>) => {
     const job = await backgroundJobQueue.enqueue(...args);
     backgroundJobDispatcher.wake();
@@ -128,7 +127,7 @@ export async function registerRoutes(
     releaseManager,
     scheduleBackgroundJob,
   );
-  backgroundJobDispatcher = dependencies.backgroundJobDispatcher ?? new BackgroundJobDispatcher({
+  const backgroundJobDispatcher = dependencies.backgroundJobDispatcher ?? new BackgroundJobDispatcher({
     storage,
     queue: backgroundJobQueue,
     handlers: createBackgroundJobHandlers({

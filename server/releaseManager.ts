@@ -346,12 +346,14 @@ export class ReleaseManager {
 
   private scheduleProcessing(id: string): void {
     if (this.scheduleBackgroundJob) {
-      void this.scheduleBackgroundJob(
+      this.scheduleBackgroundJob(
         "process_release_run",
         id,
         buildBackgroundJobDedupeKey("process_release_run", id),
         { releaseRunId: id },
-      ).catch(() => undefined);
+      ).catch((error) => {
+        console.error(`Failed to schedule release run ${id}:`, error);
+      });
       return;
     }
 
