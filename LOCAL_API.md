@@ -21,6 +21,7 @@
    - [PR Q&A](#pr-qa)
    - [Logs](#logs)
    - [CI healing sessions](#ci-healing-sessions)
+   - [Deployment healing sessions](#deployment-healing-sessions)
    - [Configuration](#configuration)
    - [Agent models](#agent-models)
    - [Runtime & drain mode](#runtime--drain-mode)
@@ -63,11 +64,11 @@ structured tool calls without writing a single line of HTTP client code.
 
 Most long-running runtime actions are **durable and queue-backed**. Repository
 sync, initial and manual babysit/apply runs, feedback retries, PR question
-answering, release processing, and social changelog generation are first
-persisted in SQLite and then claimed by a dispatcher with leases and
-heartbeats. Queued work survives process restarts; on startup, expired leases
-are re-queued, and interrupted babysitter runs are resumed from stored run
-context when possible.
+answering, release processing, merge-triggered deployment healing, and social
+changelog generation are first persisted in SQLite and then claimed by a
+dispatcher with leases and heartbeats. Queued work survives process restarts;
+on startup, expired leases are re-queued, and interrupted babysitter runs are
+resumed from stored run context when possible.
 
 ---
 
@@ -86,6 +87,10 @@ npm run build && npm start
 The server binds to `0.0.0.0:5001` (configurable via `PORT`), but the
 localhost-only middleware rejects every `/api/*` call that does not originate
 from `127.0.0.1` or `::1`.
+
+If you enable deployment healing for Vercel or Railway repositories, install
+and authenticate the matching platform CLI on the same machine:
+`vercel` for Vercel and `railway` for Railway.
 
 ### 2. Call the API
 
@@ -220,6 +225,13 @@ compiled output instead:
 | `get_changelog` | Get one changelog by ID |
 | `get_onboarding_status` | Check repo onboarding status |
 | `install_review_workflow` | Install GitHub Actions review workflow |
+| `list_deployment_healing_sessions` | List deployment-healing sessions, optionally filtered by repo |
+| `get_deployment_healing_session` | Get one deployment-healing session by ID |
+
+`update_config` does not yet accept the deployment-healing keys described below.
+Use `PATCH /api/config` to change `autoHealDeployments`,
+`deploymentCheckDelayMs`, `deploymentCheckTimeoutMs`, or
+`deploymentCheckPollIntervalMs`.
 
 ---
 
@@ -477,6 +489,36 @@ Get one healing session by its internal Code Factory ID.
 
 ---
 
+### Deployment healing sessions
+
+Deployment-healing sessions are created when a merged PR belongs to a detected
+Vercel or Railway repository and deployment healing is enabled. The background
+job waits for the deployment, captures failure logs when the deployment enters
+an error state, and records the repair outcome.
+
+#### `GET /api/deployment-healing-sessions`
+
+List persisted deployment-healing sessions, newest first.
+
+**Query parameters**
+
+| Parameter | Type   | Description |
+|-----------|--------|-------------|
+| `repo`    | string | Optional repository slug (`owner/repo`) filter |
+
+**Response** `200` — array of [DeploymentHealingSession objects](#deploymenthealingsession)
+
+---
+
+#### `GET /api/deployment-healing-sessions/:id`
+
+Get one deployment-healing session by its internal Code Factory ID.
+
+**Response** `200` — [DeploymentHealingSession object](#deploymenthealingsession)
+**Response** `404` — `{ "error": "Deployment healing session not found" }`
+
+---
+
 ### Configuration
 
 #### `GET /api/config`
@@ -508,6 +550,10 @@ Partially update the configuration.  Only the provided fields are changed.
   "maxHealingAttemptsPerFingerprint": 2,
   "maxConcurrentHealingRuns": 1,
   "healingCooldownMs": 300000,
+  "autoHealDeployments": false,
+  "deploymentCheckDelayMs": 60000,
+  "deploymentCheckTimeoutMs": 600000,
+  "deploymentCheckPollIntervalMs": 15000,
   "watchedRepos": ["owner/repo"],
   "trustedReviewers": ["alice", "bob"],
   "ignoredBots": ["dependabot", "codecov"]
@@ -515,6 +561,10 @@ Partially update the configuration.  Only the provided fields are changed.
 ```
 
 **Response** `200` — updated [Config object](#config) (token redacted)
+
+Deployment-healing configuration is REST-writable today. The MCP
+`update_config` tool still exposes its older field subset, so use this REST
+endpoint when changing the deployment-healing keys.
 
 ---
 
@@ -792,6 +842,10 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   maxHealingAttemptsPerFingerprint: number;
   maxConcurrentHealingRuns: number;
   healingCooldownMs: number;
+  autoHealDeployments: boolean;
+  deploymentCheckDelayMs: number;
+  deploymentCheckTimeoutMs: number;
+  deploymentCheckPollIntervalMs: number;
   watchedRepos: string[];
   trustedReviewers: string[];
   ignoredBots: string[];
@@ -839,6 +893,30 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   latestFingerprint: string | null;
   attemptCount: number;
   lastImprovementScore: number | null;
+}
+```
+
+### DeploymentHealingSession
+
+```typescript
+{
+  id: string;
+  repo: string;                // "owner/repo"
+  platform: "vercel" | "railway";
+  triggerPrNumber: number;
+  triggerPrTitle: string;
+  triggerPrUrl: string;
+  mergeSha: string;
+  deploymentId: string | null;
+  deploymentLog: string | null;
+  fixBranch: string | null;
+  fixPrNumber: number | null;
+  fixPrUrl: string | null;
+  state: "monitoring" | "failed" | "fixing" | "fix_submitted" | "escalated";
+  error: string | null;
+  createdAt: string;           // ISO 8601
+  updatedAt: string;           // ISO 8601
+  completedAt: string | null;  // ISO 8601
 }
 ```
 

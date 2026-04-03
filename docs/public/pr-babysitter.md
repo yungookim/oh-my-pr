@@ -1,6 +1,6 @@
 # PR Babysitter
 
-The PR Babysitter is oh-my-pr's core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing loops without manual intervention.
+The PR Babysitter is oh-my-pr's core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing and post-merge deployment-healing loops without manual intervention.
 
 ## How It Works
 
@@ -56,6 +56,28 @@ When **Automatic CI healing** is enabled, the babysitter also watches failing ch
 Only `healable_in_branch` failures queue a dedicated repair attempt. Healing sessions move through explicit states such as `triaging`, `awaiting_repair_slot`, `repairing`, `awaiting_ci`, `verifying`, `healed`, `cooldown`, `blocked`, `escalated`, and `superseded`.
 
 The dashboard shows the latest session for each tracked PR, including the current state badge, attempt summary, latest fingerprint, reason text, and current head SHA. The local API exposes session history via `GET /api/healing-sessions` and `GET /api/healing-sessions/:id`.
+
+### 6. Deployment Healing
+
+When `autoHealDeployments` is enabled, the babysitter also inspects merged PRs for supported deployment markers and queues a durable `heal_deployment` job for eligible repositories. Platform detection currently supports:
+
+- **Vercel** — `vercel.json`, `.vercel/project.json`, or a `package.json` script containing `vercel`
+- **Railway** — `railway.toml`, `railway.json`, or `nixpacks.toml`
+
+For a detected platform, the deployment-healing flow is:
+
+1. Wait `deploymentCheckDelayMs` after merge so the deployment can appear upstream.
+2. Poll the platform CLI until the deployment reaches `ready`, reaches `error`, or `deploymentCheckTimeoutMs` elapses.
+3. If the deployment fails, capture the deployment logs and create a deployment-healing session.
+4. Run the configured coding agent from the merge SHA, push a `deploy-fix/<platform>-<timestamp>` branch, and open a follow-up PR back to the merged base branch.
+5. Mark the session as `fix_submitted` on success or `escalated` when monitoring times out or the repair attempt cannot be completed automatically.
+
+Deployment-healing sessions move through `monitoring`, `failed`, `fixing`, `fix_submitted`, and `escalated`. Operator visibility is currently API- and MCP-based via `GET /api/deployment-healing-sessions`, `GET /api/deployment-healing-sessions/:id`, `list_deployment_healing_sessions`, and `get_deployment_healing_session`; there is no dedicated dashboard panel yet.
+
+Deployment healing requires the matching platform CLI to be installed and authenticated on the same machine as oh-my-pr:
+
+- `vercel` for Vercel repositories
+- `railway` for Railway repositories
 
 ## Feedback Lifecycle
 
