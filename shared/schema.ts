@@ -132,6 +132,7 @@ export const backgroundJobKindEnum = z.enum([
   "process_release_run",
   "answer_pr_question",
   "generate_social_changelog",
+  "heal_deployment",
 ]);
 export type BackgroundJobKind = z.infer<typeof backgroundJobKindEnum>;
 
@@ -356,6 +357,39 @@ export const releaseRunSchema = z.object({
 });
 export type ReleaseRun = z.infer<typeof releaseRunSchema>;
 
+export const deploymentPlatformEnum = z.enum(["vercel", "railway"]);
+export type DeploymentPlatform = z.infer<typeof deploymentPlatformEnum>;
+
+export const deploymentHealingStateEnum = z.enum([
+  "monitoring",
+  "failed",
+  "fixing",
+  "fix_submitted",
+  "escalated",
+]);
+export type DeploymentHealingState = z.infer<typeof deploymentHealingStateEnum>;
+
+export const deploymentHealingSessionSchema = z.object({
+  id: z.string(),
+  repo: z.string(),
+  platform: deploymentPlatformEnum,
+  triggerPrNumber: z.number(),
+  triggerPrTitle: z.string(),
+  triggerPrUrl: z.string(),
+  mergeSha: z.string(),
+  deploymentId: z.string().nullable(),
+  deploymentLog: z.string().nullable(),
+  fixBranch: z.string().nullable(),
+  fixPrNumber: z.number().nullable(),
+  fixPrUrl: z.string().nullable(),
+  state: deploymentHealingStateEnum,
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+export type DeploymentHealingSession = z.infer<typeof deploymentHealingSessionSchema>;
+
 export const configSchema = z.object({
   githubToken: z.string(),
   codingAgent: z.enum(["codex", "claude"]),
@@ -371,6 +405,10 @@ export const configSchema = z.object({
   maxHealingAttemptsPerFingerprint: z.number(),
   maxConcurrentHealingRuns: z.number(),
   healingCooldownMs: z.number(),
+  autoHealDeployments: z.boolean(),
+  deploymentCheckDelayMs: z.number(),
+  deploymentCheckTimeoutMs: z.number(),
+  deploymentCheckPollIntervalMs: z.number(),
   watchedRepos: z.array(z.string()),
   trustedReviewers: z.array(z.string()),
   ignoredBots: z.array(z.string()),

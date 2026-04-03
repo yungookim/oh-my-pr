@@ -32,6 +32,10 @@ describe("DEFAULT_CONFIG", () => {
       "maxHealingAttemptsPerFingerprint",
       "maxConcurrentHealingRuns",
       "healingCooldownMs",
+      "autoHealDeployments",
+      "deploymentCheckDelayMs",
+      "deploymentCheckTimeoutMs",
+      "deploymentCheckPollIntervalMs",
       "watchedRepos",
       "trustedReviewers",
       "ignoredBots",
@@ -87,6 +91,9 @@ describe("DEFAULT_CONFIG", () => {
       "maxHealingAttemptsPerFingerprint",
       "maxConcurrentHealingRuns",
       "healingCooldownMs",
+      "deploymentCheckDelayMs",
+      "deploymentCheckTimeoutMs",
+      "deploymentCheckPollIntervalMs",
     ] as const;
     for (const field of numericFields) {
       assert.equal(typeof DEFAULT_CONFIG[field], "number", `${field} should be a number`);
@@ -104,6 +111,13 @@ describe("DEFAULT_CONFIG", () => {
 
   it("enables docs auto-update by default", () => {
     assert.equal(DEFAULT_CONFIG.autoUpdateDocs, true);
+  });
+
+  it("includes deployment-healing defaults", () => {
+    assert.equal(DEFAULT_CONFIG.autoHealDeployments, false);
+    assert.equal(DEFAULT_CONFIG.deploymentCheckDelayMs, 60000);
+    assert.equal(DEFAULT_CONFIG.deploymentCheckTimeoutMs, 600000);
+    assert.equal(DEFAULT_CONFIG.deploymentCheckPollIntervalMs, 15000);
   });
 
   it("includes CI-healing defaults and validates healing schemas", () => {
