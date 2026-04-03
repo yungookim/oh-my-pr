@@ -12,9 +12,7 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 
-Code Factory watches GitHub repositories, syncs PR feedback, triages what matters, and dispatches locally installed coding agents inside isolated app-owned worktrees. It keeps durable state in `~/.oh-my-pr` and exposes the same system through a dashboard, REST API, and MCP server.
-
-No hosted service. No agent edits inside your working copy. Your PR automation stays on your machine.
+Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI/CD logs, and gets your PR ready for merge to main. It uses your local Claude Code or Codex to address any issues identified in the PR or CI/CD pipeline, and ensures any documentation is up-to-date. You can push a PR, walkaway, and come back to a clean PR ready to be merged.
 
 <img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
@@ -22,22 +20,11 @@ No hosted service. No agent edits inside your working copy. Your PR automation s
 
 - Watch multiple repositories or add a single PR by URL.
 - Auto-register open PRs, archive closed or merged PRs, and keep syncing review activity.
-- Pause background automation for an individual tracked PR while keeping manual runs available.
-- Store PR state, background jobs, questions, release runs, logs, and social changelogs in SQLite with mirrored log files.
-- Queue repo sync, babysit/apply runs, PR questions, release processing, and social changelog generation in a durable SQLite-backed dispatcher that survives restarts.
-- Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
-- Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
 - Evaluate review comments and failing CI statuses, post GitHub follow-ups, resolve review threads, and persist CI healing sessions per PR head.
 - Detect merge conflicts and optionally let the agent resolve them automatically.
 - Ask natural-language questions about any tracked PR from the dashboard or via MCP.
-- Configure trusted reviewers, ignored bots, polling, batching, run limits, and CI-healing retry budgets from settings.
-- Enable drain mode to stop claiming new queued work and optionally wait for active queue handlers to finish before deploys or upgrades.
-- Check onboarding status, install Claude or Codex review workflows, and generate social changelogs every 5 PRs merged to `main`.
-- Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.
 
 ## How It Works
-
-<img width="969" height="572" alt="Code Factory workflow" src="https://github.com/user-attachments/assets/b9dbd102-ae2e-4837-a862-a0282bdfa0b8" />
 
 1. Add a repository to the watch list or register a PR directly by URL.
 2. The watcher enqueues a durable repo-sync job in SQLite.
