@@ -706,6 +706,57 @@ test("SqliteStorage persists check snapshots and failure fingerprints", async ()
   reloaded.close();
 });
 
+test("deployment healing session CRUD", async () => {
+  const { MemStorage } = await import("./memoryStorage");
+  const storage = new MemStorage();
+
+  const session = await storage.createDeploymentHealingSession({
+    repo: "owner/repo",
+    platform: "vercel",
+    triggerPrNumber: 42,
+    triggerPrTitle: "Add feature",
+    triggerPrUrl: "https://github.com/owner/repo/pull/42",
+    mergeSha: "abc123",
+    deploymentId: null,
+    deploymentLog: null,
+    fixBranch: null,
+    fixPrNumber: null,
+    fixPrUrl: null,
+    state: "monitoring",
+    error: null,
+    completedAt: null,
+  });
+
+  assert.ok(session.id);
+  assert.equal(session.repo, "owner/repo");
+  assert.equal(session.platform, "vercel");
+  assert.equal(session.state, "monitoring");
+
+  const fetched = await storage.getDeploymentHealingSession(session.id);
+  assert.deepEqual(fetched, session);
+
+  const all = await storage.listDeploymentHealingSessions();
+  assert.equal(all.length, 1);
+
+  const filtered = await storage.listDeploymentHealingSessions({ repo: "owner/repo" });
+  assert.equal(filtered.length, 1);
+  const empty = await storage.listDeploymentHealingSessions({ repo: "other/repo" });
+  assert.equal(empty.length, 0);
+
+  const updated = await storage.updateDeploymentHealingSession(session.id, {
+    state: "failed",
+    deploymentId: "dpl_123",
+    deploymentLog: "Error: build failed",
+  });
+  assert.ok(updated);
+  assert.equal(updated!.state, "failed");
+  assert.equal(updated!.deploymentId, "dpl_123");
+
+  const byMerge = await storage.getDeploymentHealingSessionByRepoAndMergeSha("owner/repo", "abc123");
+  assert.ok(byMerge);
+  assert.equal(byMerge!.id, session.id);
+});
+
 test("SqliteStorage allows getPR during a concurrent write transaction", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
   const storage = new SqliteStorage(root);

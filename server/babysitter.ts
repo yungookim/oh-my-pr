@@ -10,6 +10,7 @@ import {
 } from "./agentRunner";
 import {
   addReactionToComment,
+  buildGitHubCloneUrl,
   buildOctokit,
   checkCISettled,
   fetchCheckSnapshotsForRef,
@@ -41,8 +42,10 @@ import { isFailingCheckSnapshot } from "./ciCheckIngestor";
 import { runCIHealingRepairAttempt } from "./ciHealingAgent";
 import { generateSocialChangelog } from "./socialChangelogAgent";
 import { getCodeFactoryPaths } from "./paths";
-import { preparePrWorktree, removePrWorktree } from "./repoWorkspace";
+import { ensureRepoCache, preparePrWorktree, removePrWorktree } from "./repoWorkspace";
 import { buildBackgroundJobDedupeKey, type ScheduleBackgroundJob } from "./backgroundJobQueue";
+import type { DeploymentHealingManager } from "./deploymentHealingManager";
+import { detectDeploymentPlatform } from "./deploymentPlatformDetector";
 import {
   applyEvaluationDecision,
   markInProgress,
@@ -776,6 +779,7 @@ export class PRBabysitter {
   private readonly github: GitHubService;
   private readonly runtime: BabysitterRuntime;
   private readonly releaseManager?: ReleaseManagerLike;
+  private readonly deploymentHealingManager?: DeploymentHealingManager;
   private readonly scheduleBackgroundJob?: ScheduleBackgroundJob;
   private readonly clock: () => Date;
 
@@ -785,11 +789,13 @@ export class PRBabysitter {
     runtime: BabysitterRuntime = defaultBabysitterRuntime,
     releaseManager?: ReleaseManagerLike,
     scheduleBackgroundJob?: ScheduleBackgroundJob,
+    deploymentHealingManager?: DeploymentHealingManager,
   ) {
     this.storage = storage;
     this.github = github;
     this.runtime = runtime;
     this.releaseManager = releaseManager;
+    this.deploymentHealingManager = deploymentHealingManager;
     this.scheduleBackgroundJob = scheduleBackgroundJob;
     this.clock = runtime.now ?? (() => new Date());
   }
@@ -1178,6 +1184,44 @@ export class PRBabysitter {
             await this.storage.addLog(pr.id, "info", `PR #${pr.number} closed without merge`, {
               phase: "watcher",
             });
+          }
+
+          if (closeState?.merged && this.deploymentHealingManager && this.scheduleBackgroundJob && config.autoHealDeployments) {
+            const depBaseBranch = closeState.baseRef.trim();
+            const depMergeSha = closeState.mergeCommitSha || closeState.headSha;
+            if (depBaseBranch && depMergeSha) {
+              try {
+                const githubToken = await this.github.resolveGitHubAuthToken(config);
+                const repoCloneUrl = buildGitHubCloneUrl(repoSlug, githubToken);
+                const { repoCacheDir } = await ensureRepoCache({
+                  repoFullName: repoSlug,
+                  repoCloneUrl,
+                  runCommand: this.runtime.runCommand,
+                });
+                const detected = await detectDeploymentPlatform(repoCacheDir);
+                if (detected) {
+                  await this.scheduleBackgroundJob(
+                    "heal_deployment",
+                    `${repoSlug}:${depMergeSha}`,
+                    buildBackgroundJobDedupeKey("heal_deployment", `${repoSlug}:${depMergeSha}`),
+                    {
+                      repo: repoSlug, platform: detected.platform, mergeSha: depMergeSha,
+                      triggerPrNumber: pr.number, triggerPrTitle: pr.title,
+                      triggerPrUrl: pr.url, baseBranch: depBaseBranch,
+                    },
+                  );
+                  await this.storage.addLog(pr.id, "info",
+                    `PR #${pr.number} merged — queued deployment healing (${detected.platform})`,
+                    { phase: "watcher", metadata: { platform: detected.platform, mergeSha: depMergeSha } },
+                  );
+                }
+              } catch (error) {
+                await this.storage.addLog(pr.id, "warn",
+                  `Failed to queue deployment healing: ${summarizeUnknownError(error)}`,
+                  { phase: "watcher" },
+                );
+              }
+            }
           }
 
           hadNewlyArchived = true;

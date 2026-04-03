@@ -236,6 +236,15 @@ export function formatRepoSlug(parsed: ParsedRepoSlug): string {
   return `${parsed.owner}/${parsed.repo}`;
 }
 
+export function buildGitHubCloneUrl(repoSlug: string, authToken?: string): string {
+  const trimmedToken = authToken?.trim();
+  if (trimmedToken) {
+    return `https://x-access-token:${trimmedToken}@github.com/${repoSlug}.git`;
+  }
+
+  return `https://github.com/${repoSlug}.git`;
+}
+
 type ReviewThreadLookup = Map<number, {
   threadId: string;
   threadResolved: boolean;

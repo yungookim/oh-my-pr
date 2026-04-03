@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Config, FeedbackItem } from "@shared/schema";
 import {
+  buildGitHubCloneUrl,
   GitHubIntegrationError,
   buildFeedbackAuditToken,
   checkOnboardingStatus,
@@ -1407,6 +1408,20 @@ test("parseRepoSlug trims surrounding whitespace", () => {
 
 test("formatRepoSlug returns owner/repo string", () => {
   assert.equal(formatRepoSlug({ owner: "owner", repo: "repo" }), "owner/repo");
+});
+
+test("buildGitHubCloneUrl embeds x-access-token auth when a token is available", () => {
+  assert.equal(
+    buildGitHubCloneUrl("owner/repo", "ghs_123"),
+    "https://x-access-token:ghs_123@github.com/owner/repo.git",
+  );
+});
+
+test("buildGitHubCloneUrl falls back to the public clone URL when auth is unavailable", () => {
+  assert.equal(
+    buildGitHubCloneUrl("owner/repo"),
+    "https://github.com/owner/repo.git",
+  );
 });
 
 // ---------------------------------------------------------------------------

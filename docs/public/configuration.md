@@ -56,6 +56,7 @@ The settings page in the dashboard provides a UI for:
 - **GitHub Token management** — Add, update, or rotate tokens.
 - **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
 - **CI healing** — Enable autonomous CI repair and tune retry/session limits.
+- **Deployment healing** — Not yet exposed in the dashboard; use `PATCH /api/config` for the deployment-healing keys listed below.
 - **Theme** — Toggle between light and dark mode.
 
 ## CI Healing Settings
@@ -71,6 +72,31 @@ Code Factory can track failing CI checks as first-class healing sessions and, wh
 | `Healing cooldown (ms)` | `300000` | Backoff window before a cooldowned session can retry |
 
 The dashboard shows healing state on each tracked PR, while the local API exposes `GET /api/healing-sessions` and `GET /api/healing-sessions/:id` for external tooling.
+
+## Deployment Healing Settings
+
+Code Factory can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.
+
+A repository is eligible only when platform detection finds one of these markers in the app-owned repo cache:
+
+- **Vercel** — `vercel.json`, `.vercel/project.json`, or a `package.json` script containing `vercel`
+- **Railway** — `railway.toml`, `railway.json`, or `nixpacks.toml`
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Automatic deployment healing` | `false` | Queue post-merge deployment monitoring for detected Vercel or Railway repositories |
+| `Deployment check delay (ms)` | `60000` | Wait after merge before the first deployment status check |
+| `Deployment check timeout (ms)` | `600000` | Maximum time to wait for the deployment to reach `ready` or `error` before escalation |
+| `Deployment check poll interval (ms)` | `15000` | Poll cadence while the deployment is still building or deploying |
+
+These values map to `autoHealDeployments`, `deploymentCheckDelayMs`, `deploymentCheckTimeoutMs`, and `deploymentCheckPollIntervalMs` in `GET /api/config` and `PATCH /api/config`.
+
+Deployment healing also requires the matching platform CLI on the machine running Code Factory:
+
+- Install and authenticate `vercel` to heal Vercel deployments.
+- Install and authenticate `railway` to heal Railway deployments.
+
+Deployment session history is exposed through `GET /api/deployment-healing-sessions`, `GET /api/deployment-healing-sessions/:id`, and the matching MCP read tools. The dashboard settings page and MCP `update_config` tool do not yet expose these deployment-healing knobs on this branch.
 
 ## Build & Deploy
 

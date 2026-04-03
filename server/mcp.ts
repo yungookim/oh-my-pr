@@ -405,6 +405,30 @@ const TOOLS: Tool[] = [
       required: ["repo", "tool"],
     },
   },
+
+  // ── Deployment healing ────────────────────────────────────────────────────
+  {
+    name: "list_deployment_healing_sessions",
+    description: "List deployment healing sessions, optionally filtered by repository.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: { type: "string", description: "Optional repository slug 'owner/repo' to filter by." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_deployment_healing_session",
+    description: "Get details of a single deployment healing session by ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Deployment healing session ID." },
+      },
+      required: ["id"],
+    },
+  },
 ];
 
 // ── Tool dispatch ─────────────────────────────────────────────────────────────
@@ -494,6 +518,14 @@ async function callTool(name: string, args: ToolArgs): Promise<unknown> {
         repo: args.repo,
         tool: args.tool,
       });
+
+    // Deployment healing
+    case "list_deployment_healing_sessions": {
+      const query = args.repo ? `?repo=${encodeURIComponent(String(args.repo))}` : "";
+      return cfFetch("GET", `/api/deployment-healing-sessions${query}`);
+    }
+    case "get_deployment_healing_session":
+      return cfFetch("GET", `/api/deployment-healing-sessions/${args.id}`);
 
     default:
       throw new Error(`Unknown tool: ${name}`);

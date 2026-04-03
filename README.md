@@ -1,4 +1,4 @@
-# Oh-my-PR 
+# Oh-my-PR
 **This project is going to save you tons of time by automating the whole PR process.**
 
 **Local-first GitHub PR babysitter for Codex and Claude**
@@ -21,9 +21,19 @@ Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI
 
 - Watch multiple repositories or add a single PR by URL.
 - Auto-register open PRs, archive closed or merged PRs, and keep syncing review activity.
-- Evaluate review comments and failing CI statuses, post GitHub follow-ups, resolve review threads, and heal any CI failures.
-- Detect merge conflicts and let the agent resolve them automatically.
+- Pause background automation for an individual tracked PR while keeping manual runs available.
+- Store PR state, background jobs, questions, release runs, logs, and social changelogs in SQLite with mirrored log files.
+- Queue repo sync, babysit/apply runs, PR questions, release processing, deployment healing, and social changelog generation in a durable SQLite-backed dispatcher that survives restarts.
+- Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
+- Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
+- Evaluate review comments and failing CI statuses, post GitHub follow-ups, resolve review threads, and heal CI failures through persisted CI healing sessions per PR head.
+- Monitor merged Vercel or Railway deployments, capture deployment logs on failure, and open follow-up `deploy-fix/*` PRs when deployment healing is enabled.
+- Detect merge conflicts and optionally let the agent resolve them automatically.
 - Ask natural-language questions about any tracked PR from the dashboard or via MCP.
+- Configure trusted reviewers, ignored bots, polling, batching, run limits, and CI-healing retry budgets from settings.
+- Enable drain mode to stop claiming new queued work and optionally wait for active queue handlers to finish before deploys or upgrades.
+- Check onboarding status, install Claude or Codex review workflows, and generate social changelogs every 5 PRs merged to `main`.
+- Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.
 
 ## How It Works
 
@@ -33,11 +43,17 @@ Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI
 4. Manual apply/babysit requests, PR questions, release processing, and social changelog generation go through the same durable queue before work executes in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
 5. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
 
-Repo sync, babysit/apply, PR Q&A, release processing, and social changelog generation all run through durable background jobs stored in `state.sqlite`. On startup the dispatcher reclaims expired job leases, and interrupted babysitter runs are resumed from stored run context when possible.
+Repo sync, babysit/apply, PR Q&A, release processing, deployment healing, and social changelog generation all run through durable background jobs stored in `state.sqlite`. On startup the dispatcher reclaims expired job leases, and interrupted babysitter runs are resumed from stored run context when possible.
 
 ## CI Healing
 
 When `Automatic CI healing` is enabled, Code Factory creates a healing session for each failing PR head SHA, classifies failures as safe to fix in-branch or blocked external, and runs bounded repair attempts in isolated worktrees. The dashboard surfaces the current session state and retry budget, and the local API exposes `GET /api/healing-sessions` plus `GET /api/healing-sessions/:id` for operator visibility.
+
+## Deployment Healing
+
+When deployment healing is enabled through `PATCH /api/config`, Code Factory inspects merged PRs for supported deployment markers, waits for the post-merge deployment to appear, and polls the matching platform CLI for success or failure. On failure, it captures deployment logs, runs the configured agent from the merge commit in the app-owned repo cache, pushes a `deploy-fix/<platform>-<timestamp>` branch, and opens a follow-up PR against the merged base branch.
+
+Deployment healing currently supports Vercel and Railway repositories detected from common repo-local config files. It requires the matching CLI in `PATH` and authenticated on the same machine running Code Factory. Session history is exposed through `GET /api/deployment-healing-sessions`, `GET /api/deployment-healing-sessions/:id`, and the matching MCP read tools.
 
 ## Quick Start
 
@@ -54,6 +70,7 @@ That's it. The dashboard opens in your browser at `http://localhost:5001`.
 - **git**
 - GitHub auth via `gh auth login`, `GITHUB_TOKEN`, app config, or a saved dashboard token
 - Either the `codex` CLI or `claude` CLI installed and authenticated locally
+- Optional for deployment healing: the `vercel` CLI and/or `railway` CLI installed and authenticated for repositories you want to auto-heal after merge
 
 ### CLI Usage
 

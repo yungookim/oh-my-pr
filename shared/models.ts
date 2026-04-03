@@ -4,6 +4,7 @@ import {
   agentRunSchema,
   backgroundJobSchema,
   configSchema,
+  deploymentHealingSessionSchema,
   feedbackItemSchema,
   failureFingerprintSchema,
   healingAttemptSchema,
@@ -19,6 +20,7 @@ import type {
   BackgroundJob,
   Config,
   CheckSnapshot,
+  DeploymentHealingSession,
   FeedbackItem,
   FailureFingerprint,
   HealingAttempt,
@@ -297,6 +299,33 @@ export function applyHealingAttemptUpdate(
     sessionId: existing.sessionId,
     attemptNumber: existing.attemptNumber,
     startedAt: existing.startedAt,
+  });
+}
+
+// ── Deployment healing ────────────────────────────────────────────────────────
+
+export function createDeploymentHealingSession(
+  data: Omit<DeploymentHealingSession, "id" | "createdAt" | "updatedAt">,
+): DeploymentHealingSession {
+  const now = new Date().toISOString();
+  return deploymentHealingSessionSchema.parse({
+    ...data,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export function applyDeploymentHealingSessionUpdate(
+  existing: DeploymentHealingSession,
+  updates: Partial<DeploymentHealingSession>,
+): DeploymentHealingSession {
+  return deploymentHealingSessionSchema.parse({
+    ...existing,
+    ...updates,
+    id: existing.id,
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString(),
   });
 }
 

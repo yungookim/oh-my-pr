@@ -1,11 +1,22 @@
-import type { BackgroundJob } from "@shared/schema";
+import type { BackgroundJob, DeploymentPlatform } from "@shared/schema";
 import type { CodingAgent } from "./agentRunner";
 import type { PRBabysitter } from "./babysitter";
 import { CancelBackgroundJobError, type BackgroundJobHandlers } from "./backgroundJobDispatcher";
+import { createAdapter } from "./deploymentAdapters";
+import type { DeploymentHealingManager } from "./deploymentHealingManager";
+import { runDeploymentHealingRepair } from "./deploymentHealingAgent";
+import { buildGitHubCloneUrl, buildOctokit, parseRepoSlug, resolveGitHubAuthToken } from "./github";
 import { answerPRQuestion } from "./prQuestionAgent";
 import type { ReleaseManager } from "./releaseManager";
 import { generateSocialChangelog } from "./socialChangelogAgent";
 import type { IStorage } from "./storage";
+
+type BackgroundJobHandlerDeps = {
+  buildOctokitFn?: typeof buildOctokit;
+  createAdapterFn?: typeof createAdapter;
+  resolveGitHubAuthTokenFn?: typeof resolveGitHubAuthToken;
+  runDeploymentHealingRepairFn?: typeof runDeploymentHealingRepair;
+};
 
 function readStringPayload(job: BackgroundJob, key: string): string | null {
   const value = job.payload[key];
@@ -21,18 +32,29 @@ function readCodingAgentPayload(job: BackgroundJob, key: string): CodingAgent | 
   return null;
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function createBackgroundJobHandlers(params: {
   storage: IStorage;
   babysitter?: Pick<PRBabysitter, "runQueuedBabysitPR" | "syncAndBabysitTrackedRepos">;
   releaseManager?: Pick<ReleaseManager, "processReleaseRun">;
+  deploymentHealingManager?: DeploymentHealingManager;
   questionAnswerer?: typeof answerPRQuestion;
   socialChangelogGenerator?: typeof generateSocialChangelog;
+  deps?: BackgroundJobHandlerDeps;
 }): BackgroundJobHandlers {
   const storage = params.storage;
   const babysitter = params.babysitter;
   const releaseManager = params.releaseManager;
+  const deploymentHealingManager = params.deploymentHealingManager;
   const questionAnswerer = params.questionAnswerer ?? answerPRQuestion;
   const socialChangelogGenerator = params.socialChangelogGenerator ?? generateSocialChangelog;
+  const buildOctokitFn = params.deps?.buildOctokitFn ?? buildOctokit;
+  const createAdapterFn = params.deps?.createAdapterFn ?? createAdapter;
+  const resolveGitHubAuthTokenFn = params.deps?.resolveGitHubAuthTokenFn ?? resolveGitHubAuthToken;
+  const runDeploymentHealingRepairFn = params.deps?.runDeploymentHealingRepairFn ?? runDeploymentHealingRepair;
 
   return {
     sync_watched_repos: babysitter
@@ -111,6 +133,129 @@ export function createBackgroundJobHandlers(params: {
         }
 
         await releaseManager.processReleaseRun(releaseRun.id);
+      }
+      : undefined,
+
+    heal_deployment: deploymentHealingManager
+      ? async (job) => {
+        const manager = deploymentHealingManager;
+        const repo = readStringPayload(job, "repo");
+        const platform = readStringPayload(job, "platform") as DeploymentPlatform | null;
+        const mergeSha = readStringPayload(job, "mergeSha");
+        const triggerPrNumber = Number(job.payload.triggerPrNumber);
+        const triggerPrTitle = readStringPayload(job, "triggerPrTitle");
+        const triggerPrUrl = readStringPayload(job, "triggerPrUrl");
+        const baseBranch = readStringPayload(job, "baseBranch");
+
+        if (!repo || !platform || !mergeSha || !triggerPrNumber || !triggerPrTitle || !triggerPrUrl || !baseBranch) {
+          throw new CancelBackgroundJobError(
+            `Background job ${job.id} is missing required deployment healing fields`,
+          );
+        }
+
+        const session = await manager.ensureSession({
+          repo,
+          platform,
+          triggerPrNumber,
+          triggerPrTitle,
+          triggerPrUrl,
+          mergeSha,
+        });
+
+        const config = await storage.getConfig();
+
+        // Wait for deployment to start
+        await wait(config.deploymentCheckDelayMs);
+
+        // Poll deployment status
+        const adapter = createAdapterFn(platform);
+        const deadline = Date.now() + config.deploymentCheckTimeoutMs;
+        let lastStatus = await adapter.getDeploymentStatus({ repo, sha: mergeSha });
+
+        while (lastStatus.state !== "ready" && lastStatus.state !== "error" && Date.now() < deadline) {
+          await wait(config.deploymentCheckPollIntervalMs);
+          lastStatus = await adapter.getDeploymentStatus({ repo, sha: mergeSha });
+        }
+
+        // Deployment succeeded — nothing to fix
+        if (lastStatus.state === "ready") {
+          return;
+        }
+
+        // Timed out without reaching error — escalate
+        if (lastStatus.state !== "error") {
+          await manager.transitionTo(session.id, "escalated", {
+            error: `Deployment status timed out in state: ${lastStatus.state}`,
+          });
+          return;
+        }
+
+        // Get deployment logs
+        const deploymentId = lastStatus.deploymentId ?? "unknown";
+        const deploymentLog = await adapter.getDeploymentLogs({ repo, deploymentId });
+
+        await manager.transitionTo(session.id, "failed", {
+          deploymentId,
+          deploymentLog,
+        });
+        await manager.transitionTo(session.id, "fixing");
+
+        try {
+          const parsedRepo = parseRepoSlug(repo);
+          if (!parsedRepo) {
+            throw new Error(`Cannot parse repo slug: ${repo}`);
+          }
+
+          const githubToken = await resolveGitHubAuthTokenFn(config);
+          const octokit = await buildOctokitFn(config);
+
+          const repairResult = await runDeploymentHealingRepairFn({
+            repo,
+            platform,
+            mergeSha,
+            triggerPrNumber,
+            triggerPrTitle,
+            triggerPrUrl,
+            deploymentLog,
+            baseBranch,
+            repoCloneUrl: buildGitHubCloneUrl(repo, githubToken),
+            agent: config.codingAgent,
+            githubToken: githubToken ?? "",
+          });
+
+          if (!repairResult.accepted) {
+            await manager.transitionTo(session.id, "escalated", {
+              error: repairResult.rejectionReason ?? "Repair not accepted",
+            });
+            return;
+          }
+
+          // Create PR for the fix
+          const prResult = await octokit.pulls.create({
+            owner: parsedRepo.owner,
+            repo: parsedRepo.repo,
+            title: `fix(deploy): ${repairResult.summary}`,
+            head: repairResult.fixBranch,
+            base: baseBranch,
+            body: [
+              `Automated deployment fix for ${platform} failure after #${triggerPrNumber}.`,
+              "",
+              `**Summary:** ${repairResult.summary}`,
+              "",
+              `Triggered by merge of ${triggerPrUrl}.`,
+            ].join("\n"),
+          });
+
+          await manager.transitionTo(session.id, "fix_submitted", {
+            fixBranch: repairResult.fixBranch,
+            fixPrNumber: prResult.data.number,
+            fixPrUrl: prResult.data.html_url,
+          });
+        } catch (error) {
+          await manager.transitionTo(session.id, "escalated", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
       : undefined,
   };

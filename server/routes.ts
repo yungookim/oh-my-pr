@@ -12,6 +12,7 @@ import { BackgroundJobDispatcher } from "./backgroundJobDispatcher";
 import { BackgroundJobQueue, buildBackgroundJobDedupeKey } from "./backgroundJobQueue";
 import { createWatcherScheduler, type WatcherScheduler } from "./watcherScheduler";
 import { ReleaseManager } from "./releaseManager";
+import { DeploymentHealingManager } from "./deploymentHealingManager";
 import {
   buildOctokit,
   checkOnboardingStatus,
@@ -46,6 +47,7 @@ export type RouteDependencies = {
   backgroundJobQueue?: BackgroundJobQueue;
   backgroundJobDispatcher?: BackgroundJobDispatcher;
   releaseManager?: ReleaseManager;
+  deploymentHealingManager?: DeploymentHealingManager;
   babysitter?: PRBabysitter;
   watcherScheduler?: WatcherScheduler;
   startBackgroundServices?: boolean;
@@ -65,6 +67,7 @@ export async function registerRoutes(
     return job;
   };
 
+  const deploymentHealingManager = dependencies.deploymentHealingManager ?? new DeploymentHealingManager(storage);
   const releaseManager = dependencies.releaseManager ?? new ReleaseManager(storage, {
     github: {
       buildOctokit,
@@ -134,6 +137,7 @@ export async function registerRoutes(
       storage,
       babysitter,
       releaseManager,
+      deploymentHealingManager,
     }),
   });
   let watcherTimer: NodeJS.Timeout | null = null;
@@ -682,6 +686,32 @@ export async function registerRoutes(
       const session = await storage.getHealingSession(req.params.id);
       if (!session) {
         return res.status(404).json({ error: "Healing session not found" });
+      }
+      res.json(session);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // ── Deployment healing ────────────────────────────────────────
+
+  app.get("/api/deployment-healing-sessions", async (req, res) => {
+    try {
+      const repo = typeof req.query.repo === "string" ? req.query.repo : undefined;
+      const sessions = await storage.listDeploymentHealingSessions(repo ? { repo } : undefined);
+      res.json(sessions);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  app.get("/api/deployment-healing-sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getDeploymentHealingSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Deployment healing session not found" });
       }
       res.json(session);
     } catch (err: unknown) {

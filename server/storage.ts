@@ -6,6 +6,8 @@ import type {
   BackgroundJobStatus,
   Config,
   CheckSnapshot,
+  DeploymentHealingSession,
+  DeploymentHealingState,
   LogEntry,
   FailureFingerprint,
   HealingAttempt,
@@ -145,6 +147,13 @@ export interface IStorage {
     prId?: string;
   }): Promise<AgentRun[]>;
   upsertAgentRun(run: AgentRun): Promise<AgentRun>;
+
+  // Deployment healing
+  getDeploymentHealingSession(id: string): Promise<DeploymentHealingSession | undefined>;
+  getDeploymentHealingSessionByRepoAndMergeSha(repo: string, mergeSha: string): Promise<DeploymentHealingSession | undefined>;
+  listDeploymentHealingSessions(filters?: { repo?: string; state?: DeploymentHealingState; }): Promise<DeploymentHealingSession[]>;
+  createDeploymentHealingSession(data: Omit<DeploymentHealingSession, "id" | "createdAt" | "updatedAt">): Promise<DeploymentHealingSession>;
+  updateDeploymentHealingSession(id: string, updates: Partial<DeploymentHealingSession>): Promise<DeploymentHealingSession | undefined>;
 }
 
 let defaultStorage: IStorage | undefined;

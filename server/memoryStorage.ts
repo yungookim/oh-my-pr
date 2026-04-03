@@ -6,6 +6,8 @@ import type {
   BackgroundJobStatus,
   Config,
   CheckSnapshot,
+  DeploymentHealingSession,
+  DeploymentHealingState,
   LogEntry,
   FailureFingerprint,
   HealingAttempt,
@@ -23,12 +25,14 @@ import type {
 import {
   applyConfigUpdate,
   applyBackgroundJobUpdate,
+  applyDeploymentHealingSessionUpdate,
   applyPRQuestionUpdate,
   applyPRUpdate,
   applyHealingAttemptUpdate,
   applyHealingSessionUpdate,
   applyReleaseRunUpdate,
   applySocialChangelogUpdate,
+  createDeploymentHealingSession,
   createLogEntry,
   createBackgroundJob,
   createCheckSnapshot,
@@ -62,6 +66,7 @@ export class MemStorage implements IStorage {
   private agentRuns: Map<string, AgentRun> = new Map();
   private socialChangelogs: Map<string, SocialChangelog> = new Map();
   private backgroundJobs: Map<string, BackgroundJob> = new Map();
+  private deploymentHealingSessions: Map<string, DeploymentHealingSession> = new Map();
 
   private cloneHealingSession(session: HealingSession): HealingSession {
     return { ...session };
@@ -654,5 +659,42 @@ export class MemStorage implements IStorage {
     const updated = applySocialChangelogUpdate(existing, updates);
     this.socialChangelogs.set(id, updated);
     return updated;
+  }
+
+  async getDeploymentHealingSession(id: string): Promise<DeploymentHealingSession | undefined> {
+    const session = this.deploymentHealingSessions.get(id);
+    return session ? { ...session } : undefined;
+  }
+
+  async getDeploymentHealingSessionByRepoAndMergeSha(repo: string, mergeSha: string): Promise<DeploymentHealingSession | undefined> {
+    const session = Array.from(this.deploymentHealingSessions.values()).find(
+      (candidate) => candidate.repo === repo && candidate.mergeSha === mergeSha,
+    );
+    return session ? { ...session } : undefined;
+  }
+
+  async listDeploymentHealingSessions(filters?: { repo?: string; state?: DeploymentHealingState }): Promise<DeploymentHealingSession[]> {
+    return Array.from(this.deploymentHealingSessions.values())
+      .filter((session) => {
+        if (filters?.repo && session.repo !== filters.repo) return false;
+        if (filters?.state && session.state !== filters.state) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .map((session) => ({ ...session }));
+  }
+
+  async createDeploymentHealingSession(data: Omit<DeploymentHealingSession, "id" | "createdAt" | "updatedAt">): Promise<DeploymentHealingSession> {
+    const entry = createDeploymentHealingSession(data);
+    this.deploymentHealingSessions.set(entry.id, entry);
+    return { ...entry };
+  }
+
+  async updateDeploymentHealingSession(id: string, updates: Partial<DeploymentHealingSession>): Promise<DeploymentHealingSession | undefined> {
+    const existing = this.deploymentHealingSessions.get(id);
+    if (!existing) return undefined;
+    const updated = applyDeploymentHealingSessionUpdate(existing, updates);
+    this.deploymentHealingSessions.set(id, updated);
+    return { ...updated };
   }
 }
