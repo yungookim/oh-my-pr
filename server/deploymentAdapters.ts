@@ -1,5 +1,8 @@
+import path from "path";
 import { runCommand } from "./agentRunner";
 import type { CommandResult } from "./agentRunner";
+import { getCodeFactoryPaths } from "./paths";
+import { sanitizeRepoName } from "./repoWorkspace";
 
 export type DeploymentState = "building" | "deploying" | "ready" | "error" | "not_found";
 
@@ -41,8 +44,9 @@ function mapRailwayStatus(status: string): DeploymentState {
     case "SUCCESS":
       return "ready";
     case "BUILDING":
-    case "DEPLOYING":
       return "building";
+    case "DEPLOYING":
+      return "deploying";
     case "INITIALIZING":
     case "QUEUED":
       return "deploying";
@@ -53,6 +57,10 @@ function mapRailwayStatus(status: string): DeploymentState {
     default:
       return "error";
   }
+}
+
+function getRepoCacheDir(repo: string): string {
+  return path.join(getCodeFactoryPaths().repoRootDir, sanitizeRepoName(repo));
 }
 
 export class VercelAdapter implements DeploymentPlatformAdapter {
@@ -78,7 +86,7 @@ export class VercelAdapter implements DeploymentPlatformAdapter {
       return { state: "error", deploymentId: null, url: null, error: result.stderr || "vercel list failed" };
     }
 
-    let parsed: { deployments?: Array<{ uid: string; state: string; url: string; meta?: Record<string, string> }> };
+    let parsed: { deployments?: Array<{ uid: string; state: string; url?: string | null; errorMessage?: string; meta?: Record<string, string> }> };
     try {
       parsed = JSON.parse(result.stdout);
     } catch {
@@ -91,11 +99,12 @@ export class VercelAdapter implements DeploymentPlatformAdapter {
     }
 
     const deployment = deployments[0];
+    const normalizedState = deployment.state.toUpperCase();
     return {
       state: mapVercelState(deployment.state),
       deploymentId: deployment.uid,
       url: deployment.url ?? null,
-      error: null,
+      error: normalizedState === "ERROR" ? (deployment.errorMessage ?? "Deployment failed") : null,
     };
   }
 
@@ -130,8 +139,10 @@ export class RailwayAdapter implements DeploymentPlatformAdapter {
     this.run = run ?? runCommand;
   }
 
-  async getDeploymentStatus(_params: { repo: string; sha: string }): Promise<DeploymentStatus> {
-    const result = await this.run("railway", ["status", "--json"]);
+  async getDeploymentStatus(params: { repo: string; sha: string }): Promise<DeploymentStatus> {
+    const result = await this.run("railway", ["status", "--json"], {
+      cwd: getRepoCacheDir(params.repo),
+    });
 
     if (result.code !== 0) {
       return { state: "error", deploymentId: null, url: null, error: result.stderr || "railway status failed" };
@@ -153,9 +164,11 @@ export class RailwayAdapter implements DeploymentPlatformAdapter {
   }
 
   async getDeploymentLogs(params: { repo: string; deploymentId: string }): Promise<string> {
-    const { deploymentId } = params;
+    const { repo, deploymentId } = params;
 
-    const result = await this.run("railway", ["logs", "--deployment", deploymentId]);
+    const result = await this.run("railway", ["logs", "--deployment", deploymentId], {
+      cwd: getRepoCacheDir(repo),
+    });
     return result.stdout || result.stderr;
   }
 }

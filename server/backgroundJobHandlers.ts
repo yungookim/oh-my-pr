@@ -5,11 +5,18 @@ import { CancelBackgroundJobError, type BackgroundJobHandlers } from "./backgrou
 import { createAdapter } from "./deploymentAdapters";
 import type { DeploymentHealingManager } from "./deploymentHealingManager";
 import { runDeploymentHealingRepair } from "./deploymentHealingAgent";
-import { buildOctokit, parseRepoSlug } from "./github";
+import { buildGitHubCloneUrl, buildOctokit, parseRepoSlug, resolveGitHubAuthToken } from "./github";
 import { answerPRQuestion } from "./prQuestionAgent";
 import type { ReleaseManager } from "./releaseManager";
 import { generateSocialChangelog } from "./socialChangelogAgent";
 import type { IStorage } from "./storage";
+
+type BackgroundJobHandlerDeps = {
+  buildOctokitFn?: typeof buildOctokit;
+  createAdapterFn?: typeof createAdapter;
+  resolveGitHubAuthTokenFn?: typeof resolveGitHubAuthToken;
+  runDeploymentHealingRepairFn?: typeof runDeploymentHealingRepair;
+};
 
 function readStringPayload(job: BackgroundJob, key: string): string | null {
   const value = job.payload[key];
@@ -36,6 +43,7 @@ export function createBackgroundJobHandlers(params: {
   deploymentHealingManager?: DeploymentHealingManager;
   questionAnswerer?: typeof answerPRQuestion;
   socialChangelogGenerator?: typeof generateSocialChangelog;
+  deps?: BackgroundJobHandlerDeps;
 }): BackgroundJobHandlers {
   const storage = params.storage;
   const babysitter = params.babysitter;
@@ -43,6 +51,10 @@ export function createBackgroundJobHandlers(params: {
   const deploymentHealingManager = params.deploymentHealingManager;
   const questionAnswerer = params.questionAnswerer ?? answerPRQuestion;
   const socialChangelogGenerator = params.socialChangelogGenerator ?? generateSocialChangelog;
+  const buildOctokitFn = params.deps?.buildOctokitFn ?? buildOctokit;
+  const createAdapterFn = params.deps?.createAdapterFn ?? createAdapter;
+  const resolveGitHubAuthTokenFn = params.deps?.resolveGitHubAuthTokenFn ?? resolveGitHubAuthToken;
+  const runDeploymentHealingRepairFn = params.deps?.runDeploymentHealingRepairFn ?? runDeploymentHealingRepair;
 
   return {
     sync_watched_repos: babysitter
@@ -156,7 +168,7 @@ export function createBackgroundJobHandlers(params: {
         await wait(config.deploymentCheckDelayMs);
 
         // Poll deployment status
-        const adapter = createAdapter(platform);
+        const adapter = createAdapterFn(platform);
         const deadline = Date.now() + config.deploymentCheckTimeoutMs;
         let lastStatus = await adapter.getDeploymentStatus({ repo, sha: mergeSha });
 
@@ -194,10 +206,10 @@ export function createBackgroundJobHandlers(params: {
             throw new Error(`Cannot parse repo slug: ${repo}`);
           }
 
-          const octokit = await buildOctokit(config);
-          const githubToken = config.githubToken;
+          const githubToken = await resolveGitHubAuthTokenFn(config);
+          const octokit = await buildOctokitFn(config);
 
-          const repairResult = await runDeploymentHealingRepair({
+          const repairResult = await runDeploymentHealingRepairFn({
             repo,
             platform,
             mergeSha,
@@ -206,9 +218,9 @@ export function createBackgroundJobHandlers(params: {
             triggerPrUrl,
             deploymentLog,
             baseBranch,
-            repoCloneUrl: `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}.git`,
+            repoCloneUrl: buildGitHubCloneUrl(repo, githubToken),
             agent: config.codingAgent,
-            githubToken,
+            githubToken: githubToken ?? "",
           });
 
           if (!repairResult.accepted) {

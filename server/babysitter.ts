@@ -10,6 +10,7 @@ import {
 } from "./agentRunner";
 import {
   addReactionToComment,
+  buildGitHubCloneUrl,
   buildOctokit,
   checkCISettled,
   fetchCheckSnapshotsForRef,
@@ -1190,7 +1191,8 @@ export class PRBabysitter {
             const depMergeSha = closeState.mergeCommitSha || closeState.headSha;
             if (depBaseBranch && depMergeSha) {
               try {
-                const repoCloneUrl = `https://github.com/${repoSlug}.git`;
+                const githubToken = await this.github.resolveGitHubAuthToken(config);
+                const repoCloneUrl = buildGitHubCloneUrl(repoSlug, githubToken);
                 const { repoCacheDir } = await ensureRepoCache({
                   repoFullName: repoSlug,
                   repoCloneUrl,

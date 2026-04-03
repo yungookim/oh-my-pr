@@ -292,6 +292,77 @@ test("heal_deployment handler is registered when deploymentHealingManager is pro
   assert.ok(handlers.heal_deployment);
 });
 
+test("heal_deployment handler passes an authenticated clone URL to deployment repair when GitHub auth is available", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    deploymentCheckDelayMs: 0,
+    deploymentCheckTimeoutMs: 1,
+    deploymentCheckPollIntervalMs: 0,
+  });
+
+  const queue = new BackgroundJobQueue(storage);
+  const job = await queue.enqueue(
+    "heal_deployment",
+    "acme/widgets:merge-sha",
+    "heal_deployment:acme/widgets:merge-sha",
+    {
+      repo: "acme/widgets",
+      platform: "railway",
+      mergeSha: "merge-sha",
+      triggerPrNumber: 42,
+      triggerPrTitle: "feat: add widget",
+      triggerPrUrl: "https://github.com/acme/widgets/pull/42",
+      baseBranch: "main",
+    },
+  );
+
+  const transitionCalls: Array<{ sessionId: string; state: string; updates: Record<string, unknown> | undefined }> = [];
+  let receivedCloneUrl: string | null = null;
+
+  const handlers = createBackgroundJobHandlers({
+    storage,
+    deploymentHealingManager: {
+      ensureSession: async () => ({ id: "session-1" }),
+      transitionTo: async (sessionId, state, updates) => {
+        transitionCalls.push({ sessionId, state, updates });
+        return { id: sessionId, state, ...updates } as never;
+      },
+    } as unknown as DeploymentHealingManager,
+    deps: {
+      buildOctokitFn: async () => ({}) as never,
+      createAdapterFn: () => ({
+        platform: "railway",
+        getDeploymentStatus: async () => ({
+          state: "error",
+          deploymentId: "dep_123",
+          url: null,
+          error: "deployment failed",
+        }),
+        getDeploymentLogs: async () => "deployment failed",
+      }),
+      resolveGitHubAuthTokenFn: async () => "ghs_123",
+      runDeploymentHealingRepairFn: async (input) => {
+        receivedCloneUrl = input.repoCloneUrl;
+        return {
+          accepted: false,
+          rejectionReason: "no-op",
+          summary: "No-op",
+          fixBranch: "deploy-fix/railway-1",
+          agentResult: { code: 0, stdout: "", stderr: "" },
+        };
+      },
+    },
+  });
+
+  await handlers.heal_deployment!(job);
+
+  assert.equal(receivedCloneUrl, "https://x-access-token:ghs_123@github.com/acme/widgets.git");
+  assert.deepEqual(
+    transitionCalls.map((call) => call.state),
+    ["failed", "fixing", "escalated"],
+  );
+});
+
 test("process_release_run handler delegates to ReleaseManager for active rows", async () => {
   const storage = new MemStorage();
   const releaseRun = await storage.createReleaseRun({
