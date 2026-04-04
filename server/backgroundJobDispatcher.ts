@@ -130,6 +130,8 @@ export class BackgroundJobDispatcher {
         return;
       }
 
+      await this.queue.requeueExpired(this.now());
+
       const job = await this.queue.claimNext({
         workerId: this.workerId,
         leaseMs: this.leaseMs,

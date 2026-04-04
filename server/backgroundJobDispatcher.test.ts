@@ -169,6 +169,67 @@ test("BackgroundJobDispatcher waitForIdle reflects active queue handlers", async
   }
 });
 
+test("BackgroundJobDispatcher reclaims expired leases during operation, not just at startup", async () => {
+  const storage = new MemStorage();
+  const queue = new BackgroundJobQueue(storage);
+
+  // Use a controllable clock so we can expire leases on demand.
+  let clockMs = Date.now();
+  const now = () => new Date(clockMs);
+
+  let handled = 0;
+  const dispatcher = new BackgroundJobDispatcher({
+    storage,
+    queue,
+    workerId: "dispatcher-1",
+    pollIntervalMs: 5,
+    leaseMs: 2_000, // 2-second lease
+    heartbeatIntervalMs: 0, // disable heartbeat for this test
+    now,
+    handlers: {
+      babysit_pr: async () => {
+        handled += 1;
+      },
+    },
+  });
+
+  try {
+    // Start dispatcher with no jobs — requeueExpired runs but finds nothing.
+    await dispatcher.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(handled, 0);
+
+    // Enqueue a job and immediately claim it as a "dead worker",
+    // simulating a handler whose heartbeat died.
+    const job = await queue.enqueue(
+      "babysit_pr", "pr-1", "babysit_pr:pr-1", { prId: "pr-1" },
+      { availableAt: now() },
+    );
+    const claimed = await queue.claimNext({
+      workerId: "dead-worker",
+      leaseMs: 2_000,
+      now: now(),
+    });
+    assert.ok(claimed);
+    assert.equal(claimed.status, "leased");
+
+    // Advance the clock past the lease expiry.
+    clockMs += 5_000;
+
+    // The job is now stuck in "leased" with an expired lease.
+    // Without the fix, the dispatcher's poll loop would never reclaim it.
+    // With the fix, pollOnce calls requeueExpired before claiming.
+    dispatcher.wake();
+    await waitForCondition(() => handled === 1, 500);
+    assert.equal(await dispatcher.waitForIdle(250), true);
+
+    const final = await storage.getBackgroundJob(job.id);
+    assert.equal(final?.status, "completed");
+  } finally {
+    dispatcher.stop();
+  }
+});
+
 test("BackgroundJobDispatcher cancels jobs when the handler raises a cancel error", async () => {
   const storage = new MemStorage();
   const queue = new BackgroundJobQueue(storage);
