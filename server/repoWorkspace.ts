@@ -1,4 +1,4 @@
-import { mkdir, rm } from "fs/promises";
+import { mkdir, readdir, rm } from "fs/promises";
 import path from "path";
 import { type CommandResult, runCommand } from "./agentRunner";
 import { getCodeFactoryPaths } from "./paths";
@@ -31,8 +31,31 @@ type RemovePrWorktreeParams = {
   runCommand: GitRunner;
 };
 
+const repoMutationLocks = new Map<string, Promise<void>>();
+const activeRepoWorkspaceCounts = new Map<string, number>();
+
 function summarizeCommandFailure(result: CommandResult): string {
   return result.stderr.trim() || result.stdout.trim() || "no output";
+}
+
+function normalizeRemoteUrl(remoteUrl: string): string {
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    const port = parsed.port ? `:${parsed.port}` : "";
+    return `${parsed.protocol.toLowerCase()}//${parsed.hostname.toLowerCase()}${port}${pathname}`;
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
+function sameRemoteUrl(left: string, right: string): boolean {
+  return normalizeRemoteUrl(left) === normalizeRemoteUrl(right);
 }
 
 async function ensureDirectory(dirPath: string): Promise<void> {
@@ -64,6 +87,77 @@ function getForkRemoteName(headRepoFullName: string): string {
   return `fork-${safeOwner}`;
 }
 
+async function withRepoMutationLock<T>(repoCacheDir: string, operation: () => Promise<T>): Promise<T> {
+  const previousLock = repoMutationLocks.get(repoCacheDir) ?? Promise.resolve();
+  let releaseCurrentLock: (() => void) | undefined;
+  const currentLock = new Promise<void>((resolve) => {
+    releaseCurrentLock = () => resolve();
+  });
+  const lockQueue = previousLock.then(() => currentLock);
+  repoMutationLocks.set(repoCacheDir, lockQueue);
+
+  await previousLock;
+  try {
+    return await operation();
+  } finally {
+    releaseCurrentLock?.();
+    if (repoMutationLocks.get(repoCacheDir) === lockQueue) {
+      repoMutationLocks.delete(repoCacheDir);
+    }
+  }
+}
+
+function adjustActiveRepoWorkspaceCount(repoCacheDir: string, delta: number): void {
+  const nextCount = Math.max(0, (activeRepoWorkspaceCounts.get(repoCacheDir) ?? 0) + delta);
+  if (nextCount === 0) {
+    activeRepoWorkspaceCounts.delete(repoCacheDir);
+    return;
+  }
+
+  activeRepoWorkspaceCounts.set(repoCacheDir, nextCount);
+}
+
+async function pruneRegisteredWorktrees(repoCacheDir: string, run: GitRunner): Promise<void> {
+  const pruneResult = await runGit(run, ["-C", repoCacheDir, "worktree", "prune"], 15000);
+  if (pruneResult.code !== 0) {
+    const revParseResult = await runGit(run, ["-C", repoCacheDir, "rev-parse", "--is-inside-work-tree"], 4000);
+    if (revParseResult.code === 0) {
+      throw new Error(`git worktree prune failed: ${summarizeCommandFailure(pruneResult)}`);
+    }
+  }
+}
+
+async function countRegisteredWorktrees(repoCacheDir: string): Promise<number> {
+  try {
+    const worktreeEntries = await readdir(path.join(repoCacheDir, ".git", "worktrees"), { withFileTypes: true });
+    return worktreeEntries.filter((entry) => entry.isDirectory()).length;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return 0;
+    }
+
+    throw error;
+  }
+}
+
+async function assertRepoCacheCanBeRecloned(repoCacheDir: string, run: GitRunner): Promise<void> {
+  const activeWorkspaceCount = activeRepoWorkspaceCounts.get(repoCacheDir) ?? 0;
+  if (activeWorkspaceCount > 0) {
+    throw new Error(
+      `Refusing to reclone repo cache while ${activeWorkspaceCount} active workspace(s) still depend on it`,
+    );
+  }
+
+  await pruneRegisteredWorktrees(repoCacheDir, run);
+
+  const registeredWorktreeCount = await countRegisteredWorktrees(repoCacheDir);
+  if (registeredWorktreeCount > 0) {
+    throw new Error(
+      `Refusing to reclone repo cache while ${registeredWorktreeCount} registered worktree(s) still exist`,
+    );
+  }
+}
+
 async function isRepoCacheHealthy(repoCacheDir: string, repoCloneUrl: string, run: GitRunner): Promise<boolean> {
   const repoCheck = await runGit(run, ["-C", repoCacheDir, "rev-parse", "--is-inside-work-tree"], 4000);
   if (repoCheck.code !== 0) {
@@ -71,7 +165,7 @@ async function isRepoCacheHealthy(repoCacheDir: string, repoCloneUrl: string, ru
   }
 
   const originUrl = await runGit(run, ["-C", repoCacheDir, "config", "--get", "remote.origin.url"], 4000);
-  if (originUrl.code !== 0 || originUrl.stdout.trim() !== repoCloneUrl) {
+  if (originUrl.code !== 0 || !sameRemoteUrl(originUrl.stdout, repoCloneUrl)) {
     return false;
   }
 
@@ -107,7 +201,7 @@ async function ensureRemote(repoCacheDir: string, remoteName: string, cloneUrl: 
     return;
   }
 
-  if (currentUrl.stdout.trim() !== cloneUrl) {
+  if (!sameRemoteUrl(currentUrl.stdout, cloneUrl)) {
     const setUrlResult = await runGit(run, ["-C", repoCacheDir, "remote", "set-url", remoteName, cloneUrl], 8000);
     if (setUrlResult.code !== 0) {
       throw new Error(`git remote set-url ${remoteName} failed: ${summarizeCommandFailure(setUrlResult)}`);
@@ -166,7 +260,7 @@ export function sanitizeRepoName(repoFullName: string): string {
   return repoFullName.replace(/[^a-zA-Z0-9_.-]+/g, "__");
 }
 
-export async function ensureRepoCache(params: EnsureRepoCacheParams): Promise<{
+async function ensureRepoCacheUnlocked(params: EnsureRepoCacheParams): Promise<{
   repoCacheDir: string;
   healed: boolean;
 }> {
@@ -178,12 +272,14 @@ export async function ensureRepoCache(params: EnsureRepoCacheParams): Promise<{
 
   let healed = forceReclone;
   if (forceReclone || !await isRepoCacheHealthy(repoCacheDir, repoCloneUrl, run)) {
+    await assertRepoCacheCanBeRecloned(repoCacheDir, run);
     await cloneRepoCache(repoCacheDir, repoCloneUrl, run);
     healed = true;
   }
 
   const fetchResult = await fetchOrigin(repoCacheDir, run);
   if (fetchResult.code !== 0) {
+    await assertRepoCacheCanBeRecloned(repoCacheDir, run);
     await cloneRepoCache(repoCacheDir, repoCloneUrl, run);
     healed = true;
 
@@ -194,6 +290,14 @@ export async function ensureRepoCache(params: EnsureRepoCacheParams): Promise<{
   }
 
   return { repoCacheDir, healed };
+}
+
+export async function ensureRepoCache(params: EnsureRepoCacheParams): Promise<{
+  repoCacheDir: string;
+  healed: boolean;
+}> {
+  const repoCacheDir = getRepoCacheDir(params.rootDir, params.repoFullName);
+  return withRepoMutationLock(repoCacheDir, async () => ensureRepoCacheUnlocked(params));
 }
 
 export async function preparePrWorktree(params: PreparePrWorktreeParams): Promise<{
@@ -215,47 +319,57 @@ export async function preparePrWorktree(params: PreparePrWorktreeParams): Promis
   } = params;
 
   const worktreePath = getWorktreePath(rootDir, repoFullName, prNumber, runId);
+  const repoCacheDir = getRepoCacheDir(rootDir, repoFullName);
 
-  let healed = false;
-  let lastError: Error | null = null;
+  return withRepoMutationLock(repoCacheDir, async () => {
+    let healed = false;
+    let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const cache = await ensureRepoCache({
-      rootDir,
-      repoFullName,
-      repoCloneUrl,
-      runCommand: run,
-      forceReclone: attempt > 0,
-    });
-    healed = healed || cache.healed;
-
-    try {
-      const remoteName = await fetchHeadRef({
-        repoCacheDir: cache.repoCacheDir,
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const cache = await ensureRepoCacheUnlocked({
+        rootDir,
         repoFullName,
-        headRepoFullName,
-        headRepoCloneUrl,
-        headRef,
+        repoCloneUrl,
         runCommand: run,
+        forceReclone: attempt > 0,
       });
+      healed = healed || cache.healed;
 
-      await addWorktree(cache.repoCacheDir, worktreePath, run);
-      return {
-        repoCacheDir: cache.repoCacheDir,
-        worktreePath,
-        healed,
-        remoteName,
-      };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      try {
+        const remoteName = await fetchHeadRef({
+          repoCacheDir: cache.repoCacheDir,
+          repoFullName,
+          headRepoFullName,
+          headRepoCloneUrl,
+          headRef,
+          runCommand: run,
+        });
+
+        await addWorktree(cache.repoCacheDir, worktreePath, run);
+        adjustActiveRepoWorkspaceCount(cache.repoCacheDir, 1);
+        return {
+          repoCacheDir: cache.repoCacheDir,
+          worktreePath,
+          healed,
+          remoteName,
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
     }
-  }
 
-  throw lastError ?? new Error("Failed to prepare PR worktree");
+    throw lastError ?? new Error("Failed to prepare PR worktree");
+  });
 }
 
 export async function removePrWorktree(params: RemovePrWorktreeParams): Promise<void> {
   const { repoCacheDir, worktreePath, runCommand: run } = params;
-  await runGit(run, ["-C", repoCacheDir, "worktree", "remove", "--force", worktreePath], 30000);
-  await rm(worktreePath, { recursive: true, force: true });
+  await withRepoMutationLock(repoCacheDir, async () => {
+    try {
+      await runGit(run, ["-C", repoCacheDir, "worktree", "remove", "--force", worktreePath], 30000);
+      await rm(worktreePath, { recursive: true, force: true });
+    } finally {
+      adjustActiveRepoWorkspaceCount(repoCacheDir, -1);
+    }
+  });
 }
