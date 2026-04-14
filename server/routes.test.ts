@@ -50,6 +50,7 @@ async function createHarness(storage = new MemStorage()) {
     storage,
     baseUrl: `http://127.0.0.1:${address.port}`,
     async close(): Promise<void> {
+      server.closeAllConnections?.();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

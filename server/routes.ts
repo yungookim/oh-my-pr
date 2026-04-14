@@ -1,40 +1,31 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
-import { addPRSchema, askQuestionSchema, configSchema } from "@shared/schema";
-import type { IStorage } from "./storage";
-import { getDefaultStorage } from "./storage";
-import { PRBabysitter } from "./babysitter";
-import { applyEvaluationDecision, applyFlagDecision } from "./feedbackLifecycle";
-import { applyManualFeedbackDecision } from "./manualFeedback";
-import { createBackgroundJobHandlers } from "./backgroundJobHandlers";
-import { BackgroundJobDispatcher } from "./backgroundJobDispatcher";
-import { BackgroundJobQueue, buildBackgroundJobDedupeKey } from "./backgroundJobQueue";
-import { createWatcherScheduler, type WatcherScheduler } from "./watcherScheduler";
-import { ReleaseManager } from "./releaseManager";
-import { DeploymentHealingManager } from "./deploymentHealingManager";
+import { configSchema } from "@shared/schema";
 import {
-  buildOctokit,
-  checkOnboardingStatus,
-  createGitHubRelease,
-  fetchPullSummary,
-  formatRepoSlug,
-  getLatestSemverTagForRepo,
-  GitHubIntegrationError,
-  installCodeReviewWorkflow,
-  listReleasesForRepo,
-  listUnreleasedMergedPulls,
-  parsePRUrl,
-  parseRepoSlug,
-  resolveNextSemverTag,
-} from "./github";
+  createAppRuntime,
+  type AppRuntime,
+  type AppRuntimeDependencies,
+  isAppRuntimeError,
+} from "./appRuntime";
+import { GitHubIntegrationError } from "./github";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function sendGitHubAwareError(res: Response, error: unknown): void {
+function sendAppAwareError(res: Response, error: unknown): void {
+  if (error instanceof z.ZodError) {
+    res.status(400).json({ error: error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+
   if (error instanceof GitHubIntegrationError) {
+    res.status(error.statusCode).json({ error: error.message });
+    return;
+  }
+
+  if (isAppRuntimeError(error)) {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
@@ -42,16 +33,15 @@ function sendGitHubAwareError(res: Response, error: unknown): void {
   res.status(500).json({ error: getErrorMessage(error) });
 }
 
-export type RouteDependencies = {
-  storage?: IStorage;
-  backgroundJobQueue?: BackgroundJobQueue;
-  backgroundJobDispatcher?: BackgroundJobDispatcher;
-  releaseManager?: ReleaseManager;
-  deploymentHealingManager?: DeploymentHealingManager;
-  babysitter?: PRBabysitter;
-  watcherScheduler?: WatcherScheduler;
-  startBackgroundServices?: boolean;
-  startWatcher?: boolean;
+function maskConfig<T extends { githubToken: string }>(config: T): T {
+  return {
+    ...config,
+    githubToken: config.githubToken ? `***${config.githubToken.slice(-4)}` : "",
+  };
+}
+
+export type RouteDependencies = AppRuntimeDependencies & {
+  runtime?: AppRuntime;
 };
 
 export async function registerRoutes(
@@ -59,163 +49,15 @@ export async function registerRoutes(
   app: Express,
   dependencies: RouteDependencies = {},
 ): Promise<Server> {
-  const storage = dependencies.storage ?? getDefaultStorage();
-  const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
-  const scheduleBackgroundJob = async (...args: Parameters<BackgroundJobQueue["enqueue"]>) => {
-    const job = await backgroundJobQueue.enqueue(...args);
-    backgroundJobDispatcher.wake();
-    return job;
-  };
-
-  const deploymentHealingManager = dependencies.deploymentHealingManager ?? new DeploymentHealingManager(storage);
-  const releaseManager = dependencies.releaseManager ?? new ReleaseManager(storage, {
-    github: {
-      buildOctokit,
-      findLatestSemverReleaseTag: getLatestSemverTagForRepo,
-      bumpReleaseTag: resolveNextSemverTag,
-      listMergedPullsForReleaseCandidate: async (octokit, repo, options) => {
-        const merged = await listUnreleasedMergedPulls(octokit, repo, {
-          baseRef: options.baseBranch,
-        });
-        const cutoffMs = Date.parse(options.untilMergedAt);
-
-        return merged
-          .filter((pull) => !Number.isFinite(cutoffMs) || Date.parse(pull.mergedAt) <= cutoffMs)
-          .map((pull) => ({
-            number: pull.number,
-            title: pull.title,
-            url: pull.url,
-            author: pull.author,
-            repo: pull.repo,
-            mergedAt: pull.mergedAt,
-            mergeSha: pull.mergeCommitSha ?? `${pull.repo}#${pull.number}`,
-          }));
-      },
-      findReleaseByTag: async (octokit, repo, tagName) => {
-        const releases = await listReleasesForRepo(octokit, repo);
-        const existing = releases.find((release) => !release.draft && release.tagName === tagName);
-        if (!existing) {
-          return null;
-        }
-
-        return {
-          id: existing.id,
-          url: existing.htmlUrl,
-          tagName: existing.tagName,
-          name: existing.name,
-        };
-      },
-      createGitHubRelease: async (octokit, repo, params) => {
-        const created = await createGitHubRelease(octokit, repo, {
-          tagName: params.tagName,
-          targetCommitish: params.targetCommitish,
-          name: params.name,
-          body: params.body,
-        });
-
-        return {
-          id: created.id,
-          url: created.htmlUrl,
-          tagName: created.tagName,
-          name: created.name,
-        };
-      },
-    },
-    scheduleBackgroundJob,
-  });
-  const babysitter = dependencies.babysitter ?? new PRBabysitter(
-    storage,
-    undefined,
-    undefined,
-    releaseManager,
-    scheduleBackgroundJob,
-  );
-  const backgroundJobDispatcher = dependencies.backgroundJobDispatcher ?? new BackgroundJobDispatcher({
-    storage,
-    queue: backgroundJobQueue,
-    handlers: createBackgroundJobHandlers({
-      storage,
-      babysitter,
-      releaseManager,
-      deploymentHealingManager,
-    }),
-  });
-  let watcherTimer: NodeJS.Timeout | null = null;
-  let watcherIntervalMs = 0;
-
-  const watcherScheduler = dependencies.watcherScheduler ?? createWatcherScheduler(
-    async () => {
-      await scheduleBackgroundJob(
-        "sync_watched_repos",
-        "runtime:1",
-        buildBackgroundJobDedupeKey("sync_watched_repos", "runtime:1"),
-      );
-    },
-    (error) => {
-      console.error("Repository babysitter watcher failed", error);
-    },
-  );
-  const runWatcher = watcherScheduler.run;
-  const startBackgroundServices = dependencies.startBackgroundServices ?? true;
-  const startWatcher = dependencies.startWatcher ?? startBackgroundServices;
-
-  const getRuntimeSnapshot = async () => {
-    const state = await storage.getRuntimeState();
-    return {
-      ...state,
-      activeRuns: backgroundJobDispatcher.getActiveRunCount(),
-    };
-  };
-
-  const waitForBackgroundIdle = async (timeoutMs: number): Promise<boolean> => {
-    const [dispatcherIdle, babysitterIdle, releaseIdle] = await Promise.all([
-      backgroundJobDispatcher.waitForIdle(timeoutMs),
-      babysitter.waitForIdle(timeoutMs),
-      releaseManager.waitForIdle(timeoutMs),
-    ]);
-
-    return dispatcherIdle && babysitterIdle && releaseIdle;
-  };
-
-  const refreshWatcherSchedule = async () => {
-    const config = await storage.getConfig();
-    const interval = Math.max(10000, config.pollIntervalMs || 120000);
-
-    if (watcherTimer && watcherIntervalMs === interval) {
-      return;
-    }
-
-    if (watcherTimer) {
-      clearInterval(watcherTimer);
-      watcherTimer = null;
-    }
-
-    watcherIntervalMs = interval;
-    watcherTimer = setInterval(() => {
-      void runWatcher();
-    }, interval);
-  };
-
-  if (startBackgroundServices) {
-    await backgroundJobDispatcher.start();
-  }
-
-  if (startWatcher) {
-    await refreshWatcherSchedule();
-    void babysitter.resumeInterruptedRuns();
-    void runWatcher();
-  }
+  const runtime = dependencies.runtime ?? createAppRuntime(dependencies);
+  await runtime.start();
 
   httpServer.on("close", () => {
-    backgroundJobDispatcher.stop();
-    if (watcherTimer) {
-      clearInterval(watcherTimer);
-      watcherTimer = null;
-    }
+    runtime.stop();
   });
 
   app.get("/api/runtime", async (_req, res) => {
-    res.json(await getRuntimeSnapshot());
+    res.json(await runtime.getRuntimeSnapshot());
   });
 
   app.post("/api/runtime/drain", async (req, res) => {
@@ -227,428 +69,159 @@ export async function registerRoutes(
         timeoutMs: z.number().int().positive().max(600000).optional(),
       }).parse(req.body);
 
-      const updated = await storage.updateRuntimeState({
-        drainMode: payload.enabled,
-        drainRequestedAt: payload.enabled ? new Date().toISOString() : null,
-        drainReason: payload.enabled ? payload.reason ?? null : null,
-      });
-
-      if (payload.enabled && payload.waitForIdle) {
-        const drained = await waitForBackgroundIdle(payload.timeoutMs ?? 120000);
-        const snapshot = await getRuntimeSnapshot();
-        return res.status(drained ? 200 : 202).json({
-          ...updated,
-          ...snapshot,
-          drained,
-        });
+      const updated = await runtime.setDrainMode(payload);
+      if (payload.enabled && payload.waitForIdle && updated.drained === false) {
+        return res.status(202).json(updated);
       }
 
-      const snapshot = await getRuntimeSnapshot();
-      res.json({
-        ...updated,
-        ...snapshot,
-      });
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(updated);
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
-  // ── PRs ────────────────────────────────────────────────────
-
   app.get("/api/repos", async (_req, res) => {
-    const config = await storage.getConfig();
-    const prs = await storage.getPRs();
-
-    const repos = Array.from(new Set([
-      ...config.watchedRepos,
-      ...prs.map((pr) => pr.repo),
-    ]))
-      .sort((a, b) => a.localeCompare(b));
-
-    res.json(repos);
+    res.json(await runtime.listRepos());
   });
 
   app.post("/api/repos", async (req, res) => {
     try {
-      const repoInput = z.object({ repo: z.string().min(1) }).parse(req.body).repo;
-      const parsedRepo = parseRepoSlug(repoInput);
-      if (!parsedRepo) {
-        return res.status(400).json({ error: "Invalid repository. Use owner/repo or https://github.com/owner/repo" });
-      }
-
-      const canonical = formatRepoSlug(parsedRepo);
-      const config = await storage.getConfig();
-
-      if (!config.watchedRepos.includes(canonical)) {
-        await storage.updateConfig({
-          watchedRepos: [...config.watchedRepos, canonical].sort((a, b) => a.localeCompare(b)),
-        });
-      }
-
-      void runWatcher();
-      res.status(201).json({ repo: canonical });
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      const { repo } = z.object({ repo: z.string().min(1) }).parse(req.body);
+      res.status(201).json(await runtime.addRepo(repo));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.post("/api/repos/sync", async (_req, res) => {
-    const runtime = await storage.getRuntimeState();
-    if (runtime.drainMode) {
-      return res.status(409).json({ error: "Drain mode is enabled. Sync-triggered runs are blocked until drain mode is disabled." });
-    }
-
     try {
-      await watcherScheduler.runAndReportErrors();
-      res.json({ ok: true });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.syncRepos());
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.get("/api/prs", async (_req, res) => {
-    const prs = await storage.getPRs();
-    res.json(prs);
+    res.json(await runtime.listPRs("active"));
   });
 
   app.get("/api/prs/archived", async (_req, res) => {
-    const prs = await storage.getArchivedPRs();
-    res.json(prs);
+    res.json(await runtime.listPRs("archived"));
   });
 
   app.get("/api/prs/:id", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
+    const pr = await runtime.getPR(req.params.id);
+    if (!pr) {
+      return res.status(404).json({ error: "PR not found" });
+    }
+
     res.json(pr);
   });
 
   app.post("/api/prs", async (req, res) => {
     try {
-      const { url } = addPRSchema.parse(req.body);
-      const parsed = parsePRUrl(url);
-
-      if (!parsed) {
-        return res
-          .status(400)
-          .json({ error: "Invalid GitHub PR URL. Expected: https://github.com/owner/repo/pull/123" });
-      }
-
-      const repoSlug = `${parsed.owner}/${parsed.repo}`;
-      const existing = await storage.getPRByRepoAndNumber(repoSlug, parsed.number);
-      if (existing) {
-        return res.status(200).json(existing);
-      }
-
-      const config = await storage.getConfig();
-      const octokit = await buildOctokit(config);
-      const summary = await fetchPullSummary(octokit, parsed);
-
-      const pr = await storage.addPR({
-        number: parsed.number,
-        title: summary.title,
-        repo: repoSlug,
-        branch: summary.branch,
-        author: summary.author,
-        url: summary.url,
-        status: "watching",
-        feedbackItems: [],
-        accepted: 0,
-        rejected: 0,
-        flagged: 0,
-        testsPassed: null,
-        lintPassed: null,
-        lastChecked: null,
-      });
-
-      await storage.addLog(pr.id, "info", `Registered PR #${parsed.number} from ${repoSlug}`);
-      await storage.addLog(pr.id, "info", `Repository ${repoSlug} added to auto-babysit watch list`);
-
-      if (!config.watchedRepos.includes(repoSlug)) {
-        await storage.updateConfig({
-          watchedRepos: [...config.watchedRepos, repoSlug].sort((a, b) => a.localeCompare(b)),
-        });
-      }
-
-      await scheduleBackgroundJob(
-        "babysit_pr",
-        pr.id,
-        buildBackgroundJobDedupeKey("babysit_pr", pr.id),
-        { preferredAgent: config.codingAgent },
-      );
-
-      res.status(201).json(pr);
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-      sendGitHubAwareError(res, err);
+      res.status(201).json(await runtime.addPR(req.body?.url));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.delete("/api/prs/:id", async (req, res) => {
-    const removed = await storage.removePR(req.params.id);
-    if (!removed) return res.status(404).json({ error: "PR not found" });
-    res.json({ ok: true });
+    try {
+      res.json(await runtime.removePR(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.patch("/api/prs/:id/watch", async (req, res) => {
     try {
       const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
-      const pr = await storage.getPR(req.params.id);
-      if (!pr) {
-        return res.status(404).json({ error: "PR not found" });
-      }
-
-      const updated = await storage.updatePR(pr.id, { watchEnabled: enabled });
-      if (!updated) {
-        return res.status(404).json({ error: "PR not found" });
-      }
-
-      if (pr.watchEnabled !== enabled) {
-        await storage.addLog(pr.id, "info", enabled ? "Background watch resumed" : "Background watch paused");
-        if (enabled) {
-          void runWatcher();
-        }
-      }
-
-      res.json(updated);
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.setPRWatchEnabled(req.params.id, enabled));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.post("/api/prs/:id/fetch", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
-
-    await storage.updatePR(pr.id, { status: "processing", lastChecked: new Date().toISOString() });
-    await storage.addLog(pr.id, "info", "Syncing GitHub comments/reviews...");
-
     try {
-      const updated = await babysitter.syncFeedbackForPR(pr.id);
-      res.json(updated);
-    } catch (error) {
-      const message = getErrorMessage(error);
-      await storage.updatePR(pr.id, { status: "error", lastChecked: new Date().toISOString() });
-      await storage.addLog(pr.id, "error", `Fetch failed: ${message}`);
-      sendGitHubAwareError(res, error);
+      res.json(await runtime.fetchPRFeedback(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.post("/api/prs/:id/triage", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
-
-    await storage.updatePR(pr.id, { status: "processing" });
-    await storage.addLog(pr.id, "info", "Triaging feedback...");
-
-    const triaged = pr.feedbackItems.map((item) => {
-      if (item.decision) return item;
-
-      const body = item.body.toLowerCase();
-      if (body.includes("lgtm") || body.includes("looks good")) {
-        return applyEvaluationDecision(item, false, "Acknowledgement, no code change requested");
-      }
-
-      if (body.includes("please") || body.includes("should") || body.includes("fix") || body.includes("error") || body.includes("fail")) {
-        return { ...applyEvaluationDecision(item, true, "Likely actionable request"), action: item.body };
-      }
-
-      return applyFlagDecision(item, "Unclear actionability, flagged for manual review");
-    });
-
-    const accepted = triaged.filter((i) => i.decision === "accept").length;
-    const rejected = triaged.filter((i) => i.decision === "reject").length;
-    const flagged = triaged.filter((i) => i.decision === "flag").length;
-
-    const updated = await storage.updatePR(pr.id, {
-      feedbackItems: triaged,
-      accepted,
-      rejected,
-      flagged,
-      status: "watching",
-    });
-
-    await storage.addLog(pr.id, "info", `Triage complete: ${accepted} accept, ${rejected} reject, ${flagged} flag`);
-    res.json(updated);
+    try {
+      res.json(await runtime.triagePR(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.post("/api/prs/:id/apply", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
-    const runtime = await storage.getRuntimeState();
-    if (runtime.drainMode) {
-      return res.status(409).json({ error: "Drain mode is enabled. Manual runs are blocked until drain mode is disabled." });
+    try {
+      res.json(await runtime.applyPR(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
-
-    const config = await storage.getConfig();
-    await storage.updatePR(pr.id, { status: "processing" });
-    await storage.addLog(pr.id, "info", `Launching autonomous babysitter run using ${config.codingAgent}`);
-    await scheduleBackgroundJob(
-      "babysit_pr",
-      pr.id,
-      buildBackgroundJobDedupeKey("babysit_pr", pr.id),
-      { preferredAgent: config.codingAgent },
-    );
-
-    const updated = await storage.getPR(pr.id);
-    if (!updated) {
-      return res.status(500).json({ error: "PR disappeared after apply run" });
-    }
-
-    res.json(updated);
   });
 
   app.post("/api/prs/:id/babysit", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
-    const runtime = await storage.getRuntimeState();
-    if (runtime.drainMode) {
-      return res.status(409).json({ error: "Drain mode is enabled. Manual runs are blocked until drain mode is disabled." });
+    try {
+      res.json(await runtime.babysitPR(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
-
-    const config = await storage.getConfig();
-    await storage.addLog(pr.id, "info", `Manual babysitter trigger using ${config.codingAgent}`);
-    await scheduleBackgroundJob(
-      "babysit_pr",
-      pr.id,
-      buildBackgroundJobDedupeKey("babysit_pr", pr.id),
-      { preferredAgent: config.codingAgent },
-    );
-
-    const updated = await storage.getPR(pr.id);
-    if (!updated) {
-      return res.status(500).json({ error: "PR disappeared after babysit run" });
-    }
-
-    res.json(updated);
   });
 
   app.patch("/api/prs/:id/feedback/:feedbackId", async (req, res) => {
     try {
-      const pr = await storage.getPR(req.params.id);
-      if (!pr) return res.status(404).json({ error: "PR not found" });
+      const { decision } = z.object({
+        decision: z.enum(["accept", "reject", "flag"]),
+      }).parse(req.body);
 
-      const { decision } = req.body;
-      if (!["accept", "reject", "flag"].includes(decision)) {
-        return res.status(400).json({ error: "Invalid decision" });
-      }
-
-      const manualDecision = decision as "accept" | "reject" | "flag";
-
-      const updated = await applyManualFeedbackDecision({
-        storage,
-        pr,
-        feedbackId: req.params.feedbackId,
-        decision: manualDecision,
-      });
-      res.json(updated);
-    } catch (err: unknown) {
-      sendGitHubAwareError(res, err);
+      res.json(await runtime.setFeedbackDecision(req.params.id, req.params.feedbackId, decision));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.post("/api/prs/:id/feedback/:feedbackId/retry", async (req, res) => {
-    const result = await babysitter.retryFeedbackItem(req.params.id, req.params.feedbackId);
-    if (result.kind === "pr_not_found") {
-      return res.status(404).json({ error: "PR not found" });
+    try {
+      res.json(await runtime.retryFeedback(req.params.id, req.params.feedbackId));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
-
-    if (result.kind === "feedback_not_found") {
-      return res.status(404).json({ error: "Feedback item not found" });
-    }
-
-    if (result.kind === "feedback_not_retryable") {
-      return res.status(400).json({ error: "Only failed or warning items can be retried" });
-    }
-
-    await storage.addLog(req.params.id, "info", `Feedback item ${req.params.feedbackId} queued for retry`);
-
-    const config = await storage.getConfig();
-    await scheduleBackgroundJob(
-      "babysit_pr",
-      req.params.id,
-      buildBackgroundJobDedupeKey("babysit_pr", req.params.id),
-      { preferredAgent: config.codingAgent },
-    );
-
-    res.json(result.updated);
   });
 
-  // ── PR Questions ─────────────────────────────────────────
-
   app.get("/api/prs/:id/questions", async (req, res) => {
-    const pr = await storage.getPR(req.params.id);
-    if (!pr) return res.status(404).json({ error: "PR not found" });
-
-    const questions = await storage.getQuestions(pr.id);
-    res.json(questions);
+    try {
+      res.json(await runtime.listPRQuestions(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.post("/api/prs/:id/questions", async (req, res) => {
     try {
-      const pr = await storage.getPR(req.params.id);
-      if (!pr) return res.status(404).json({ error: "PR not found" });
-
-      const { question } = askQuestionSchema.parse(req.body);
-      const entry = await storage.addQuestion(pr.id, question);
-
-      try {
-        await scheduleBackgroundJob(
-          "answer_pr_question",
-          entry.id,
-          buildBackgroundJobDedupeKey("answer_pr_question", entry.id),
-          { prId: pr.id },
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        await storage.updateQuestion(entry.id, {
-          status: "error",
-          error: message.trim().slice(0, 2_000),
-        });
-        throw error;
-      }
-
-      res.status(201).json(entry);
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.status(201).json(await runtime.askQuestion(req.params.id, req.body?.question));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
-  // ── Logs ───────────────────────────────────────────────────
-
   app.get("/api/logs", async (req, res) => {
-    const prId = req.query.prId as string | undefined;
-    const logs = await storage.getLogs(prId);
-    res.json(logs);
+    const prId = typeof req.query.prId === "string" ? req.query.prId : undefined;
+    res.json(await runtime.listLogs(prId));
   });
 
-  // ── Onboarding ─────────────────────────────────────────────
-
   app.get("/api/onboarding/status", async (_req, res) => {
-    const config = await storage.getConfig();
-    const status = await checkOnboardingStatus(config, config.watchedRepos);
-    res.json(status);
+    try {
+      res.json(await runtime.getOnboardingStatus());
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.post("/api/onboarding/install-review", async (req, res) => {
@@ -658,158 +231,95 @@ export async function registerRoutes(
         tool: z.enum(["claude", "codex"]),
       }).parse(req.body);
 
-      const config = await storage.getConfig();
-      const result = await installCodeReviewWorkflow(config, repo, tool);
-      res.json(result);
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-      sendGitHubAwareError(res, err);
+      res.json(await runtime.installReviewWorkflow(repo, tool));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
-  // ── CI healing sessions ──────────────────────────────────
-
   app.get("/api/healing-sessions", async (_req, res) => {
     try {
-      const sessions = await storage.listHealingSessions();
-      res.json(sessions);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.listHealingSessions());
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.get("/api/healing-sessions/:id", async (req, res) => {
     try {
-      const session = await storage.getHealingSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ error: "Healing session not found" });
-      }
-      res.json(session);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.getHealingSession(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
-
-  // ── Deployment healing ────────────────────────────────────────
 
   app.get("/api/deployment-healing-sessions", async (req, res) => {
     try {
       const repo = typeof req.query.repo === "string" ? req.query.repo : undefined;
-      const sessions = await storage.listDeploymentHealingSessions(repo ? { repo } : undefined);
-      res.json(sessions);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.listDeploymentHealingSessions(repo));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.get("/api/deployment-healing-sessions/:id", async (req, res) => {
     try {
-      const session = await storage.getDeploymentHealingSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ error: "Deployment healing session not found" });
-      }
-      res.json(session);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.getDeploymentHealingSession(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
-  // ── Config ─────────────────────────────────────────────────
-
   app.get("/api/config", async (_req, res) => {
-    const config = await storage.getConfig();
-    res.json({
-      ...config,
-      githubToken: config.githubToken ? "***" + config.githubToken.slice(-4) : "",
-    });
+    res.json(maskConfig(await runtime.getConfig()));
   });
-
-  // ── Social media changelogs ─────────────────────────────────────────────
 
   app.get("/api/changelogs", async (_req, res) => {
     try {
-      const changelogs = await storage.getSocialChangelogs();
-      res.json(changelogs);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.listSocialChangelogs());
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.get("/api/changelogs/:id", async (req, res) => {
     try {
-      const changelog = await storage.getSocialChangelog(req.params.id);
-      if (!changelog) {
-        return res.status(404).json({ error: "Changelog not found" });
-      }
-      res.json(changelog);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.getSocialChangelog(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
-  // ── Release runs ────────────────────────────────────────────────────────
-
   app.get("/api/releases", async (_req, res) => {
     try {
-      const releases = await storage.listReleaseRuns();
-      res.json(releases);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.listReleaseRuns());
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.get("/api/releases/:id", async (req, res) => {
     try {
-      const release = await storage.getReleaseRun(req.params.id);
-      if (!release) {
-        return res.status(404).json({ error: "Release run not found" });
-      }
-      res.json(release);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.getReleaseRun(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.post("/api/releases/:id/retry", async (req, res) => {
     try {
-      const release = await releaseManager.retryReleaseRun(req.params.id);
-      if (!release) {
-        return res.status(404).json({ error: "Release run not found" });
-      }
-      res.json(release);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(await runtime.retryReleaseRun(req.params.id));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
   app.patch("/api/config", async (req, res) => {
     try {
       const updates = configSchema.partial().parse(req.body);
-      const updated = await storage.updateConfig(updates);
-      await refreshWatcherSchedule();
-
-      res.json({
-        ...updated,
-        githubToken: updated.githubToken ? "***" + updated.githubToken.slice(-4) : "",
-      });
-    } catch (err: unknown) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ error: err.errors[0].message });
-      }
-
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      res.json(maskConfig(await runtime.updateConfig(updates)));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
     }
   });
 
