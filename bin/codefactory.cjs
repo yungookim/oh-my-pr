@@ -24,5 +24,8 @@ if (parsed.mode === "web") {
 } else if (parsed.mode === "mcp") {
   require("../dist/mcp.cjs");
 } else {
-  require("../dist/tui.cjs");
+  import("../dist/tui.mjs").catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
 }

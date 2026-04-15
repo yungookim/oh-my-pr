@@ -47,10 +47,10 @@ async function buildAll() {
   const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
   await Promise.all([
-    buildServerEntry("server/index.ts", "dist/index.cjs", pkg.version, externals),
-    buildServerEntry("server/mcp.ts", "dist/mcp.cjs", pkg.version, externals),
-    buildServerEntry("server/tui/index.tsx", "dist/tui.cjs", pkg.version, externals),
-    buildServerEntry("server/cli.ts", "dist/cli.cjs", pkg.version, externals),
+    buildServerEntry("server/index.ts", "dist/index.cjs", pkg.version, externals, "cjs"),
+    buildServerEntry("server/mcp.ts", "dist/mcp.cjs", pkg.version, externals, "cjs"),
+    buildServerEntry("server/tui/index.tsx", "dist/tui.mjs", pkg.version, externals, "esm"),
+    buildServerEntry("server/cli.ts", "dist/cli.cjs", pkg.version, externals, "cjs"),
   ]);
 }
 
@@ -59,12 +59,13 @@ async function buildServerEntry(
   outfile: string,
   version: string,
   external: string[],
+  format: "cjs" | "esm",
 ) {
   await esbuild({
     entryPoints: [entryPoint],
     platform: "node",
     bundle: true,
-    format: "cjs",
+    format,
     outfile,
     define: {
       "process.env.NODE_ENV": '"production"',
