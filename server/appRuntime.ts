@@ -128,6 +128,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
   const storage = dependencies.storage ?? getDefaultStorage();
   const events = new EventEmitter();
   const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
+  // eslint-disable-next-line prefer-const -- circular dep: closure references this before it can be initialized
   let backgroundJobDispatcher!: BackgroundJobDispatcher;
 
   const scheduleBackgroundJob = async (...args: Parameters<BackgroundJobQueue["enqueue"]>) => {

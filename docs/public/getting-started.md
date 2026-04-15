@@ -18,13 +18,13 @@ npm install -g oh-my-pr
 
 ## Quick Start
 
-### 1. Start the dashboard
+### 1. Launch the terminal UI
 
 ```bash
 oh-my-pr
 ```
 
-This launches the dashboard at [http://localhost:5001](http://localhost:5001).
+This opens the terminal UI. To start the web dashboard instead, run `oh-my-pr web` — it serves at [http://localhost:5001](http://localhost:5001).
 
 ### Run from source
 

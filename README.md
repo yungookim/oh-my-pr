@@ -62,7 +62,7 @@ npm install -g oh-my-pr
 oh-my-pr
 ```
 
-That's it. The dashboard opens in your browser at `http://localhost:5001`.
+That's it. The terminal UI launches in your shell. Run `oh-my-pr web` to start the web dashboard instead.
 
 ### Prerequisites
 
@@ -75,12 +75,14 @@ That's it. The dashboard opens in your browser at `http://localhost:5001`.
 ### CLI Usage
 
 ```bash
-oh-my-pr              Start the dashboard server (opens browser)
+oh-my-pr              Launch the terminal UI (default)
+oh-my-pr web          Start the web dashboard server (opens browser)
+oh-my-pr mcp          Start the MCP server for Claude Desktop / OpenClaw
 oh-my-pr --help       Show help message
 oh-my-pr --version    Print the version
 ```
 
-Set `PORT` to change the default port (`5001`).
+Set `PORT` to change the default web server port (`5001`).
 
 ### Run From Source
 
@@ -95,10 +97,10 @@ The dashboard is served on port `5001` by default. All `/api/*` routes are restr
 
 ## MCP and API
 
-Code Factory exposes the same local system through REST and MCP.
+Oh-my-pr exposes the same local system through REST and MCP.
 
 ```bash
-npm run mcp
+oh-my-pr mcp
 ```
 
 Use it with MCP hosts such as Claude Desktop or OpenClaw, or call the REST API directly from local tooling. Full endpoint and tool docs live in [LOCAL_API.md](LOCAL_API.md).
