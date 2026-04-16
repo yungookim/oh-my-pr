@@ -5,6 +5,7 @@ import {
   formatFeedbackStatusLabel,
   formatPrRow,
   formatStatusLabel,
+  getDisplayWidth,
   getFeedbackActions,
   getLayoutMode,
   getViewportRange,
@@ -119,6 +120,12 @@ test("truncate helpers keep the start or both ends visible", () => {
   assert.equal(middleTruncateText("abcdefghijklmnopqrstuvwxyz", 9), "abcd…wxyz");
 });
 
+test("truncate helpers honor terminal display width for wide glyphs", () => {
+  assert.equal(getDisplayWidth("❯ review"), 8);
+  assert.equal(truncateText("❯ review ready", 9), "❯ review…");
+  assert.equal(middleTruncateText("frontend/❯/component.ts", 12), "fronte…nt.ts");
+});
+
 test("getViewportRange keeps the selected row within the visible window", () => {
   assert.deepEqual(getViewportRange(20, 0, 5), {
     start: 0,
@@ -148,4 +155,11 @@ test("wrapText keeps lines under the requested width", () => {
 test("wrapText hard-wraps long unbroken tokens", () => {
   const lines = wrapText("abcdefghijklmnopqrstuvwxyz", 8);
   assert.deepEqual(lines, ["abcdefgh", "ijklmnop", "qrstuvwx", "yz"]);
+});
+
+test("wrapText makes progress when width is narrower than a wide glyph", () => {
+  // A single wide CJK character has display width 2; requesting width 1 used
+  // to loop forever because takeDisplayWidth returned "" each iteration.
+  const lines = wrapText("漢字", 1);
+  assert.deepEqual(lines, ["漢", "字"]);
 });

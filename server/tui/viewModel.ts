@@ -1,4 +1,5 @@
 import type { FeedbackItem, FeedbackStatus, PR } from "@shared/schema";
+import stringWidth from "string-width";
 
 export type LayoutMode = "full" | "stacked" | "compact-warning";
 export type ViewportRange = {
@@ -127,20 +128,69 @@ export function getFeedbackActions(item: FeedbackItem): string[] {
   return actions;
 }
 
+export function getDisplayWidth(input: string): number {
+  return stringWidth(input);
+}
+
+function takeDisplayWidth(input: string, max: number): string {
+  if (max <= 0 || !input) {
+    return "";
+  }
+
+  let output = "";
+  let width = 0;
+
+  for (const char of input) {
+    const charWidth = getDisplayWidth(char);
+    if (width + charWidth > max) {
+      break;
+    }
+
+    output += char;
+    width += charWidth;
+  }
+
+  return output;
+}
+
+function takeDisplayWidthFromEnd(input: string, max: number): string {
+  if (max <= 0 || !input) {
+    return "";
+  }
+
+  const chars = Array.from(input);
+  let output = "";
+  let width = 0;
+
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index]!;
+    const charWidth = getDisplayWidth(char);
+    if (width + charWidth > max) {
+      break;
+    }
+
+    output = `${char}${output}`;
+    width += charWidth;
+  }
+
+  return output;
+}
+
 export function truncateText(input: string, max: number): string {
   if (max <= 0) {
     return "";
   }
 
   if (max === 1) {
-    return input.slice(0, 1);
+    return takeDisplayWidth(input, 1);
   }
 
-  if (input.length <= max) {
+  if (getDisplayWidth(input) <= max) {
     return input;
   }
 
-  return `${input.slice(0, Math.max(1, max - 1))}…`;
+  const head = takeDisplayWidth(input, Math.max(1, max - 1));
+  return `${head}…`;
 }
 
 export function middleTruncateText(input: string, max: number): string {
@@ -152,13 +202,18 @@ export function middleTruncateText(input: string, max: number): string {
     return "…";
   }
 
-  if (input.length <= max) {
+  if (getDisplayWidth(input) <= max) {
     return input;
   }
 
   const head = Math.ceil((max - 1) / 2);
   const tail = Math.floor((max - 1) / 2);
-  return `${input.slice(0, head)}…${input.slice(input.length - tail)}`;
+  return `${takeDisplayWidth(input, head)}…${takeDisplayWidthFromEnd(input, tail)}`;
+}
+
+export function padDisplayText(input: string, width: number): string {
+  const fitted = truncateText(input, width);
+  return `${fitted}${" ".repeat(Math.max(0, width - getDisplayWidth(fitted)))}`;
 }
 
 export function getViewportRange(count: number, selectedIndex: number, visibleCount: number): ViewportRange {
@@ -206,22 +261,50 @@ export function wrapText(input: string, width: number): string[] {
       continue;
     }
 
-    let remaining = collapsed;
-    while (remaining.length > width) {
-      const candidate = remaining.slice(0, width + 1);
-      let breakAt = candidate.lastIndexOf(" ");
+    const words = collapsed.split(" ");
+    let current = "";
 
-      if (breakAt <= 0) {
-        breakAt = width;
+    const pushWord = (word: string) => {
+      if (getDisplayWidth(word) <= width) {
+        return [word];
       }
 
-      const chunk = remaining.slice(0, breakAt).trimEnd();
-      lines.push(chunk);
-      remaining = remaining.slice(breakAt).trimStart();
+      const chunks: string[] = [];
+      let remaining = word;
+      while (remaining) {
+        let chunk = takeDisplayWidth(remaining, width);
+        if (!chunk) {
+          // Width is too small to fit the first grapheme; consume it anyway
+          // so the loop always makes progress.
+          chunk = Array.from(remaining)[0]!;
+        }
+        chunks.push(chunk);
+        remaining = remaining.slice(chunk.length);
+      }
+
+      return chunks;
+    };
+
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (getDisplayWidth(candidate) <= width) {
+        current = candidate;
+        continue;
+      }
+
+      if (current) {
+        lines.push(current);
+      }
+
+      const chunks = pushWord(word);
+      for (let index = 0; index < chunks.length - 1; index += 1) {
+        lines.push(chunks[index]!);
+      }
+      current = chunks[chunks.length - 1] ?? "";
     }
 
-    if (remaining) {
-      lines.push(remaining);
+    if (current) {
+      lines.push(current);
     }
   }
 

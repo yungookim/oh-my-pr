@@ -7,12 +7,13 @@ import { AskPane } from "./AskPane";
 import { RepoManagerPane } from "./RepoManagerPane";
 import { SettingsPane } from "./SettingsPane";
 import { color } from "../theme";
+import { truncateText } from "../viewModel";
 
 type ContextPaneProps = {
   mode: ContextMode;
   active: boolean;
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
   logs: LogEntry[];
   questions: PRQuestion[];
   repos: string[];
@@ -29,33 +30,30 @@ const TABS: Array<{ key: ContextMode; label: string; hint: string }> = [
   { key: "settings", label: "settings", hint: "s" },
 ];
 
-function TabStrip(props: { mode: ContextMode; active: boolean }) {
+function formatTabLabel(tab: { key: ContextMode; label: string; hint: string }, activeMode: ContextMode): string {
+  if (tab.key === activeMode) {
+    return `[${tab.label}]`;
+  }
+
+  return `${tab.label}[${tab.hint}]`;
+}
+
+function TabStrip(props: { mode: ContextMode; active: boolean; width: number }) {
+  const tabLine = truncateText(
+    TABS.map((tab) => formatTabLabel(tab, props.mode)).join("  "),
+    props.width,
+  );
+
   return (
-    <Box>
-      {TABS.map((tab, index) => {
-        const isActive = tab.key === props.mode;
-        return (
-          <React.Fragment key={tab.key}>
-            {isActive ? (
-              <Text color={props.active ? color.accent : color.muted} inverse bold>
-                {` ${tab.label} `}
-              </Text>
-            ) : (
-              <Text color={color.muted}>
-                {` ${tab.label} `}
-                <Text dimColor>[{tab.hint}]</Text>
-              </Text>
-            )}
-            {index < TABS.length - 1 && <Text color={color.muted}> </Text>}
-          </React.Fragment>
-        );
-      })}
-    </Box>
+    <Text color={props.active ? color.accent : color.muted} bold={props.active} wrap="truncate-end">
+      {tabLine}
+    </Text>
   );
 }
 
 export function ContextPane(props: ContextPaneProps) {
   const borderColor = props.active ? color.accent : color.muted;
+  const innerWidth = Math.max(20, props.width - 4);
   const innerHeight = Math.max(2, props.height - 5);
 
   return (
@@ -72,15 +70,15 @@ export function ContextPane(props: ContextPaneProps) {
           Context
         </Text>
       </Box>
-      <TabStrip mode={props.mode} active={props.active} />
+      <TabStrip mode={props.mode} active={props.active} width={innerWidth} />
       <Box marginTop={1} flexDirection="column">
-        {props.mode === "logs" && <LogPane logs={props.logs} width={Math.max(20, (props.width ?? 40) - 4)} height={innerHeight} />}
+        {props.mode === "logs" && <LogPane logs={props.logs} width={innerWidth} height={innerHeight} />}
         {props.mode === "ask" && (
           <AskPane
             questions={props.questions}
             inputMode={props.inputMode === "ask"}
             inputValue={props.inputValue}
-            width={props.width ?? 40}
+            width={props.width}
           />
         )}
         {props.mode === "repos" && (

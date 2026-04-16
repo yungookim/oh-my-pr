@@ -54,7 +54,7 @@ function PrRow(props: { pr: PR; selected: boolean; width: number }) {
   );
 
   return (
-    <Text color={selected ? color.accent : prStatusTone(pr.status)} bold={selected}>
+    <Text color={selected ? color.accent : prStatusTone(pr.status)} bold={selected} wrap="truncate-end">
       {selected ? `${glyph.focus} ` : "  "}
       {summary}
     </Text>
