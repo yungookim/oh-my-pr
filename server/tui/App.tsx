@@ -48,6 +48,7 @@ export default function App(props: AppProps) {
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null);
   const [onboardingValue, setOnboardingValue] = useState("");
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
   const snapshot = useRuntimeSnapshot(props.runtime, selectedPrId, props.refreshMs ?? 1500);
   const selection = useSelectionState({
     prCount: snapshot.prs.length,
@@ -94,11 +95,16 @@ export default function App(props: AppProps) {
   };
 
   const submitOnboarding = async () => {
+    if (onboardingSubmitting) {
+      return;
+    }
+
     const value = onboardingValue.trim();
     if (!value) {
       return;
     }
 
+    setOnboardingSubmitting(true);
     try {
       await props.runtime.addRepo(value);
       setOnboardingError(null);
@@ -106,6 +112,8 @@ export default function App(props: AppProps) {
       setStatus("Repository added");
     } catch (error) {
       setOnboardingError(getErrorMessage(error));
+    } finally {
+      setOnboardingSubmitting(false);
     }
   };
 
@@ -242,6 +250,11 @@ export default function App(props: AppProps) {
       if (key.backspace || key.delete) {
         setOnboardingValue((current) => current.slice(0, -1));
         setOnboardingError(null);
+        return;
+      }
+
+      if (input === "q" && onboardingValue.length === 0) {
+        exit();
         return;
       }
 
@@ -425,6 +438,7 @@ export default function App(props: AppProps) {
         <OnboardingScreen
           value={onboardingValue}
           errorMessage={onboardingError}
+          submitting={onboardingSubmitting}
         />
       ) : (
         <Box flexDirection={layoutMode === "stacked" ? "column" : "row"}>

@@ -5,6 +5,7 @@ import { color, glyph } from "../theme";
 type OnboardingScreenProps = {
   value: string;
   errorMessage: string | null;
+  submitting?: boolean;
 };
 
 export function OnboardingScreen(props: OnboardingScreenProps) {
@@ -29,6 +30,13 @@ export function OnboardingScreen(props: OnboardingScreenProps) {
 
       <Text color={color.muted}>Example: acme/widgets</Text>
 
+      {props.submitting && (
+        <Box marginTop={1}>
+          <Text color={color.info}>{glyph.running} </Text>
+          <Text color={color.info}>Adding repository…</Text>
+        </Box>
+      )}
+
       {props.errorMessage && (
         <Box marginTop={1}>
           <Text color={color.err} bold>{glyph.cross} </Text>
@@ -40,7 +48,9 @@ export function OnboardingScreen(props: OnboardingScreenProps) {
         <Text color={color.accent} inverse bold>{" Enter "}</Text>
         <Text color={color.muted}> add repo </Text>
         <Text color={color.accent} inverse bold>{" Esc "}</Text>
-        <Text color={color.muted}> clear</Text>
+        <Text color={color.muted}> clear </Text>
+        <Text color={color.accent} inverse bold>{" q "}</Text>
+        <Text color={color.muted}> quit (when empty)</Text>
       </Box>
     </Box>
   );
