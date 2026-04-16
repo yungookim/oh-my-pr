@@ -36,10 +36,10 @@ export function LogPane(props: { logs: LogEntry[]; width: number; height: number
         const prefix = `${formatTime(log.timestamp)} ${log.level.toUpperCase()}${phase ? ` ${phase}` : ""} `;
         const message = truncateText(log.message, Math.max(12, props.width - prefix.length));
         return (
-          <Text key={log.id}>
-            <Text color={color.muted}>{formatTime(log.timestamp)} </Text>
-            <Text color={tone} bold>{log.level.toUpperCase()}</Text>
-            {phase && <Text color={color.muted}> {phase}</Text>}
+        <Text key={log.id} wrap="truncate-end">
+          <Text color={color.muted}>{formatTime(log.timestamp)} </Text>
+          <Text color={tone} bold>{log.level.toUpperCase()}</Text>
+          {phase && <Text color={color.muted}> {phase}</Text>}
             <Text> {message}</Text>
           </Text>
         );

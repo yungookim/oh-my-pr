@@ -65,7 +65,7 @@ test("tui keeps long feedback collections inside a viewport and truncates long r
     await flush();
     assert.match(ui.lastFrame() ?? "", /3\/12/);
     assert.match(ui.lastFrame() ?? "", /↓9/);
-    assert.match(ui.lastFrame() ?? "", /frontend\/sr…/);
+    assert.match(ui.lastFrame() ?? "", /frontend\/…-0\.ts:1…/);
     assert.match(ui.lastFrame() ?? "", /…/);
 
     ui.stdin.write("\t");
@@ -77,7 +77,7 @@ test("tui keeps long feedback collections inside a viewport and truncates long r
     await flush();
 
     assert.match(ui.lastFrame() ?? "", /↑3/);
-    assert.match(ui.lastFrame() ?? "", /reviewer-4/);
+    assert.match(ui.lastFrame() ?? "", /Feedback item 4 body text/);
   } finally {
     ui.unmount();
   }

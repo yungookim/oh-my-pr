@@ -5,6 +5,7 @@ import {
   formatFeedbackStatusLabel,
   formatPrRow,
   formatStatusLabel,
+  getDisplayWidth,
   getFeedbackActions,
   getLayoutMode,
   getViewportRange,
@@ -117,6 +118,12 @@ test("formatFeedbackStatusLabel normalizes underscores", () => {
 test("truncate helpers keep the start or both ends visible", () => {
   assert.equal(truncateText("frontend/src/router/index.ts", 12), "frontend/sr…");
   assert.equal(middleTruncateText("abcdefghijklmnopqrstuvwxyz", 9), "abcd…wxyz");
+});
+
+test("truncate helpers honor terminal display width for wide glyphs", () => {
+  assert.equal(getDisplayWidth("❯ review"), 8);
+  assert.equal(truncateText("❯ review ready", 9), "❯ review…");
+  assert.equal(middleTruncateText("frontend/❯/component.ts", 12), "fronte…nt.ts");
 });
 
 test("getViewportRange keeps the selected row within the visible window", () => {

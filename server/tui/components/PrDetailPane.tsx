@@ -24,7 +24,7 @@ type PrDetailPaneProps = {
 export function PrDetailPane(props: PrDetailPaneProps) {
   const borderColor = props.active ? color.accent : color.muted;
   const innerWidth = Math.max(24, (props.width ?? 80) - 4);
-  const contentHeight = Math.max(4, props.height - 4);
+  const contentHeight = Math.max(4, (props.height ?? 12) - 4);
 
   if (!props.pr) {
     return (

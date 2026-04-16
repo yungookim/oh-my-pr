@@ -411,6 +411,7 @@ export default function App(props: AppProps) {
         contextMode={selection.contextMode}
         statusMessage={statusMessage}
         errorMessage={actionError ?? snapshot.error}
+        width={width}
       />
     </Box>
   );

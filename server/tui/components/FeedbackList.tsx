@@ -3,12 +3,13 @@ import { Box, Text } from "ink";
 import type { FeedbackItem } from "@shared/schema";
 import {
   formatFeedbackStatusLabel,
+  padDisplayText,
   middleTruncateText,
   truncateText,
   wrapText,
 } from "../viewModel";
 import { FeedbackActions } from "./FeedbackActions";
-import { color, feedbackGlyph, feedbackTone, glyph } from "../theme";
+import { color, feedbackGlyph, feedbackTone } from "../theme";
 
 type FeedbackListProps = {
   items: FeedbackItem[];
@@ -41,27 +42,29 @@ export function FeedbackList(props: FeedbackListProps) {
         const selected = index === props.selectedFeedbackIndex;
         const tone = feedbackTone(item.status);
         const statusLabel = formatFeedbackStatusLabel(item.status);
-        const availableMetadataWidth = Math.max(12, props.width - 2);
-        const authorBudget = Math.max(8, Math.min(18, Math.floor(availableMetadataWidth * 0.24)));
+        const rowWidth = Math.max(24, props.width - 2);
+        const authorBudget = Math.max(8, Math.min(18, Math.floor(rowWidth * 0.18)));
         const author = truncateText(item.author, authorBudget);
         const location = item.file ? `${item.file}${item.line ? `:${item.line}` : ""}` : "";
         const locationText = location
-          ? middleTruncateText(location, Math.max(10, Math.min(24, Math.floor(availableMetadataWidth * 0.34))))
+          ? middleTruncateText(location, Math.max(10, Math.min(24, Math.floor(rowWidth * 0.3))))
           : "";
-        const summary = truncateText(
-          [
-            `${feedbackGlyph(item.status)} ${statusLabel}`,
-            locationText,
-            author,
-            summarizeBody(item.body),
-          ].filter(Boolean).join(" │ "),
-          props.width - 2,
+        const statusText = `${feedbackGlyph(item.status)} ${statusLabel}`;
+        const primaryMeta = locationText || author || "comment";
+        const secondaryMeta = locationText && author ? author : "";
+        const statusWidth = Math.max(12, Math.min(15, Math.floor(rowWidth * 0.22)));
+        const metaWidth = Math.max(12, Math.min(24, Math.floor(rowWidth * 0.28)));
+        const detailsWidth = Math.max(8, rowWidth - statusWidth - metaWidth - 6);
+        const detailText = truncateText(
+          [secondaryMeta, summarizeBody(item.body)].filter(Boolean).join(" | "),
+          detailsWidth,
         );
+        const row = `${padDisplayText(statusText, statusWidth)} | ${padDisplayText(primaryMeta, metaWidth)} | ${detailText}`;
 
         return (
-          <Text key={item.id} color={selected ? color.accent : tone}>
-            {selected ? `${glyph.focus} ` : "  "}
-            {summary}
+          <Text key={item.id} color={selected ? color.accent : tone} wrap="truncate-end">
+            {selected ? "> " : "  "}
+            {row}
           </Text>
         );
       })}
@@ -87,7 +90,7 @@ export function FeedbackPreview(props: FeedbackPreviewProps) {
       `${feedbackGlyph(item.status)} ${statusLabel}`,
       metadataLocation,
       author,
-    ].filter(Boolean).join(` ${glyph.sep} `),
+    ].filter(Boolean).join(" | "),
     props.width,
   );
   const actionRowCount = props.expanded && props.active ? 1 : 0;
@@ -104,7 +107,7 @@ export function FeedbackPreview(props: FeedbackPreviewProps) {
 
   return (
     <Box flexDirection="column">
-      <Text color={tone}>{metadata}</Text>
+      <Text color={tone} wrap="truncate-end">{metadata}</Text>
       {visibleBodyLines.map((line, lineIndex) => (
         <Text key={`${item.id}-${lineIndex}`} color={color.muted}>
           {line}
