@@ -12,6 +12,7 @@ type ContextPaneProps = {
   mode: ContextMode;
   active: boolean;
   width?: number;
+  height?: number;
   logs: LogEntry[];
   questions: PRQuestion[];
   repos: string[];
@@ -55,6 +56,7 @@ function TabStrip(props: { mode: ContextMode; active: boolean }) {
 
 export function ContextPane(props: ContextPaneProps) {
   const borderColor = props.active ? color.accent : color.muted;
+  const innerHeight = Math.max(2, props.height - 5);
 
   return (
     <Box
@@ -63,15 +65,16 @@ export function ContextPane(props: ContextPaneProps) {
       borderColor={borderColor}
       paddingX={1}
       width={props.width}
+      height={props.height}
     >
-      <Box marginBottom={1} justifyContent="space-between">
+      <Box justifyContent="space-between">
         <Text bold color={props.active ? color.accent : undefined}>
           Context
         </Text>
       </Box>
       <TabStrip mode={props.mode} active={props.active} />
       <Box marginTop={1} flexDirection="column">
-        {props.mode === "logs" && <LogPane logs={props.logs} />}
+        {props.mode === "logs" && <LogPane logs={props.logs} width={Math.max(20, (props.width ?? 40) - 4)} height={innerHeight} />}
         {props.mode === "ask" && (
           <AskPane
             questions={props.questions}

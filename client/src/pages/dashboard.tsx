@@ -725,6 +725,7 @@ export default function Dashboard() {
     },
     onSuccess: (data: PR) => {
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       setAddUrl("");
       setSelectedPRId(data.id);
     },
@@ -769,6 +770,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
     },
     onError: (error) => {
       showMutationError("Could not update settings", error);
@@ -783,6 +785,7 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/repos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
     },
     onError: (error) => {
       showMutationError("Could not sync repositories", error);
@@ -797,6 +800,7 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/repos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       setAddRepo("");
     },
     onError: (error) => {

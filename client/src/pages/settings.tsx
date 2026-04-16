@@ -20,6 +20,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       toast({ description: "Settings saved." });
     },
     onError: (error) => {

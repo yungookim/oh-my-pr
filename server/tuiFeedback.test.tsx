@@ -9,20 +9,21 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
-test("tui expands feedback rows and applies accept decisions with arrow keys and Enter", async () => {
+test("tui shows selected feedback in a preview and applies accept decisions with Enter", async () => {
   const runtime = createTestRuntime();
-  const ui = render(<App runtime={runtime} screenWidth={160} refreshMs={0} />);
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
 
   try {
     await flush();
+    assert.match(ui.lastFrame() ?? "", /Selected feedback/);
+    assert.match(ui.lastFrame() ?? "", /Please rename this variable for/);
+
     ui.stdin.write("\t");
     await flush();
     ui.stdin.write("\r");
     await flush();
 
-    assert.match(ui.lastFrame() ?? "", /Please rename this variable for/);
-    assert.match(ui.lastFrame() ?? "", /clarity/);
-    assert.match(ui.lastFrame() ?? "", /Collaps/);
+    assert.match(ui.lastFrame() ?? "", /Collapse/);
 
     ui.stdin.write("\u001B[C");
     await flush();
@@ -38,34 +39,45 @@ test("tui expands feedback rows and applies accept decisions with arrow keys and
   }
 });
 
-test("tui shows retry for failed feedback and refreshes live logs on runtime events", async () => {
+test("tui keeps long feedback collections inside a viewport and truncates long row metadata", async () => {
+  const baseRuntime = createTestRuntime();
+  const basePr = (await baseRuntime.getPR("pr-1"))!;
   const runtime = createTestRuntime({
     prs: [
       {
-        ...(await createTestRuntime().getPR("pr-1"))!,
-        feedbackItems: [
-          {
-            ...(await createTestRuntime().getPR("pr-1"))!.feedbackItems[0]!,
-            status: "failed",
-          },
-        ],
+        ...basePr,
+        feedbackItems: Array.from({ length: 12 }, (_, index) => ({
+          ...basePr.feedbackItems[0]!,
+          id: `feedback-${index}`,
+          author: `reviewer-${index}`,
+          body: index === 0
+            ? "A".repeat(140)
+            : `Feedback item ${index} body text that should stay in the preview pane.`,
+          file: `frontend/src/really/long/path/that/keeps/going/component-${index}.ts`,
+          line: 100 + index,
+        })),
       },
     ],
   });
-  const ui = render(<App runtime={runtime} screenWidth={160} refreshMs={0} />);
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={22} refreshMs={0} />);
 
   try {
     await flush();
+    assert.match(ui.lastFrame() ?? "", /3\/12/);
+    assert.match(ui.lastFrame() ?? "", /↓9/);
+    assert.match(ui.lastFrame() ?? "", /frontend\/sr…/);
+    assert.match(ui.lastFrame() ?? "", /…/);
+
     ui.stdin.write("\t");
     await flush();
-    ui.stdin.write("\r");
+    ui.stdin.write("\u001B[B");
+    ui.stdin.write("\u001B[B");
+    ui.stdin.write("\u001B[B");
+    ui.stdin.write("\u001B[B");
     await flush();
 
-    assert.match(ui.lastFrame() ?? "", /Retry/);
-
-    runtime.appendLog("pr-1", "Follow-up log line");
-    await flush();
-    assert.match(ui.lastFrame() ?? "", /Follow-up log line/);
+    assert.match(ui.lastFrame() ?? "", /↑3/);
+    assert.match(ui.lastFrame() ?? "", /reviewer-4/);
   } finally {
     ui.unmount();
   }

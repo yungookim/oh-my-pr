@@ -7,6 +7,9 @@ import {
   formatStatusLabel,
   getFeedbackActions,
   getLayoutMode,
+  getViewportRange,
+  middleTruncateText,
+  truncateText,
   wrapText,
 } from "./tui/viewModel";
 
@@ -111,7 +114,38 @@ test("formatFeedbackStatusLabel normalizes underscores", () => {
   assert.equal(formatFeedbackStatusLabel("in_progress"), "IN PROGRESS");
 });
 
+test("truncate helpers keep the start or both ends visible", () => {
+  assert.equal(truncateText("frontend/src/router/index.ts", 12), "frontend/sr…");
+  assert.equal(middleTruncateText("abcdefghijklmnopqrstuvwxyz", 9), "abcd…wxyz");
+});
+
+test("getViewportRange keeps the selected row within the visible window", () => {
+  assert.deepEqual(getViewportRange(20, 0, 5), {
+    start: 0,
+    end: 5,
+    hiddenAbove: 0,
+    hiddenBelow: 15,
+  });
+  assert.deepEqual(getViewportRange(20, 10, 5), {
+    start: 8,
+    end: 13,
+    hiddenAbove: 8,
+    hiddenBelow: 7,
+  });
+  assert.deepEqual(getViewportRange(20, 19, 5), {
+    start: 15,
+    end: 20,
+    hiddenAbove: 15,
+    hiddenBelow: 0,
+  });
+});
+
 test("wrapText keeps lines under the requested width", () => {
   const lines = wrapText("one two three four", 7);
   assert.deepEqual(lines, ["one two", "three", "four"]);
+});
+
+test("wrapText hard-wraps long unbroken tokens", () => {
+  const lines = wrapText("abcdefghijklmnopqrstuvwxyz", 8);
+  assert.deepEqual(lines, ["abcdefgh", "ijklmnop", "qrstuvwx", "yz"]);
 });
