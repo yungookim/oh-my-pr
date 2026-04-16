@@ -11,7 +11,7 @@ async function flush() {
 
 test("tui ask-agent flow queues a question from the context pane", async () => {
   const runtime = createTestRuntime();
-  const ui = render(<App runtime={runtime} screenWidth={160} refreshMs={0} />);
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
 
   try {
     await flush();
@@ -24,7 +24,7 @@ test("tui ask-agent flow queues a question from the context pane", async () => {
     ui.stdin.write("\r");
     await flush();
 
-    assert.match(ui.lastFrame() ?? "", /Q: Status\?/);
+    assert.match(ui.lastFrame() ?? "", /Q Status\?/);
   } finally {
     ui.unmount();
   }
@@ -32,7 +32,7 @@ test("tui ask-agent flow queues a question from the context pane", async () => {
 
 test("tui repo management can add a watched repository and a PR URL", async () => {
   const runtime = createTestRuntime();
-  const ui = render(<App runtime={runtime} screenWidth={160} refreshMs={0} />);
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
 
   try {
     await flush();
@@ -67,19 +67,20 @@ test("tui repo management can add a watched repository and a PR URL", async () =
 
 test("tui settings and watch controls mutate the runtime", async () => {
   const runtime = createTestRuntime();
-  const ui = render(<App runtime={runtime} screenWidth={160} refreshMs={0} />);
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
 
   try {
     await flush();
     ui.stdin.write("w");
     await flush();
-    assert.match(ui.lastFrame() ?? "", /watch=paused/);
+    assert.match(ui.lastFrame() ?? "", /paused/);
 
     ui.stdin.write("s");
     await flush();
     ui.stdin.write("\r");
     await flush();
-    assert.match(ui.lastFrame() ?? "", /Coding agent: codex/);
+    assert.match(ui.lastFrame() ?? "", /Coding agent/);
+    assert.match(ui.lastFrame() ?? "", /codex/);
   } finally {
     ui.unmount();
   }

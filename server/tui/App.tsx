@@ -15,6 +15,7 @@ import { color, glyph } from "./theme";
 type AppProps = {
   runtime: TuiRuntime;
   screenWidth?: number;
+  screenHeight?: number;
   refreshMs?: number;
 };
 
@@ -40,6 +41,7 @@ export default function App(props: AppProps) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const width = props.screenWidth ?? stdout.columns ?? 160;
+  const height = props.screenHeight ?? stdout.rows ?? 40;
   const layoutMode = getLayoutMode(width);
 
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null);
@@ -309,19 +311,39 @@ export default function App(props: AppProps) {
     }
   }, { isActive: true });
 
-  const paneWidths = useMemo(() => {
+  const paneLayout = useMemo(() => {
+    const mainHeight = Math.max(layoutMode === "stacked" ? 22 : 12, height - 6);
+
     if (layoutMode === "full") {
       return {
-        list: 40,
-        context: 48,
+        widths: {
+          list: 40,
+          context: 48,
+        },
+        heights: {
+          list: mainHeight,
+          detail: mainHeight,
+          context: mainHeight,
+        },
       };
     }
 
+    const listHeight = Math.max(7, Math.floor(mainHeight * 0.25));
+    const contextHeight = Math.max(7, Math.floor(mainHeight * 0.3));
+    const detailHeight = Math.max(8, mainHeight - listHeight - contextHeight);
+
     return {
-      list: width,
-      context: undefined,
+      widths: {
+        list: width,
+        context: undefined,
+      },
+      heights: {
+        list: listHeight,
+        detail: detailHeight,
+        context: contextHeight,
+      },
     };
-  }, [layoutMode]);
+  }, [height, layoutMode, width]);
 
   if (layoutMode === "compact-warning") {
     return (
@@ -357,7 +379,8 @@ export default function App(props: AppProps) {
             prs={snapshot.prs}
             selectedPrIndex={selection.selectedPrIndex}
             active={selection.activePane === "prs"}
-            width={paneWidths.list}
+            width={paneLayout.widths.list}
+            height={paneLayout.heights.list}
           />
           <PrDetailPane
             pr={selectedPr}
@@ -366,12 +389,14 @@ export default function App(props: AppProps) {
             expandedFeedbackIds={selection.expandedFeedbackIds}
             selectedActionIndex={selectedActionIndex}
             selectedActions={selectedFeedbackActions}
-            width={layoutMode === "full" ? width - paneWidths.list! - paneWidths.context! : undefined}
+            width={layoutMode === "full" ? width - paneLayout.widths.list! - paneLayout.widths.context! : undefined}
+            height={paneLayout.heights.detail}
           />
           <ContextPane
             mode={selection.contextMode}
             active={selection.activePane === "context"}
-            width={paneWidths.context}
+            width={paneLayout.widths.context}
+            height={paneLayout.heights.context}
             logs={snapshot.logs}
             questions={snapshot.questions}
             repos={snapshot.repos}

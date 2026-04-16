@@ -1,6 +1,12 @@
 import type { FeedbackItem, FeedbackStatus, PR } from "@shared/schema";
 
 export type LayoutMode = "full" | "stacked" | "compact-warning";
+export type ViewportRange = {
+  start: number;
+  end: number;
+  hiddenAbove: number;
+  hiddenBelow: number;
+};
 
 export function formatStatusLabel(status: PR["status"]): string {
   if (status === "processing") {
@@ -121,31 +127,106 @@ export function getFeedbackActions(item: FeedbackItem): string[] {
   return actions;
 }
 
+export function truncateText(input: string, max: number): string {
+  if (max <= 0) {
+    return "";
+  }
+
+  if (max === 1) {
+    return input.slice(0, 1);
+  }
+
+  if (input.length <= max) {
+    return input;
+  }
+
+  return `${input.slice(0, Math.max(1, max - 1))}…`;
+}
+
+export function middleTruncateText(input: string, max: number): string {
+  if (max <= 0) {
+    return "";
+  }
+
+  if (max === 1) {
+    return "…";
+  }
+
+  if (input.length <= max) {
+    return input;
+  }
+
+  const head = Math.ceil((max - 1) / 2);
+  const tail = Math.floor((max - 1) / 2);
+  return `${input.slice(0, head)}…${input.slice(input.length - tail)}`;
+}
+
+export function getViewportRange(count: number, selectedIndex: number, visibleCount: number): ViewportRange {
+  if (count <= 0 || visibleCount <= 0) {
+    return {
+      start: 0,
+      end: 0,
+      hiddenAbove: 0,
+      hiddenBelow: 0,
+    };
+  }
+
+  const clampedVisibleCount = Math.min(count, visibleCount);
+  const clampedSelectedIndex = Math.max(0, Math.min(selectedIndex, count - 1));
+  const half = Math.floor(clampedVisibleCount / 2);
+  let start = Math.max(0, clampedSelectedIndex - half);
+  const maxStart = Math.max(0, count - clampedVisibleCount);
+
+  if (start > maxStart) {
+    start = maxStart;
+  }
+
+  const end = Math.min(count, start + clampedVisibleCount);
+  return {
+    start,
+    end,
+    hiddenAbove: start,
+    hiddenBelow: Math.max(0, count - end),
+  };
+}
+
 export function wrapText(input: string, width: number): string[] {
-  if (width <= 4) {
-    return [input];
+  if (width < 1) {
+    return input ? [input] : [""];
   }
 
-  const words = input.replace(/\s+/g, " ").trim().split(" ");
-  if (words.length === 1 && words[0] === "") {
-    return [""];
-  }
-
+  const normalized = input.replace(/\r\n/g, "\n");
+  const rawLines = normalized.split("\n");
   const lines: string[] = [];
-  let current = "";
 
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > width && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
+  for (const rawLine of rawLines) {
+    const collapsed = rawLine.replace(/\s+/g, " ").trim();
+    if (!collapsed) {
+      lines.push("");
+      continue;
+    }
+
+    let remaining = collapsed;
+    while (remaining.length > width) {
+      const candidate = remaining.slice(0, width + 1);
+      let breakAt = candidate.lastIndexOf(" ");
+
+      if (breakAt <= 0) {
+        breakAt = width;
+      }
+
+      const chunk = remaining.slice(0, breakAt).trimEnd();
+      lines.push(chunk);
+      remaining = remaining.slice(breakAt).trimStart();
+    }
+
+    if (remaining) {
+      lines.push(remaining);
     }
   }
 
-  if (current) {
-    lines.push(current);
+  if (lines.length === 0) {
+    return [""];
   }
 
   return lines;
