@@ -12,8 +12,8 @@ import { truncateText } from "../viewModel";
 type ContextPaneProps = {
   mode: ContextMode;
   active: boolean;
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
   logs: LogEntry[];
   questions: PRQuestion[];
   repos: string[];
@@ -53,8 +53,8 @@ function TabStrip(props: { mode: ContextMode; active: boolean; width: number }) 
 
 export function ContextPane(props: ContextPaneProps) {
   const borderColor = props.active ? color.accent : color.muted;
-  const innerWidth = Math.max(20, (props.width ?? 40) - 4);
-  const innerHeight = Math.max(2, (props.height ?? 12) - 5);
+  const innerWidth = Math.max(20, props.width - 4);
+  const innerHeight = Math.max(2, props.height - 5);
 
   return (
     <Box
@@ -78,7 +78,7 @@ export function ContextPane(props: ContextPaneProps) {
             questions={props.questions}
             inputMode={props.inputMode === "ask"}
             inputValue={props.inputValue}
-            width={props.width ?? 40}
+            width={props.width}
           />
         )}
         {props.mode === "repos" && (

@@ -156,3 +156,10 @@ test("wrapText hard-wraps long unbroken tokens", () => {
   const lines = wrapText("abcdefghijklmnopqrstuvwxyz", 8);
   assert.deepEqual(lines, ["abcdefgh", "ijklmnop", "qrstuvwx", "yz"]);
 });
+
+test("wrapText makes progress when width is narrower than a wide glyph", () => {
+  // A single wide CJK character has display width 2; requesting width 1 used
+  // to loop forever because takeDisplayWidth returned "" each iteration.
+  const lines = wrapText("漢字", 1);
+  assert.deepEqual(lines, ["漢", "字"]);
+});

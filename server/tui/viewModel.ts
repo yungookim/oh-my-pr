@@ -272,7 +272,12 @@ export function wrapText(input: string, width: number): string[] {
       const chunks: string[] = [];
       let remaining = word;
       while (remaining) {
-        const chunk = takeDisplayWidth(remaining, width);
+        let chunk = takeDisplayWidth(remaining, width);
+        if (!chunk) {
+          // Width is too small to fit the first grapheme; consume it anyway
+          // so the loop always makes progress.
+          chunk = Array.from(remaining)[0]!;
+        }
         chunks.push(chunk);
         remaining = remaining.slice(chunk.length);
       }

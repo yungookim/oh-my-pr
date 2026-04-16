@@ -335,7 +335,7 @@ export default function App(props: AppProps) {
     return {
       widths: {
         list: width,
-        context: undefined,
+        context: width,
       },
       heights: {
         list: listHeight,
