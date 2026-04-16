@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-16 - Surface requested onboarding guidance explicitly
+- Pattern: I cleaned up onboarding around checklist steps and install actions, but the user then had to ask for the multi-provider AI review tip and provider links to be shown explicitly during onboarding.
+- Rule: When onboarding touches a setup capability that depends on third-party providers, include the requested explanatory tip and concrete provider links in the onboarding UI instead of assuming buttons or inferred context are sufficient.
+- Prevention checklist:
+  - Re-read the final onboarding copy against the user's requested guidance before closing the task.
+  - If the user names specific providers or docs links, surface those exact links in the relevant onboarding step.
+  - Treat missing instructional copy in onboarding as a product gap, not a follow-up nice-to-have.
+
 ## 2026-04-02 - Honor explicit checkpoint and hang-reporting requests as runtime requirements
 - Pattern: Mid-implementation, the user had to explicitly ask for brief checkpoint updates and for hangs to be reported immediately if tests stall.
 - Rule: When the user sets expectations for progress cadence or hang reporting, adopt those expectations immediately and treat them as part of the task contract.
