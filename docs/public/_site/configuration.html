@@ -245,9 +245,28 @@
 <ul>
 <li><strong>GitHub Token management</strong> — Add, update, or rotate tokens.</li>
 <li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
+<li><strong>PR comment branding</strong> — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the <code>Posted by oh-my-pr</code> footer.</li>
 <li><strong>CI healing</strong> — Enable autonomous CI repair and tune retry/session limits.</li>
+<li><strong>Deployment healing</strong> — Not yet exposed in the dashboard; use <code>PATCH /api/config</code> for the deployment-healing keys listed below.</li>
 <li><strong>Theme</strong> — Toggle between light and dark mode.</li>
 </ul>
+<h2>PR Comment Branding</h2>
+<p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, echoed <code>/codefactory</code> agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Repository links in PR comments</code></td>
+<td><code>true</code></td>
+<td>When enabled, babysitter comments render the app name as a Markdown link to the oh-my-pr repo and append the <code>Posted by oh-my-pr</code> footer. When disabled, comments reference <code>oh-my-pr</code> as plain text and omit the footer.</td>
+</tr>
+</tbody></table>
+<p>This toggle is available in the dashboard settings page and as <code>includeRepositoryLinksInGitHubComments</code> (boolean) in <code>GET /api/config</code>, <code>PATCH /api/config</code>, and the MCP <code>update_config</code> tool. Turning it off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.</p>
 <h2>CI Healing Settings</h2>
 <p>Code Factory can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.</p>
 <table>
@@ -285,6 +304,49 @@
 </tr>
 </tbody></table>
 <p>The dashboard shows healing state on each tracked PR, while the local API exposes <code>GET /api/healing-sessions</code> and <code>GET /api/healing-sessions/:id</code> for external tooling.</p>
+<h2>Deployment Healing Settings</h2>
+<p>Code Factory can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.</p>
+<p>A repository is eligible only when platform detection finds one of these markers in the app-owned repo cache:</p>
+<ul>
+<li><strong>Vercel</strong> — <code>vercel.json</code>, <code>.vercel/project.json</code>, or a <code>package.json</code> script containing <code>vercel</code></li>
+<li><strong>Railway</strong> — <code>railway.toml</code>, <code>railway.json</code>, or <code>nixpacks.toml</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Automatic deployment healing</code></td>
+<td><code>false</code></td>
+<td>Queue post-merge deployment monitoring for detected Vercel or Railway repositories</td>
+</tr>
+<tr>
+<td><code>Deployment check delay (ms)</code></td>
+<td><code>60000</code></td>
+<td>Wait after merge before the first deployment status check</td>
+</tr>
+<tr>
+<td><code>Deployment check timeout (ms)</code></td>
+<td><code>600000</code></td>
+<td>Maximum time to wait for the deployment to reach <code>ready</code> or <code>error</code> before escalation</td>
+</tr>
+<tr>
+<td><code>Deployment check poll interval (ms)</code></td>
+<td><code>15000</code></td>
+<td>Poll cadence while the deployment is still building or deploying</td>
+</tr>
+</tbody></table>
+<p>These values map to <code>autoHealDeployments</code>, <code>deploymentCheckDelayMs</code>, <code>deploymentCheckTimeoutMs</code>, and <code>deploymentCheckPollIntervalMs</code> in <code>GET /api/config</code> and <code>PATCH /api/config</code>.</p>
+<p>Deployment healing also requires the matching platform CLI on the machine running Code Factory:</p>
+<ul>
+<li>Install and authenticate <code>vercel</code> to heal Vercel deployments.</li>
+<li>Install and authenticate <code>railway</code> to heal Railway deployments.</li>
+</ul>
+<p>Deployment session history is exposed through <code>GET /api/deployment-healing-sessions</code>, <code>GET /api/deployment-healing-sessions/:id</code>, and the matching MCP read tools. The dashboard settings page and MCP <code>update_config</code> tool do not yet expose these deployment-healing knobs on this branch.</p>
 <h2>Build &amp; Deploy</h2>
 <h3>Development</h3>
 <pre><code class="language-bash">npm run dev          # Start dev server with hot reload

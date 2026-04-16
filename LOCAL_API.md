@@ -545,6 +545,7 @@ Partially update the configuration.  Only the provided fields are changed.
   "autoResolveMergeConflicts": true,
   "autoCreateReleases": true,
   "autoUpdateDocs": true,
+  "includeRepositoryLinksInGitHubComments": true,
   "autoHealCI": false,
   "maxHealingAttemptsPerSession": 3,
   "maxHealingAttemptsPerFingerprint": 2,
@@ -837,6 +838,7 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   autoResolveMergeConflicts: boolean;
   autoCreateReleases: boolean;
   autoUpdateDocs: boolean;
+  includeRepositoryLinksInGitHubComments: boolean;
   autoHealCI: boolean;
   maxHealingAttemptsPerSession: number;
   maxHealingAttemptsPerFingerprint: number;

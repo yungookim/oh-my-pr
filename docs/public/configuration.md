@@ -55,9 +55,20 @@ The settings page in the dashboard provides a UI for:
 
 - **GitHub Token management** — Add, update, or rotate tokens.
 - **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
+- **PR comment branding** — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the `Posted by oh-my-pr` footer.
 - **CI healing** — Enable autonomous CI repair and tune retry/session limits.
 - **Deployment healing** — Not yet exposed in the dashboard; use `PATCH /api/config` for the deployment-healing keys listed below.
 - **Theme** — Toggle between light and dark mode.
+
+## PR Comment Branding
+
+Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, echoed `/codefactory` agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a `Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)` footer that links back to this repository.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Repository links in PR comments` | `true` | When enabled, babysitter comments render the app name as a Markdown link to the oh-my-pr repo and append the `Posted by oh-my-pr` footer. When disabled, comments reference `oh-my-pr` as plain text and omit the footer. |
+
+This toggle is available in the dashboard settings page and as `includeRepositoryLinksInGitHubComments` (boolean) in `GET /api/config`, `PATCH /api/config`, and the MCP `update_config` tool. Turning it off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.
 
 ## CI Healing Settings
 
