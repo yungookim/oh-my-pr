@@ -56,7 +56,7 @@ function TabStrip(props: { mode: ContextMode; active: boolean }) {
 
 export function ContextPane(props: ContextPaneProps) {
   const borderColor = props.active ? color.accent : color.muted;
-  const innerHeight = Math.max(2, props.height - 5);
+  const innerHeight = Math.max(2, (props.height ?? 8) - 5);
 
   return (
     <Box

@@ -10,6 +10,7 @@ import { PrListPane } from "./components/PrListPane";
 import { PrDetailPane } from "./components/PrDetailPane";
 import { ContextPane } from "./components/ContextPane";
 import { Footer } from "./components/Footer";
+import { OnboardingScreen } from "./components/OnboardingScreen";
 import { color, glyph } from "./theme";
 
 type AppProps = {
@@ -45,6 +46,8 @@ export default function App(props: AppProps) {
   const layoutMode = getLayoutMode(width);
 
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null);
+  const [onboardingValue, setOnboardingValue] = useState("");
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const snapshot = useRuntimeSnapshot(props.runtime, selectedPrId, props.refreshMs ?? 1500);
   const selection = useSelectionState({
     prCount: snapshot.prs.length,
@@ -76,6 +79,10 @@ export default function App(props: AppProps) {
     ? (selectedFeedbackExpanded ? ["Collapse", ...getFeedbackActions(selectedFeedback)] : getFeedbackActions(selectedFeedback))
     : [];
   const selectedActionIndex = Math.min(selection.feedbackActionIndex, Math.max(0, selectedFeedbackActions.length - 1));
+  const needsOnboarding = !snapshot.loading
+    && Boolean(snapshot.config)
+    && snapshot.config!.watchedRepos.length === 0
+    && snapshot.prs.length === 0;
 
   const setStatus = (message: string | null) => {
     setStatusMessage(message);
@@ -84,6 +91,22 @@ export default function App(props: AppProps) {
 
   const handleFailure = (error: unknown) => {
     setActionError(getErrorMessage(error));
+  };
+
+  const submitOnboarding = async () => {
+    const value = onboardingValue.trim();
+    if (!value) {
+      return;
+    }
+
+    try {
+      await props.runtime.addRepo(value);
+      setOnboardingError(null);
+      setOnboardingValue("");
+      setStatus("Repository added");
+    } catch (error) {
+      setOnboardingError(getErrorMessage(error));
+    }
   };
 
   const applyFeedbackAction = async (item: FeedbackItem) => {
@@ -204,6 +227,31 @@ export default function App(props: AppProps) {
   };
 
   useInput((input, key) => {
+    if (needsOnboarding) {
+      if (key.escape) {
+        setOnboardingValue("");
+        setOnboardingError(null);
+        return;
+      }
+
+      if (key.return) {
+        void submitOnboarding();
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        setOnboardingValue((current) => current.slice(0, -1));
+        setOnboardingError(null);
+        return;
+      }
+
+      if (!key.ctrl && !key.meta && input) {
+        setOnboardingValue((current) => `${current}${input}`);
+        setOnboardingError(null);
+      }
+      return;
+    }
+
     if (selection.inputMode !== "none") {
       if (key.escape) {
         selection.resetInput();
@@ -373,6 +421,11 @@ export default function App(props: AppProps) {
           <Text color={color.info}>{glyph.running} </Text>
           <Text>Loading TUI…</Text>
         </Box>
+      ) : needsOnboarding ? (
+        <OnboardingScreen
+          value={onboardingValue}
+          errorMessage={onboardingError}
+        />
       ) : (
         <Box flexDirection={layoutMode === "stacked" ? "column" : "row"}>
           <PrListPane
@@ -407,11 +460,13 @@ export default function App(props: AppProps) {
           />
         </Box>
       )}
-      <Footer
-        contextMode={selection.contextMode}
-        statusMessage={statusMessage}
-        errorMessage={actionError ?? snapshot.error}
-      />
+      {!needsOnboarding && (
+        <Footer
+          contextMode={selection.contextMode}
+          statusMessage={statusMessage}
+          errorMessage={actionError ?? snapshot.error}
+        />
+      )}
     </Box>
   );
 }

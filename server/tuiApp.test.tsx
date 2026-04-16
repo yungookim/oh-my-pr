@@ -48,3 +48,95 @@ test("tui shows a compact warning when the terminal is too narrow", async () => 
     ui.unmount();
   }
 });
+
+test("tui blocks on onboarding when no watched repos or tracked PRs exist", async () => {
+  const runtime = createTestRuntime({
+    prs: [],
+    repos: [],
+    config: {
+      ...(await createTestRuntime().getConfig()),
+      watchedRepos: [],
+    },
+  });
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
+
+  try {
+    await flush();
+    assert.match(ui.lastFrame() ?? "", /First-time setup/);
+    assert.match(ui.lastFrame() ?? "", /owner\/repo/);
+    assert.doesNotMatch(ui.lastFrame() ?? "", /Pull Requests/);
+  } finally {
+    ui.unmount();
+  }
+});
+
+test("tui onboarding shows inline validation errors for invalid repo slugs", async () => {
+  const runtime = createTestRuntime({
+    prs: [],
+    repos: [],
+    config: {
+      ...(await createTestRuntime().getConfig()),
+      watchedRepos: [],
+    },
+  });
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
+
+  try {
+    await flush();
+    ui.stdin.write("not a slug");
+    await flush();
+    ui.stdin.write("\r");
+    await flush();
+
+    assert.match(ui.lastFrame() ?? "", /Invalid repository/);
+    assert.match(ui.lastFrame() ?? "", /First-time setup/);
+  } finally {
+    ui.unmount();
+  }
+});
+
+test("tui onboarding transitions into the main UI after adding a repo", async () => {
+  const runtime = createTestRuntime({
+    prs: [],
+    repos: [],
+    config: {
+      ...(await createTestRuntime().getConfig()),
+      watchedRepos: [],
+    },
+  });
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
+
+  try {
+    await flush();
+    ui.stdin.write("acme/widgets");
+    await flush();
+    ui.stdin.write("\r");
+    await flush();
+    await flush();
+
+    assert.match(ui.lastFrame() ?? "", /Pull Requests/);
+    assert.match(ui.lastFrame() ?? "", /No tracked PRs\./);
+  } finally {
+    ui.unmount();
+  }
+});
+
+test("tui skips onboarding when tracked PRs already exist even without watched repos", async () => {
+  const config = await createTestRuntime().getConfig();
+  const runtime = createTestRuntime({
+    repos: [],
+    config: {
+      ...config,
+      watchedRepos: [],
+    },
+  });
+  const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
+
+  try {
+    await flush();
+    assert.match(ui.lastFrame() ?? "", /Pull Requests/);
+    assert.doesNotMatch(ui.lastFrame() ?? "", /First-time setup/);
+  } finally {
+    ui.unmount();
+  }
+});
