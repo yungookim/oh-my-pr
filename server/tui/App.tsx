@@ -318,7 +318,7 @@ export default function App(props: AppProps) {
     }
 
     return {
-      list: undefined,
+      list: width,
       context: undefined,
     };
   }, [layoutMode]);

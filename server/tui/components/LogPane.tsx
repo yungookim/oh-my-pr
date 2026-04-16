@@ -25,7 +25,7 @@ export function LogPane(props: { logs: LogEntry[] }) {
   return (
     <Box flexDirection="column">
       {rows.map((log) => {
-        const tone = LEVEL_TONE[log.level] ?? color.muted;
+        const tone = LEVEL_TONE[log.level.toLowerCase()] ?? color.muted;
         return (
           <Text key={log.id}>
             <Text color={color.muted}>{formatTime(log.timestamp)} </Text>
