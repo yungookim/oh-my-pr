@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-16 - Mirror durable repo rules into AGENTS.md, not just lessons
+- Pattern: After the email-privacy push failure, I recorded the rule in `tasks/lessons.md`, but the user had to explicitly ask me to add it to `AGENTS.md` too so future sessions would see it in the main repo instructions.
+- Rule: When a correction establishes a durable repository workflow rule, update both `tasks/lessons.md` and `AGENTS.md` if the rule belongs in the repo-level operating instructions.
+- Prevention checklist:
+  - Ask whether the new rule is session-local or repository-wide before closing the correction.
+  - If the rule changes how future commits, pushes, reviews, or workflows should work in this repo, add it to `AGENTS.md` in the most relevant section.
+  - Keep `tasks/lessons.md` for the failure pattern and `AGENTS.md` for the operational rule so both memory layers stay aligned.
+
 ## 2026-04-16 - Assume GitHub email privacy is enforced for this repo
 - Pattern: I created the branch commit with `yungookim@gmail.com`, and GitHub rejected the push for `oh-my-pr` with `GH007` because the repository/account privacy settings do not allow publishing that private email.
 - Rule: In `oh-my-pr`, prepare commits with the GitHub noreply email by default before pushing branches unless the user explicitly wants a different public identity.
