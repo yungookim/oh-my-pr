@@ -1,5 +1,14 @@
 # Lessons Learned
 
+## 2026-04-16 - Diagnose Ink alignment bugs with rendered display width, not string length
+- Pattern: The user reported broken TUI alignment from a screenshot, and I initially investigated pane sizing before confirming the real drift came from wide-glyph truncation and fragmented `Text` rows wrapping unexpectedly.
+- Rule: For Ink/TUI alignment bugs, reproduce the rendered frame and audit truncation, padding, and wrapping with terminal display-width semantics before changing pane dimensions.
+- Prevention checklist:
+  - Render or inspect the actual terminal frame before assuming the problem is pane sizing.
+  - Use display-width-aware helpers for any truncation or padding path that can include wide glyphs or Unicode separators.
+  - Keep tab strips, log rows, and footer hints on explicitly truncated single lines instead of relying on default wrapping.
+  - Add a regression test that covers long metadata plus wide glyphs in the affected pane.
+
 ## 2026-04-16 - Surface requested onboarding guidance explicitly
 - Pattern: I cleaned up onboarding around checklist steps and install actions, but the user then had to ask for the multi-provider AI review tip and provider links to be shown explicitly during onboarding.
 - Rule: When onboarding touches a setup capability that depends on third-party providers, include the requested explanatory tip and concrete provider links in the onboarding UI instead of assuming buttons or inferred context are sufficient.
