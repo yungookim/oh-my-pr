@@ -9,6 +9,7 @@ import type {
   ReleaseRun,
   RuntimeState,
   SocialChangelog,
+  WatchedRepo,
 } from "@shared/schema";
 import { z } from "zod";
 import { addPRSchema, askQuestionSchema } from "@shared/schema";
@@ -79,7 +80,9 @@ export type AppRuntime = {
   getRuntimeSnapshot(): Promise<RuntimeSnapshot>;
   setDrainMode(input: DrainModeParams): Promise<RuntimeSnapshot & { drained?: boolean }>;
   listRepos(): Promise<string[]>;
+  listRepoSettings(): Promise<WatchedRepo[]>;
   addRepo(repoInput: string): Promise<{ repo: string }>;
+  updateRepoSettings(repoInput: string, updates: Partial<Omit<WatchedRepo, "repo">>): Promise<WatchedRepo>;
   syncRepos(): Promise<{ ok: true }>;
   listPRs(view?: "active" | "archived"): Promise<PR[]>;
   getPR(id: string): Promise<PR | null>;
@@ -357,6 +360,25 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       ])).sort((a, b) => a.localeCompare(b));
     },
 
+    async listRepoSettings() {
+      const [configuredRepos, prs] = await Promise.all([
+        storage.listRepoSettings(),
+        storage.getPRs(),
+      ]);
+      const byRepo = new Map(configuredRepos.map((repo) => [repo.repo, repo]));
+
+      for (const pr of prs) {
+        if (!byRepo.has(pr.repo)) {
+          byRepo.set(pr.repo, {
+            repo: pr.repo,
+            autoCreateReleases: true,
+          });
+        }
+      }
+
+      return Array.from(byRepo.values()).sort((a, b) => a.repo.localeCompare(b.repo));
+    },
+
     async addRepo(repoInput) {
       const parsedRepo = parseRepoSlug(repoInput);
       if (!parsedRepo) {
@@ -374,6 +396,18 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       void runWatcher();
       notifyChange();
       return { repo: canonical };
+    },
+
+    async updateRepoSettings(repoInput, updates) {
+      const parsedRepo = parseRepoSlug(repoInput);
+      if (!parsedRepo) {
+        throw new AppRuntimeError(400, "Invalid repository. Use owner/repo or https://github.com/owner/repo");
+      }
+
+      const canonical = formatRepoSlug(parsedRepo);
+      const updated = await storage.updateRepoSettings(canonical, updates);
+      notifyChange();
+      return updated;
     },
 
     async syncRepos() {

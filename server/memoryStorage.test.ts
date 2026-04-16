@@ -456,6 +456,40 @@ describe("MemStorage", () => {
     });
   });
 
+  describe("repo settings", () => {
+    it("creates default repo settings for watched repos", async () => {
+      await storage.updateConfig({
+        watchedRepos: ["acme/widgets"],
+      });
+
+      const repos = await storage.listRepoSettings();
+      assert.deepEqual(repos, [{
+        repo: "acme/widgets",
+        autoCreateReleases: true,
+      }]);
+    });
+
+    it("persists repo-specific release settings and keeps watched repos aligned", async () => {
+      const updated = await storage.updateRepoSettings("acme/widgets", {
+        autoCreateReleases: false,
+      });
+
+      assert.deepEqual(updated, {
+        repo: "acme/widgets",
+        autoCreateReleases: false,
+      });
+
+      const config = await storage.getConfig();
+      assert.deepEqual(config.watchedRepos, ["acme/widgets"]);
+
+      const repo = await storage.getRepoSettings("acme/widgets");
+      assert.deepEqual(repo, {
+        repo: "acme/widgets",
+        autoCreateReleases: false,
+      });
+    });
+  });
+
   // ── Background jobs ─────────────────────────────────────
 
   describe("background jobs", () => {

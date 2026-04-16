@@ -414,3 +414,9 @@ export const configSchema = z.object({
   ignoredBots: z.array(z.string()),
 });
 export type Config = z.infer<typeof configSchema>;
+
+export const watchedRepoSchema = z.object({
+  repo: z.string(),
+  autoCreateReleases: z.boolean(),
+});
+export type WatchedRepo = z.infer<typeof watchedRepoSchema>;

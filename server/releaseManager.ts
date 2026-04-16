@@ -192,6 +192,16 @@ export class ReleaseManager {
           return skipped ?? undefined;
         }
 
+        const repoSettings = await this.storage.getRepoSettings(run.repo);
+        if (repoSettings && !repoSettings.autoCreateReleases) {
+          const skipped = await this.storage.updateReleaseRun(id, {
+            status: "skipped",
+            decisionReason: `Automatic release creation is disabled for ${run.repo}`,
+            completedAt: new Date().toISOString(),
+          });
+          return skipped ?? undefined;
+        }
+
         await this.storage.updateReleaseRun(id, {
           status: "evaluating",
           error: null,

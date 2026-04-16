@@ -830,6 +830,52 @@ test("syncAndBabysitTrackedRepos respects autoCreateReleases when a merged PR is
   assert.equal(queued.length, 0);
 });
 
+test("syncAndBabysitTrackedRepos respects repo-level autoCreateReleases when a merged PR is archived", async () => {
+  const storage = new MemStorage();
+  const queued: Array<Record<string, string | number>> = [];
+  await storage.updateRepoSettings("octo/example", { autoCreateReleases: false });
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Example PR",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService(),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    {
+      enqueueMergedPullReleaseEvaluation: async (input) => {
+        queued.push(input as Record<string, string | number>);
+      },
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(queued.length, 0);
+  assert.ok(logs.some((log) => log.message.includes("auto-release is disabled for octo/example")));
+});
+
 test("syncAndBabysitTrackedRepos skips release evaluation when merged PR metadata is incomplete", async () => {
   const storage = new MemStorage();
   const queued: Array<Record<string, string | number>> = [];

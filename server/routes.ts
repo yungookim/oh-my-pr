@@ -84,10 +84,26 @@ export async function registerRoutes(
     res.json(await runtime.listRepos());
   });
 
+  app.get("/api/repos/settings", async (_req, res) => {
+    res.json(await runtime.listRepoSettings());
+  });
+
   app.post("/api/repos", async (req, res) => {
     try {
       const { repo } = z.object({ repo: z.string().min(1) }).parse(req.body);
       res.status(201).json(await runtime.addRepo(repo));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
+  });
+
+  app.patch("/api/repos/settings", async (req, res) => {
+    try {
+      const { repo, autoCreateReleases } = z.object({
+        repo: z.string().min(1),
+        autoCreateReleases: z.boolean(),
+      }).parse(req.body);
+      res.json(await runtime.updateRepoSettings(repo, { autoCreateReleases }));
     } catch (error: unknown) {
       sendAppAwareError(res, error);
     }

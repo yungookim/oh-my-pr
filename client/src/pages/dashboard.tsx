@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { queryClient, apiRequest, fetchJson } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
-import type { Config, FeedbackItem, HealingSession, LogEntry, PR, PRQuestion } from "@shared/schema";
+import type { Config, FeedbackItem, HealingSession, LogEntry, PR, PRQuestion, WatchedRepo } from "@shared/schema";
 import { OnboardingPanel } from "@/components/OnboardingPanel";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
@@ -694,8 +694,8 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const { data: repos = [] } = useQuery<string[]>({
-    queryKey: ["/api/repos"],
+  const { data: repos = [] } = useQuery<WatchedRepo[]>({
+    queryKey: ["/api/repos/settings"],
     refetchInterval: 5000,
   });
 
@@ -725,6 +725,7 @@ export default function Dashboard() {
     },
     onSuccess: (data: PR) => {
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       setAddUrl("");
       setSelectedPRId(data.id);
@@ -784,7 +785,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/repos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
     },
     onError: (error) => {
@@ -798,13 +799,35 @@ export default function Dashboard() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/repos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       setAddRepo("");
     },
     onError: (error) => {
       showMutationError("Could not watch repository", error);
+    },
+  });
+
+  const updateRepoSettingsMutation = useMutation({
+    mutationFn: async ({
+      repo,
+      autoCreateReleases,
+    }: {
+      repo: string;
+      autoCreateReleases: boolean;
+    }) => {
+      const res = await apiRequest("PATCH", "/api/repos/settings", {
+        repo,
+        autoCreateReleases,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
+    },
+    onError: (error) => {
+      showMutationError("Could not update repository settings", error);
     },
   });
 
@@ -999,16 +1022,36 @@ export default function Dashboard() {
                   ) : (
                     <div className="space-y-1 text-[12px]">
                       {repos.map((repo) => (
-                        <a
-                          key={repo}
-                          href={getRepoHref(repo)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          data-testid={`tracked-repo-${repo.replace("/", "-")}`}
-                          className="block break-all text-foreground/75 underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
+                        <div
+                          key={repo.repo}
+                          className="flex items-center justify-between gap-3 border border-border/60 px-2 py-1.5"
                         >
-                          {repo}
-                        </a>
+                          <a
+                            href={getRepoHref(repo.repo)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid={`tracked-repo-${repo.repo.replace("/", "-")}`}
+                            className="min-w-0 break-all text-foreground/75 underline decoration-border underline-offset-2 transition-colors hover:text-foreground"
+                          >
+                            {repo.repo}
+                          </a>
+                          <label className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={repo.autoCreateReleases}
+                              onChange={(e) =>
+                                updateRepoSettingsMutation.mutate({
+                                  repo: repo.repo,
+                                  autoCreateReleases: e.target.checked,
+                                })
+                              }
+                              disabled={updateRepoSettingsMutation.isPending}
+                              data-testid={`tracked-repo-auto-release-${repo.repo.replace("/", "-")}`}
+                              className="accent-foreground"
+                            />
+                            Auto-release
+                          </label>
+                        </div>
                       ))}
                     </div>
                   )}

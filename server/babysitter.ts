@@ -1075,6 +1075,9 @@ export class PRBabysitter {
     }
 
     const config = await this.storage.getConfig();
+    const repoSettingsByRepo = new Map(
+      (await this.storage.listRepoSettings()).map((repo) => [repo.repo, repo]),
+    );
     const octokit = await this.github.buildOctokit(config);
 
     const tracked = await this.storage.getPRs();
@@ -1130,54 +1133,61 @@ export class PRBabysitter {
             phase: "watcher",
           });
 
+          const repoAutoCreateReleases = repoSettingsByRepo.get(repoSlug)?.autoCreateReleases ?? true;
           if (closeState?.merged && this.releaseManager && config.autoCreateReleases) {
-            const baseBranch = closeState.baseRef.trim();
-            const triggerMergeSha = closeState.mergeCommitSha || closeState.headSha;
-            const triggerMergedAt = closeState.mergedAt || closeState.closedAt;
-            if (!baseBranch || !triggerMergeSha || !triggerMergedAt) {
-              const missingReleaseMetadata = [
-                !baseBranch ? "a base branch" : null,
-                !triggerMergeSha ? "a commit SHA" : null,
-                !triggerMergedAt ? "a merge timestamp" : null,
-              ].filter((value): value is string => Boolean(value));
-              await this.storage.addLog(
-                pr.id,
-                "warn",
-                `PR #${pr.number} was merged, but release evaluation was not queued because GitHub did not return ${missingReleaseMetadata.join(" and ")}.`,
-                {
-                  phase: "watcher",
-                  metadata: {
-                    baseBranch,
-                    headSha: closeState.headSha,
-                    mergeCommitSha: closeState.mergeCommitSha,
-                    mergedAt: closeState.mergedAt,
-                    closedAt: closeState.closedAt,
-                  },
-                },
-              );
+            if (!repoAutoCreateReleases) {
+              await this.storage.addLog(pr.id, "info", `PR #${pr.number} was merged, but auto-release is disabled for ${repoSlug}`, {
+                phase: "watcher",
+              });
             } else {
-              try {
-                await this.releaseManager.enqueueMergedPullReleaseEvaluation({
-                  repo: repoSlug,
-                  baseBranch,
-                  triggerPrNumber: closeState.number,
-                  triggerPrTitle: closeState.title,
-                  triggerPrUrl: closeState.url,
-                  triggerMergeSha,
-                  triggerMergedAt,
-                });
-
-                await this.storage.addLog(pr.id, "info", `PR #${pr.number} was merged — queued release evaluation`, {
-                  phase: "watcher",
-                  metadata: {
-                    baseBranch,
-                    triggerMergeSha,
+              const baseBranch = closeState.baseRef.trim();
+              const triggerMergeSha = closeState.mergeCommitSha || closeState.headSha;
+              const triggerMergedAt = closeState.mergedAt || closeState.closedAt;
+              if (!baseBranch || !triggerMergeSha || !triggerMergedAt) {
+                const missingReleaseMetadata = [
+                  !baseBranch ? "a base branch" : null,
+                  !triggerMergeSha ? "a commit SHA" : null,
+                  !triggerMergedAt ? "a merge timestamp" : null,
+                ].filter((value): value is string => Boolean(value));
+                await this.storage.addLog(
+                  pr.id,
+                  "warn",
+                  `PR #${pr.number} was merged, but release evaluation was not queued because GitHub did not return ${missingReleaseMetadata.join(" and ")}.`,
+                  {
+                    phase: "watcher",
+                    metadata: {
+                      baseBranch,
+                      headSha: closeState.headSha,
+                      mergeCommitSha: closeState.mergeCommitSha,
+                      mergedAt: closeState.mergedAt,
+                      closedAt: closeState.closedAt,
+                    },
                   },
-                });
-              } catch (error) {
-                await this.storage.addLog(pr.id, "warn", `PR #${pr.number} was merged, but release evaluation could not be queued: ${summarizeUnknownError(error)}`, {
-                  phase: "watcher",
-                });
+                );
+              } else {
+                try {
+                  await this.releaseManager.enqueueMergedPullReleaseEvaluation({
+                    repo: repoSlug,
+                    baseBranch,
+                    triggerPrNumber: closeState.number,
+                    triggerPrTitle: closeState.title,
+                    triggerPrUrl: closeState.url,
+                    triggerMergeSha,
+                    triggerMergedAt,
+                  });
+
+                  await this.storage.addLog(pr.id, "info", `PR #${pr.number} was merged — queued release evaluation`, {
+                    phase: "watcher",
+                    metadata: {
+                      baseBranch,
+                      triggerMergeSha,
+                    },
+                  });
+                } catch (error) {
+                  await this.storage.addLog(pr.id, "warn", `PR #${pr.number} was merged, but release evaluation could not be queued: ${summarizeUnknownError(error)}`, {
+                    phase: "watcher",
+                  });
+                }
               }
             }
           } else if (closeState && !closeState.merged) {

@@ -226,6 +226,44 @@ test("ReleaseManager reuses an active release row and the durable process job", 
   assert.equal(await manager.waitForIdle(), true);
 });
 
+test("ReleaseManager skips queued runs when repo-level autoCreateReleases is disabled", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig(makeConfig({
+    watchedRepos: ["yungookim/oh-my-pr"],
+  }));
+  await storage.updateRepoSettings("yungookim/oh-my-pr", {
+    autoCreateReleases: false,
+  });
+
+  let evaluateCalls = 0;
+  const { manager } = createQueuedManager({
+    storage,
+    evaluateRelease: async (): Promise<ReleaseEvaluationDecision> => {
+      evaluateCalls += 1;
+      return {
+        shouldRelease: true,
+        reason: "Should not run",
+        bump: "patch",
+        title: "Unexpected release",
+        notes: "Should not be generated.",
+      };
+    },
+  });
+
+  const queuedRun = await storage.createReleaseRun(makeReleaseRun({
+    status: "detected",
+    error: null,
+    completedAt: null,
+  }));
+
+  const processed = await manager.processReleaseRun(queuedRun.id);
+
+  assert.ok(processed);
+  assert.equal(processed?.status, "skipped");
+  assert.equal(processed?.decisionReason, "Automatic release creation is disabled for yungookim/oh-my-pr");
+  assert.equal(evaluateCalls, 0);
+});
+
 test("ReleaseManager retryReleaseRun resets state and enqueues the durable process job", async () => {
   const storage = new MemStorage();
   await storage.updateConfig(makeConfig());

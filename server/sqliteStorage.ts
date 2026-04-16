@@ -1,7 +1,7 @@
 import { mkdirSync } from "fs";
 import { DatabaseSync } from "node:sqlite";
 import type { SQLInputValue } from "node:sqlite";
-import { backgroundJobStatusEnum, docsAssessmentSchema, feedbackStatusEnum } from "@shared/schema";
+import { backgroundJobStatusEnum, docsAssessmentSchema, feedbackStatusEnum, watchedRepoSchema } from "@shared/schema";
 import type {
   AgentRun,
   AgentRunStatus,
@@ -27,6 +27,7 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  WatchedRepo,
 } from "@shared/schema";
 import {
   applyBackgroundJobUpdate,
@@ -114,6 +115,11 @@ type PRRow = {
   watch_enabled: number;
   docs_assessment_json: string | null;
   added_at: string;
+};
+
+type WatchedRepoRow = {
+  repo: string;
+  auto_create_releases: number;
 };
 
 type FeedbackItemRow = {
@@ -478,7 +484,8 @@ export class SqliteStorage implements IStorage {
       );
 
       CREATE TABLE IF NOT EXISTS watched_repos (
-        repo TEXT PRIMARY KEY
+        repo TEXT PRIMARY KEY,
+        auto_create_releases INTEGER NOT NULL DEFAULT 1
       );
 
       CREATE TABLE IF NOT EXISTS prs (
@@ -762,6 +769,7 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("config", "deployment_check_delay_ms", "INTEGER NOT NULL DEFAULT 60000");
     this.ensureColumn("config", "deployment_check_timeout_ms", "INTEGER NOT NULL DEFAULT 600000");
     this.ensureColumn("config", "deployment_check_poll_interval_ms", "INTEGER NOT NULL DEFAULT 15000");
+    this.ensureColumn("watched_repos", "auto_create_releases", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "watch_enabled", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "docs_assessment_json", "TEXT");
 
@@ -825,6 +833,9 @@ export class SqliteStorage implements IStorage {
 
   private writeConfig(config: Config): void {
     this.withWriteTransaction(() => {
+      const watchedRepoSettings = new Map(
+        this.getWatchedRepoRows().map((row) => [row.repo, row.auto_create_releases]),
+      );
       const legacyModelValue = (
         this.get<{ model?: string }>("SELECT model FROM config WHERE id = 1")
       )?.model ?? LEGACY_CONFIG_MODEL_PLACEHOLDER;
@@ -903,14 +914,30 @@ export class SqliteStorage implements IStorage {
 
       this.exec("DELETE FROM watched_repos");
       for (const repo of config.watchedRepos) {
-        this.run("INSERT INTO watched_repos (repo) VALUES (?)", repo);
+        this.run(
+          "INSERT INTO watched_repos (repo, auto_create_releases) VALUES (?, ?)",
+          repo,
+          watchedRepoSettings.get(repo) ?? 1,
+        );
       }
     });
   }
 
+  private parseWatchedRepoRow(row: WatchedRepoRow): WatchedRepo {
+    return watchedRepoSchema.parse({
+      repo: row.repo,
+      autoCreateReleases: Boolean(row.auto_create_releases ?? 1),
+    });
+  }
+
+  private getWatchedRepoRows(): WatchedRepoRow[] {
+    return this.all<WatchedRepoRow>(
+      "SELECT repo, auto_create_releases FROM watched_repos ORDER BY repo ASC",
+    );
+  }
+
   private getWatchedRepos(): string[] {
-    const rows = this.all<{ repo: string }>("SELECT repo FROM watched_repos ORDER BY repo ASC");
-    return rows.map((row) => row.repo);
+    return this.getWatchedRepoRows().map((row) => row.repo);
   }
 
   private parsePRRow(row: PRRow, feedbackItems: FeedbackItem[]): PR {
@@ -1484,6 +1511,48 @@ export class SqliteStorage implements IStorage {
     const current = await this.getConfig();
     const next = applyConfigUpdate(current, updates);
     this.writeConfig(next);
+    return next;
+  }
+
+  async listRepoSettings(): Promise<WatchedRepo[]> {
+    return this.getWatchedRepoRows().map((row) => this.parseWatchedRepoRow(row));
+  }
+
+  async getRepoSettings(repo: string): Promise<WatchedRepo | undefined> {
+    const row = this.get<WatchedRepoRow>(
+      "SELECT repo, auto_create_releases FROM watched_repos WHERE repo = ?",
+      repo,
+    );
+    return row ? this.parseWatchedRepoRow(row) : undefined;
+  }
+
+  async updateRepoSettings(
+    repo: string,
+    updates: Partial<Omit<WatchedRepo, "repo">>,
+  ): Promise<WatchedRepo> {
+    const existing = (await this.getRepoSettings(repo)) ?? {
+      repo,
+      autoCreateReleases: true,
+    };
+    const next = watchedRepoSchema.parse({
+      ...existing,
+      ...updates,
+      repo,
+    });
+
+    this.withWriteTransaction(() => {
+      this.run(
+        `
+          INSERT INTO watched_repos (repo, auto_create_releases)
+          VALUES (?, ?)
+          ON CONFLICT(repo) DO UPDATE SET
+            auto_create_releases = excluded.auto_create_releases
+        `,
+        next.repo,
+        Number(next.autoCreateReleases),
+      );
+    });
+
     return next;
   }
 
