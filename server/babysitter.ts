@@ -58,6 +58,9 @@ import {
 
 const DEFAULT_GIT_USER_NAME = "PR Babysitter";
 const DEFAULT_GIT_USER_EMAIL = "pr-babysitter@local";
+const APP_REPOSITORY_URL = "https://github.com/yungookim/oh-my-pr";
+const APP_REPOSITORY_LINK = `[oh-my-pr](${APP_REPOSITORY_URL})`;
+export const APP_COMMENT_FOOTER = `Posted by ${APP_REPOSITORY_LINK}`;
 const AUDIT_TOKEN_PATTERN = /\bcodefactory-feedback:[^\s<>()[\]{}"']+/g;
 
 type GitHubService = {
@@ -691,7 +694,7 @@ function buildFeedbackFollowUpBody(headSha: string, item: FeedbackItem, agentSum
     parts.push("", agentSummary);
   }
 
-  parts.push("", item.auditToken);
+  parts.push("", `<!-- ${item.auditToken} -->`, "", APP_COMMENT_FOOTER);
 
   return parts.join("\n");
 }
@@ -718,7 +721,7 @@ function formatAgentCommandGitHubComment(agent: CodingAgent, prompt: string): st
   const fence = buildCodeFence(prompt);
   return [
     CODEFACTORY_COMMENT_MARKER,
-    `\ud83e\udd16 **CodeFactory** dispatched \`${agent}\` with the following prompt:`,
+    `\ud83e\udd16 **${APP_REPOSITORY_LINK}** dispatched \`${agent}\` with the following prompt:`,
     "",
     "<details>",
     "<summary>Agent prompt (click to expand)</summary>",
@@ -728,11 +731,32 @@ function formatAgentCommandGitHubComment(agent: CodingAgent, prompt: string): st
     fence.close,
     "",
     "</details>",
+    "",
+    APP_COMMENT_FOOTER,
   ].join("\n");
 }
 
 function appendStatusLine(existingBody: string, line: string): string {
-  return existingBody ? `${existingBody}\n${line}` : line;
+  const bodyWithoutFooter = removeAppCommentFooter(existingBody);
+  return withAppCommentFooter(bodyWithoutFooter ? `${bodyWithoutFooter}\n${line}` : line);
+}
+
+function removeAppCommentFooter(body: string): string {
+  if (body === APP_COMMENT_FOOTER) {
+    return "";
+  }
+
+  const suffix = `\n\n${APP_COMMENT_FOOTER}`;
+  if (body.endsWith(suffix)) {
+    return body.slice(0, -suffix.length);
+  }
+
+  return body;
+}
+
+function withAppCommentFooter(body: string): string {
+  const bodyWithoutFooter = removeAppCommentFooter(body);
+  return bodyWithoutFooter ? `${bodyWithoutFooter}\n\n${APP_COMMENT_FOOTER}` : APP_COMMENT_FOOTER;
 }
 
 function formatCommand(command: string, args: string[]): string {
@@ -1809,7 +1833,7 @@ export class PRBabysitter {
         });
 
         if (isCodeFactoryComment(item.body)) {
-          const reason = "CodeFactory-authored agent command comment; no code change required";
+          const reason = "oh-my-pr-authored agent command comment; no code change required";
           evaluatedItems.set(item.id, applyEvaluationDecision(item, false, reason));
           await queueLog(pr.id, "info", `Ignored self-authored agent command comment ${item.id}`, {
             phase: "evaluate.comments",
@@ -1873,7 +1897,7 @@ export class PRBabysitter {
               octokit,
               parsedPr,
               item,
-              STATUS_MESSAGES.accepted,
+              withAppCommentFooter(STATUS_MESSAGES.accepted),
             );
             if (ref) {
               statusReplies.set(item.id, ref);
@@ -2823,13 +2847,15 @@ export class PRBabysitter {
           // Alert the user by posting a comment on the PR.
           try {
             const alertBody = [
-              "## \u26a0\ufe0f CodeFactory CI Alert",
+              `## \u26a0\ufe0f ${APP_REPOSITORY_LINK} CI Alert`,
               "",
               `The agent pushed changes (commit \`${headShaForFollowUp.slice(0, 7)}\`), but CI/CD checks are still failing:`,
               "",
               ...ciResult.failures.map((f) => `- **${f.context}**: ${f.description}${f.targetUrl ? ` ([details](${f.targetUrl}))` : ""}`),
               "",
               "Manual investigation may be required.",
+              "",
+              APP_COMMENT_FOOTER,
             ].join("\n");
             await this.github.postPRComment(octokit, parsedPr, alertBody);
           } catch (error) {
