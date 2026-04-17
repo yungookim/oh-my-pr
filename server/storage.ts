@@ -21,6 +21,7 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  WatchedRepo,
 } from "@shared/schema";
 export { MemStorage } from "./memoryStorage";
 import { SqliteStorage } from "./sqliteStorage";
@@ -57,6 +58,9 @@ export interface IStorage {
   // Config
   getConfig(): Promise<Config>;
   updateConfig(updates: Partial<Config>): Promise<Config>;
+  listRepoSettings(): Promise<WatchedRepo[]>;
+  getRepoSettings(repo: string): Promise<WatchedRepo | undefined>;
+  updateRepoSettings(repo: string, updates: Partial<Omit<WatchedRepo, "repo">>): Promise<WatchedRepo>;
 
   // CI healing
   getHealingSession(id: string): Promise<HealingSession | undefined>;

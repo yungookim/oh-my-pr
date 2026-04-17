@@ -21,17 +21,19 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  WatchedRepo,
 } from "@shared/schema";
 import {
-  applyConfigUpdate,
   applyBackgroundJobUpdate,
+  applyConfigUpdate,
   applyDeploymentHealingSessionUpdate,
-  applyPRQuestionUpdate,
-  applyPRUpdate,
   applyHealingAttemptUpdate,
   applyHealingSessionUpdate,
+  applyPRQuestionUpdate,
+  applyPRUpdate,
   applyReleaseRunUpdate,
   applySocialChangelogUpdate,
+  applyWatchedRepoUpdate,
   createDeploymentHealingSession,
   createLogEntry,
   createBackgroundJob,
@@ -67,6 +69,7 @@ export class MemStorage implements IStorage {
   private socialChangelogs: Map<string, SocialChangelog> = new Map();
   private backgroundJobs: Map<string, BackgroundJob> = new Map();
   private deploymentHealingSessions: Map<string, DeploymentHealingSession> = new Map();
+  private repoSettings: Map<string, WatchedRepo> = new Map();
 
   private cloneHealingSession(session: HealingSession): HealingSession {
     return { ...session };
@@ -202,7 +205,58 @@ export class MemStorage implements IStorage {
 
   async updateConfig(updates: Partial<Config>): Promise<Config> {
     this.config = applyConfigUpdate(this.config, updates);
+    this.syncRepoSettings();
     return { ...this.config };
+  }
+
+  async listRepoSettings(): Promise<WatchedRepo[]> {
+    return Array.from(this.repoSettings.values())
+      .sort((a, b) => a.repo.localeCompare(b.repo))
+      .map((entry) => ({ ...entry }));
+  }
+
+  async getRepoSettings(repo: string): Promise<WatchedRepo | undefined> {
+    const entry = this.repoSettings.get(repo);
+    return entry ? { ...entry } : undefined;
+  }
+
+  async updateRepoSettings(
+    repo: string,
+    updates: Partial<Omit<WatchedRepo, "repo">>,
+  ): Promise<WatchedRepo> {
+    if (!this.config.watchedRepos.includes(repo)) {
+      this.config = applyConfigUpdate(this.config, {
+        watchedRepos: [...this.config.watchedRepos, repo].sort((a, b) => a.localeCompare(b)),
+      });
+    }
+
+    const existing = this.repoSettings.get(repo) ?? {
+      repo,
+      autoCreateReleases: true,
+    };
+    const next = applyWatchedRepoUpdate(existing, updates);
+    this.repoSettings.set(repo, next);
+    this.syncRepoSettings();
+    return { ...next };
+  }
+
+  private syncRepoSettings(): void {
+    const watchedRepos = new Set(this.config.watchedRepos);
+
+    for (const repo of Array.from(watchedRepos)) {
+      if (!this.repoSettings.has(repo)) {
+        this.repoSettings.set(repo, {
+          repo,
+          autoCreateReleases: true,
+        });
+      }
+    }
+
+    for (const repo of Array.from(this.repoSettings.keys())) {
+      if (!watchedRepos.has(repo)) {
+        this.repoSettings.delete(repo);
+      }
+    }
   }
 
   async getHealingSession(id: string): Promise<HealingSession | undefined> {

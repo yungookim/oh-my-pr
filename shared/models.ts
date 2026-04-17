@@ -14,6 +14,7 @@ import {
   prSchema,
   releaseRunSchema,
   socialChangelogSchema,
+  watchedRepoSchema,
 } from "./schema";
 import type {
   AgentRun,
@@ -31,6 +32,7 @@ import type {
   PRQuestion,
   ReleaseRun,
   SocialChangelog,
+  WatchedRepo,
 } from "./schema";
 
 // ── PR ───────────────────────────────────────────────────────────────────────
@@ -338,5 +340,16 @@ export function applyConfigUpdate(existing: Config, updates: Partial<Config>): C
     watchedRepos: updates.watchedRepos ?? existing.watchedRepos,
     trustedReviewers: updates.trustedReviewers ?? existing.trustedReviewers,
     ignoredBots: updates.ignoredBots ?? existing.ignoredBots,
+  });
+}
+
+export function applyWatchedRepoUpdate(
+  existing: WatchedRepo,
+  updates: Partial<Omit<WatchedRepo, "repo">>,
+): WatchedRepo {
+  return watchedRepoSchema.parse({
+    ...existing,
+    ...updates,
+    repo: existing.repo,
   });
 }

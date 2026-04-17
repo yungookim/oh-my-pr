@@ -85,6 +85,13 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     healingCooldownMs: 123456,
     watchedRepos: ["alex-morgan-o/lolodex"],
   });
+  await first.updateRepoSettings("alex-morgan-o/lolodex", {
+    autoCreateReleases: false,
+  });
+  await first.updateConfig({
+    pollIntervalMs: 45000,
+    watchedRepos: ["alex-morgan-o/lolodex"],
+  });
   await first.updateRuntimeState({
     drainMode: true,
     drainRequestedAt: "2026-03-18T10:00:00.000Z",
@@ -188,6 +195,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
 
   const second = new SqliteStorage(root);
   const config = await second.getConfig();
+  const repoSettings = await second.getRepoSettings("alex-morgan-o/lolodex");
   const runtime = await second.getRuntimeState();
   const reloadedPr = await second.getPR(pr.id);
   const run = await second.getAgentRun("run-1");
@@ -205,6 +213,10 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(config.maxConcurrentHealingRuns, 2);
   assert.equal(config.healingCooldownMs, 123456);
   assert.deepEqual(config.watchedRepos, ["alex-morgan-o/lolodex"]);
+  assert.deepEqual(repoSettings, {
+    repo: "alex-morgan-o/lolodex",
+    autoCreateReleases: false,
+  });
   assert.equal(runtime.drainMode, true);
   assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
   assert.equal(runtime.drainReason, "planned update");
@@ -277,6 +289,36 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
     });
   } finally {
     db.close();
+    storage.close();
+  }
+});
+
+test("SqliteStorage updateRepoSettings tracks a previously untracked repo", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  try {
+    const before = await storage.getConfig();
+    assert.deepEqual(before.watchedRepos, []);
+
+    const updated = await storage.updateRepoSettings("acme/widgets", {
+      autoCreateReleases: false,
+    });
+
+    assert.deepEqual(updated, {
+      repo: "acme/widgets",
+      autoCreateReleases: false,
+    });
+
+    const after = await storage.getConfig();
+    assert.deepEqual(after.watchedRepos, ["acme/widgets"]);
+
+    const repo = await storage.getRepoSettings("acme/widgets");
+    assert.deepEqual(repo, {
+      repo: "acme/widgets",
+      autoCreateReleases: false,
+    });
+  } finally {
     storage.close();
   }
 });

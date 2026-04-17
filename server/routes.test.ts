@@ -146,6 +146,54 @@ test("POST /api/repos/sync enqueues a durable sync_watched_repos job", async () 
   }
 });
 
+test("GET/PATCH /api/repos/settings exposes repo-level release settings", async () => {
+  const harness = await createHarness();
+  await harness.storage.updateConfig({
+    watchedRepos: ["acme/widgets"],
+  });
+
+  try {
+    const initialResponse = await fetch(`${harness.baseUrl}/api/repos/settings`);
+    assert.equal(initialResponse.status, 200);
+    const initial = await initialResponse.json() as Array<{
+      repo: string;
+      autoCreateReleases: boolean;
+    }>;
+    assert.deepEqual(initial, [{
+      repo: "acme/widgets",
+      autoCreateReleases: true,
+    }]);
+
+    const updateResponse = await fetch(`${harness.baseUrl}/api/repos/settings`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        repo: "acme/widgets",
+        autoCreateReleases: false,
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+    const updated = await updateResponse.json() as {
+      repo: string;
+      autoCreateReleases: boolean;
+    };
+    assert.deepEqual(updated, {
+      repo: "acme/widgets",
+      autoCreateReleases: false,
+    });
+
+    const persisted = await harness.storage.getRepoSettings("acme/widgets");
+    assert.deepEqual(persisted, {
+      repo: "acme/widgets",
+      autoCreateReleases: false,
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
 test("GET /api/healing-sessions returns persisted healing sessions", async () => {
   const harness = await createHarness();
 

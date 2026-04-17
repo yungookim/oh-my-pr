@@ -150,9 +150,18 @@ export class TestTuiRuntime implements TuiRuntime {
   }
 
   async addRepo(repo: string): Promise<{ repo: string }> {
-    this.state.repos = Array.from(new Set([...this.state.repos, repo]));
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+      throw new Error("Invalid repository. Use the owner/repo format.");
+    }
+
+    const normalized = repo.toLowerCase();
+    this.state.repos = Array.from(new Set([...this.state.repos, normalized]));
+    this.state.config = {
+      ...this.state.config,
+      watchedRepos: Array.from(new Set([...this.state.config.watchedRepos, normalized])),
+    };
     this.emitChange();
-    return { repo };
+    return { repo: normalized };
   }
 
   async addPR(url: string): Promise<PR> {
