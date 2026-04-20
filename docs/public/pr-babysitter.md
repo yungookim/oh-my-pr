@@ -6,7 +6,13 @@ The PR Babysitter is oh-my-pr's core feature — an autonomous system that conti
 
 ### 1. Repository Watching
 
-When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests. It tracks:
+When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests that match that repo's watch scope:
+
+- **My PRs only** — the default mode. The watcher auto-discovers only PRs authored by the authenticated GitHub user.
+- **My PRs + teammates** — team-wide mode. The watcher auto-discovers every open PR in the repository.
+- **Direct PR URLs** — PRs you add explicitly by URL stay tracked regardless of the repo's watch scope.
+
+For tracked PRs, the babysitter syncs:
 
 - New PRs opened against the repository.
 - Review comments and change requests on existing PRs.
@@ -107,6 +113,7 @@ When a PR branch falls behind the base branch, oh-my-pr can automatically:
 
 You can control babysitter behavior per repository:
 
+- **Repo watch scope** — Choose `My PRs only` (default) or `My PRs + teammates` for auto-discovery.
 - **Poll interval** — How often to check for new reviews (default: 60 seconds).
 - **Auto-dispatch** — Whether to automatically dispatch agents or require approval.
 - **Agent preference** — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.

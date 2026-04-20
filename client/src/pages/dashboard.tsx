@@ -58,6 +58,25 @@ function formatPollInterval(pollIntervalMs?: number): string {
   return `${seconds}s`;
 }
 
+const WATCH_SCOPE_OPTIONS = [
+  { value: "mine", label: "My PRs only" },
+  { value: "team", label: "My PRs + teammates" },
+] as const;
+
+type WatchScope = (typeof WATCH_SCOPE_OPTIONS)[number]["value"];
+type RepoSettings = WatchedRepo & {
+  ownPrsOnly?: boolean;
+};
+type RepoSettingsUpdate = {
+  repo: string;
+  autoCreateReleases?: boolean;
+  ownPrsOnly?: boolean;
+};
+
+function getWatchScope(ownPrsOnly?: boolean): WatchScope {
+  return ownPrsOnly === false ? "team" : "mine";
+}
+
 const HEALING_TONE_CLASSES: Record<"neutral" | "info" | "warning" | "success" | "danger", string> = {
   neutral: "border-border text-muted-foreground",
   info: "border-foreground text-foreground",
@@ -90,6 +109,58 @@ function WatchPausedIndicator() {
     <span className="border border-border px-1.5 py-0 text-[10px] uppercase tracking-wider text-muted-foreground">
       watch paused
     </span>
+  );
+}
+
+function WatchScopeControl({
+  value,
+  onChange,
+  disabled,
+  name,
+  testIdPrefix,
+  compact = false,
+}: {
+  value: WatchScope;
+  onChange: (value: WatchScope) => void;
+  disabled?: boolean;
+  name: string;
+  testIdPrefix: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Automatic PR tracking scope"
+      className={`flex flex-wrap gap-1 ${compact ? "" : "mt-1"}`}
+    >
+      {WATCH_SCOPE_OPTIONS.map((option) => {
+        const active = value === option.value;
+        return (
+          <label
+            key={option.value}
+            data-testid={`${testIdPrefix}-${option.value}`}
+            className={`cursor-pointer border px-2 text-[10px] transition-colors ${
+              compact ? "py-0.5" : "py-1"
+            } ${
+              active
+                ? "border-foreground bg-muted text-foreground"
+                : "border-border text-muted-foreground hover:text-foreground"
+            } ${disabled ? "cursor-not-allowed opacity-50" : ""} whitespace-nowrap`}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={active}
+              onChange={() => onChange(option.value)}
+              disabled={disabled}
+              className="sr-only"
+            />
+            {option.label}
+          </label>
+        );
+      })}
+    </div>
   );
 }
 
@@ -672,6 +743,7 @@ export default function Dashboard() {
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [addUrl, setAddUrl] = useState("");
   const [addRepo, setAddRepo] = useState("");
+  const [watchScope, setWatchScope] = useState<WatchScope>("mine");
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
 
   const { data: prs = [], isLoading } = useQuery<PR[]>({
@@ -695,7 +767,7 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const { data: repos = [] } = useQuery<WatchedRepo[]>({
+  const { data: repos = [] } = useQuery<RepoSettings[]>({
     queryKey: ["/api/repos/settings"],
     refetchInterval: 5000,
   });
@@ -794,41 +866,48 @@ export default function Dashboard() {
     },
   });
 
+  const updateRepoSettingsRequest = async (updates: RepoSettingsUpdate) => {
+    const res = await apiRequest("PATCH", "/api/repos/settings", updates);
+    return res.json();
+  };
+
+  const updateRepoSettingsMutation = useMutation({
+    mutationFn: updateRepoSettingsRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+    },
+    onError: (error) => {
+      showMutationError("Could not update repository settings", error);
+    },
+  });
+
   const addRepoMutation = useMutation({
-    mutationFn: async (repo: string) => {
+    mutationFn: async ({ repo }: { repo: string; watchScope: WatchScope }) => {
       const res = await apiRequest("POST", "/api/repos", { repo });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (data: { repo: string }, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       setAddRepo("");
+      setWatchScope("mine");
+
+      if (variables.watchScope === "team") {
+        try {
+          await updateRepoSettingsRequest({
+            repo: data.repo,
+            ownPrsOnly: false,
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
+        } catch (error) {
+          showMutationError("Repository added, but could not update tracking scope", error);
+        }
+      }
     },
     onError: (error) => {
       showMutationError("Could not watch repository", error);
-    },
-  });
-
-  const updateRepoSettingsMutation = useMutation({
-    mutationFn: async ({
-      repo,
-      autoCreateReleases,
-    }: {
-      repo: string;
-      autoCreateReleases: boolean;
-    }) => {
-      const res = await apiRequest("PATCH", "/api/repos/settings", {
-        repo,
-        autoCreateReleases,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
-    },
-    onError: (error) => {
-      showMutationError("Could not update repository settings", error);
     },
   });
 
@@ -982,7 +1061,10 @@ export default function Dashboard() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (addRepo.trim()) addRepoMutation.mutate(addRepo.trim());
+                  const repo = addRepo.trim();
+                  if (repo) {
+                    addRepoMutation.mutate({ repo, watchScope });
+                  }
                 }}
                 className="border-b border-border p-3"
               >
@@ -1003,6 +1085,18 @@ export default function Dashboard() {
                   >
                     Watch
                   </button>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Track automatically
+                  </div>
+                  <WatchScopeControl
+                    value={watchScope}
+                    onChange={setWatchScope}
+                    disabled={addRepoMutation.isPending}
+                    name="watch-scope"
+                    testIdPrefix="watch-scope"
+                  />
                 </div>
                 <div className="mt-3">
                   <div className="mb-1 flex items-center justify-between">
@@ -1026,7 +1120,7 @@ export default function Dashboard() {
                       {repos.map((repo) => (
                         <div
                           key={repo.repo}
-                          className="flex items-center justify-between gap-3 border border-border/60 px-2 py-1.5"
+                          className="space-y-2 border border-border/60 px-2 py-2"
                         >
                           <a
                             href={getRepoHref(repo.repo)}
@@ -1037,22 +1131,42 @@ export default function Dashboard() {
                           >
                             {repo.repo}
                           </a>
-                          <label className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                            <input
-                              type="checkbox"
-                              checked={repo.autoCreateReleases}
-                              onChange={(e) =>
-                                updateRepoSettingsMutation.mutate({
-                                  repo: repo.repo,
-                                  autoCreateReleases: e.target.checked,
-                                })
-                              }
-                              disabled={updateRepoSettingsMutation.isPending}
-                              data-testid={`tracked-repo-auto-release-${repo.repo.replace("/", "-")}`}
-                              className="accent-foreground"
-                            />
-                            Auto-release
-                          </label>
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Track automatically
+                              </div>
+                              <WatchScopeControl
+                                value={getWatchScope(repo.ownPrsOnly)}
+                                onChange={(value) =>
+                                  updateRepoSettingsMutation.mutate({
+                                    repo: repo.repo,
+                                    ownPrsOnly: value === "mine",
+                                  })
+                                }
+                                disabled={updateRepoSettingsMutation.isPending}
+                                name={`tracked-repo-scope-${repo.repo}`}
+                                testIdPrefix={`tracked-repo-scope-${repo.repo.replace("/", "-")}`}
+                                compact
+                              />
+                            </div>
+                            <label className="flex shrink-0 self-end items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                checked={repo.autoCreateReleases}
+                                onChange={(e) =>
+                                  updateRepoSettingsMutation.mutate({
+                                    repo: repo.repo,
+                                    autoCreateReleases: e.target.checked,
+                                  })
+                                }
+                                disabled={updateRepoSettingsMutation.isPending}
+                                data-testid={`tracked-repo-auto-release-${repo.repo.replace("/", "-")}`}
+                                className="accent-foreground"
+                              />
+                              Auto-release
+                            </label>
+                          </div>
                         </div>
                       ))}
                     </div>

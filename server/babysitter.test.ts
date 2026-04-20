@@ -143,6 +143,7 @@ function makeWatcherGitHubService(overrides?: Record<string, unknown>) {
     }),
     listFailingStatuses: async () => [],
     checkCISettled: async () => true,
+    getAuthenticatedLogin: async () => "octocat",
     listOpenPullsForRepo: async () => [],
     postFollowUpForFeedbackItem: async () => undefined,
     resolveReviewThread: async () => undefined,
@@ -3940,6 +3941,169 @@ test("syncAndBabysitTrackedRepos creates a healing session for failing watched P
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0]?.state, "awaiting_repair_slot");
   assert.equal(sessions[0]?.initialHeadSha, "abc123");
+});
+
+test("syncAndBabysitTrackedRepos auto-registers only the authenticated user's PRs by default", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    watchedRepos: ["alex-morgan-o/lolodex"],
+    autoUpdateDocs: false,
+  });
+
+  const queuedTargets: string[] = [];
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [
+        {
+          number: 106,
+          title: "My PR",
+          branch: "feature/mine",
+          author: "octocat",
+          url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+        },
+        {
+          number: 107,
+          title: "Teammate PR",
+          branch: "feature/teammate",
+          author: "teammate",
+          url: "https://github.com/alex-morgan-o/lolodex/pull/107",
+        },
+      ],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (_kind, targetId) => {
+      queuedTargets.push(targetId);
+      return {} as never;
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const prs = await storage.getPRs();
+  assert.equal(prs.length, 1);
+  assert.equal(prs[0]?.number, 106);
+  assert.equal(prs[0]?.author, "octocat");
+  assert.deepEqual(queuedTargets, [prs[0]!.id]);
+});
+
+test("syncAndBabysitTrackedRepos can include teammate PRs when repo setting disables own-only filtering", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    watchedRepos: ["alex-morgan-o/lolodex"],
+    autoUpdateDocs: false,
+  });
+  await storage.updateRepoSettings("alex-morgan-o/lolodex", {
+    ownPrsOnly: false,
+  });
+
+  const queuedTargets: string[] = [];
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [
+        {
+          number: 108,
+          title: "My PR",
+          branch: "feature/mine",
+          author: "octocat",
+          url: "https://github.com/alex-morgan-o/lolodex/pull/108",
+        },
+        {
+          number: 109,
+          title: "Teammate PR",
+          branch: "feature/teammate",
+          author: "teammate",
+          url: "https://github.com/alex-morgan-o/lolodex/pull/109",
+        },
+      ],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (_kind, targetId) => {
+      queuedTargets.push(targetId);
+      return {} as never;
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const prs = await storage.getPRs();
+  assert.equal(prs.length, 2);
+  assert.deepEqual(prs.map((pr) => pr.number).sort((a, b) => a - b), [108, 109]);
+  assert.equal(queuedTargets.length, 2);
+});
+
+test("syncAndBabysitTrackedRepos keeps explicitly tracked teammate PRs active when own-only filtering is enabled", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    watchedRepos: ["alex-morgan-o/lolodex"],
+    autoUpdateDocs: false,
+  });
+  await storage.updateRepoSettings("alex-morgan-o/lolodex", {
+    ownPrsOnly: true,
+  });
+
+  const tracked = await storage.addPR({
+    number: 110,
+    title: "Tracked teammate PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/teammate",
+    author: "teammate",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/110",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const queuedTargets: string[] = [];
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [
+        {
+          number: 110,
+          title: "Tracked teammate PR",
+          branch: "feature/teammate",
+          author: "teammate",
+          url: "https://github.com/alex-morgan-o/lolodex/pull/110",
+        },
+      ],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (_kind, targetId) => {
+      queuedTargets.push(targetId);
+      return {} as never;
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const updated = await storage.getPR(tracked.id);
+  assert.equal(updated?.status, "watching");
+  assert.deepEqual(queuedTargets, [tracked.id]);
 });
 
 test("syncAndBabysitTrackedRepos uses the injected clock for fallback healing snapshots", async () => {

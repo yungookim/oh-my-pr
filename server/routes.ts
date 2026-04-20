@@ -102,11 +102,16 @@ export async function registerRoutes(
 
   app.patch("/api/repos/settings", async (req, res) => {
     try {
-      const { repo, autoCreateReleases } = z.object({
+      const payload = z.object({
         repo: z.string().min(1),
-        autoCreateReleases: z.boolean(),
-      }).parse(req.body);
-      res.json(await runtime.updateRepoSettings(repo, { autoCreateReleases }));
+        autoCreateReleases: z.boolean().optional(),
+        ownPrsOnly: z.boolean().optional(),
+      }).refine(
+        (value) => value.autoCreateReleases !== undefined || value.ownPrsOnly !== undefined,
+        "At least one repository setting must be provided",
+      ).parse(req.body);
+      const { repo, ...updates } = payload;
+      res.json(await runtime.updateRepoSettings(repo, updates));
     } catch (error: unknown) {
       sendAppAwareError(res, error);
     }

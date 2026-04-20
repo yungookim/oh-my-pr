@@ -60,6 +60,20 @@ The settings page in the dashboard provides a UI for:
 - **Deployment healing** — Not yet exposed in the dashboard; use `PATCH /api/config` for the deployment-healing keys listed below.
 - **Theme** — Toggle between light and dark mode.
 
+## Repository Watch Settings
+
+Watched repositories also have repo-level settings exposed in the dashboard's repository list and through `GET /api/repos/settings` plus `PATCH /api/repos/settings`.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `ownPrsOnly` | `true` | Auto-discover only PRs authored by the authenticated GitHub user for that repo. This appears in the dashboard as **My PRs only**. |
+| `ownPrsOnly` | `false` | Auto-discover all open PRs in that repo. This appears in the dashboard as **My PRs + teammates**. |
+| `autoCreateReleases` | `true` | Keep release automation enabled for the repo when the rest of the release prerequisites are met. |
+
+New watched repos default to **My PRs only**. If you want team-wide tracking for a repository, switch it to **My PRs + teammates** in the dashboard or patch `ownPrsOnly: false` through `/api/repos/settings`.
+
+PRs added directly by URL stay tracked regardless of a repo's `ownPrsOnly` setting.
+
 ## App Update Banner
 
 On builds where `APP_VERSION` is a stable semver string, the dashboard calls

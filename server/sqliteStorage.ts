@@ -122,6 +122,7 @@ type PRRow = {
 type WatchedRepoRow = {
   repo: string;
   auto_create_releases: number;
+  own_prs_only: number;
 };
 
 type FeedbackItemRow = {
@@ -488,7 +489,8 @@ export class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS watched_repos (
         repo TEXT PRIMARY KEY,
-        auto_create_releases INTEGER NOT NULL DEFAULT 1
+        auto_create_releases INTEGER NOT NULL DEFAULT 1,
+        own_prs_only INTEGER NOT NULL DEFAULT 1
       );
 
       CREATE TABLE IF NOT EXISTS prs (
@@ -774,6 +776,7 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("config", "deployment_check_timeout_ms", "INTEGER NOT NULL DEFAULT 600000");
     this.ensureColumn("config", "deployment_check_poll_interval_ms", "INTEGER NOT NULL DEFAULT 15000");
     this.ensureColumn("watched_repos", "auto_create_releases", "INTEGER NOT NULL DEFAULT 1");
+    this.ensureColumn("watched_repos", "own_prs_only", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "watch_enabled", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "docs_assessment_json", "TEXT");
 
@@ -841,7 +844,7 @@ export class SqliteStorage implements IStorage {
   private writeConfig(config: Config): void {
     this.withWriteTransaction(() => {
       const watchedRepoSettings = new Map(
-        this.getWatchedRepoRows().map((row) => [row.repo, row.auto_create_releases]),
+        this.getWatchedRepoRows().map((row) => [row.repo, row]),
       );
       const legacyModelValue = (
         this.get<{ model?: string }>("SELECT model FROM config WHERE id = 1")
@@ -924,10 +927,12 @@ export class SqliteStorage implements IStorage {
 
       this.exec("DELETE FROM watched_repos");
       for (const repo of config.watchedRepos) {
+        const settings = watchedRepoSettings.get(repo);
         this.run(
-          "INSERT INTO watched_repos (repo, auto_create_releases) VALUES (?, ?)",
+          "INSERT INTO watched_repos (repo, auto_create_releases, own_prs_only) VALUES (?, ?, ?)",
           repo,
-          watchedRepoSettings.get(repo) ?? 1,
+          settings?.auto_create_releases ?? 1,
+          settings?.own_prs_only ?? 1,
         );
       }
     });
@@ -937,12 +942,13 @@ export class SqliteStorage implements IStorage {
     return {
       repo: row.repo,
       autoCreateReleases: Boolean(row.auto_create_releases),
+      ownPrsOnly: Boolean(row.own_prs_only ?? 1),
     };
   }
 
   private getWatchedRepoRows(): WatchedRepoRow[] {
     return this.all<WatchedRepoRow>(
-      "SELECT repo, auto_create_releases FROM watched_repos ORDER BY repo ASC",
+      "SELECT repo, auto_create_releases, own_prs_only FROM watched_repos ORDER BY repo ASC",
     );
   }
 
@@ -1530,7 +1536,7 @@ export class SqliteStorage implements IStorage {
 
   async getRepoSettings(repo: string): Promise<WatchedRepo | undefined> {
     const row = this.get<WatchedRepoRow>(
-      "SELECT repo, auto_create_releases FROM watched_repos WHERE repo = ?",
+      "SELECT repo, auto_create_releases, own_prs_only FROM watched_repos WHERE repo = ?",
       repo,
     );
     return row ? this.parseWatchedRepoRow(row) : undefined;
@@ -1543,19 +1549,22 @@ export class SqliteStorage implements IStorage {
     const existing = (await this.getRepoSettings(repo)) ?? {
       repo,
       autoCreateReleases: true,
+      ownPrsOnly: true,
     };
     const next = applyWatchedRepoUpdate(existing, updates);
 
     this.withWriteTransaction(() => {
       this.run(
         `
-          INSERT INTO watched_repos (repo, auto_create_releases)
-          VALUES (?, ?)
+          INSERT INTO watched_repos (repo, auto_create_releases, own_prs_only)
+          VALUES (?, ?, ?)
           ON CONFLICT(repo) DO UPDATE SET
-            auto_create_releases = excluded.auto_create_releases
+            auto_create_releases = excluded.auto_create_releases,
+            own_prs_only = excluded.own_prs_only
         `,
         next.repo,
         Number(next.autoCreateReleases),
+        Number(next.ownPrsOnly),
       );
     });
 

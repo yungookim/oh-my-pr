@@ -90,8 +90,8 @@ export function getOnboardingPanelState(status: OnboardingStatus) {
       id: "repo",
       title: "Track your first repository or PR",
       description: accessibleRepos.length > 0
-        ? `Watching ${accessibleRepos.length} accessible repo${accessibleRepos.length === 1 ? "" : "s"}.`
-        : "Use the Add PR or Watch form below. Adding a PR also adds its repository to the watch list.",
+        ? `Watching ${accessibleRepos.length} accessible repo${accessibleRepos.length === 1 ? "" : "s"}. Choose per repo whether to track only your PRs or your whole team.`
+        : "Use the Add PR or Watch form below. Adding a PR also adds its repository to the watch list, and watched repos let you choose whether to track only your PRs or the whole team.",
       complete: accessibleRepos.length > 0,
     },
     {
@@ -296,7 +296,7 @@ export function OnboardingPanel() {
 
                 {step.id === "repo" && !step.complete && (
                   <div className="pt-1 text-[12px] text-muted-foreground">
-                    The left sidebar is the real entry point. Use <span className="text-foreground">Add</span> for a PR URL or <span className="text-foreground">Watch</span> for an <InlineCode>owner/repo</InlineCode> slug.
+                    The left sidebar is the real entry point. Use <span className="text-foreground">Add</span> for a PR URL or <span className="text-foreground">Watch</span> for an <InlineCode>owner/repo</InlineCode> slug, then choose whether that watched repo should track only your PRs or your whole team.
                   </div>
                 )}
 

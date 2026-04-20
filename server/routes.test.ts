@@ -148,7 +148,7 @@ test("POST /api/repos/sync enqueues a durable sync_watched_repos job", async () 
   }
 });
 
-test("GET/PATCH /api/repos/settings exposes repo-level release settings", async () => {
+test("GET/PATCH /api/repos/settings exposes repo-level settings", async () => {
   const harness = await createHarness();
   await harness.storage.updateConfig({
     watchedRepos: ["acme/widgets"],
@@ -160,10 +160,12 @@ test("GET/PATCH /api/repos/settings exposes repo-level release settings", async 
     const initial = await initialResponse.json() as Array<{
       repo: string;
       autoCreateReleases: boolean;
+      ownPrsOnly: boolean;
     }>;
     assert.deepEqual(initial, [{
       repo: "acme/widgets",
       autoCreateReleases: true,
+      ownPrsOnly: true,
     }]);
 
     const updateResponse = await fetch(`${harness.baseUrl}/api/repos/settings`, {
@@ -174,22 +176,61 @@ test("GET/PATCH /api/repos/settings exposes repo-level release settings", async 
       body: JSON.stringify({
         repo: "acme/widgets",
         autoCreateReleases: false,
+        ownPrsOnly: false,
       }),
     });
     assert.equal(updateResponse.status, 200);
     const updated = await updateResponse.json() as {
       repo: string;
       autoCreateReleases: boolean;
+      ownPrsOnly: boolean;
     };
     assert.deepEqual(updated, {
       repo: "acme/widgets",
       autoCreateReleases: false,
+      ownPrsOnly: false,
     });
 
     const persisted = await harness.storage.getRepoSettings("acme/widgets");
     assert.deepEqual(persisted, {
       repo: "acme/widgets",
       autoCreateReleases: false,
+      ownPrsOnly: false,
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("PATCH /api/repos/settings can update only ownPrsOnly", async () => {
+  const harness = await createHarness();
+  await harness.storage.updateRepoSettings("acme/widgets", {
+    autoCreateReleases: false,
+    ownPrsOnly: true,
+  });
+
+  try {
+    const updateResponse = await fetch(`${harness.baseUrl}/api/repos/settings`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        repo: "acme/widgets",
+        ownPrsOnly: false,
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+
+    const updated = await updateResponse.json() as {
+      repo: string;
+      autoCreateReleases: boolean;
+      ownPrsOnly: boolean;
+    };
+    assert.deepEqual(updated, {
+      repo: "acme/widgets",
+      autoCreateReleases: false,
+      ownPrsOnly: false,
     });
   } finally {
     await harness.close();

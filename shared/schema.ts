@@ -419,6 +419,7 @@ export type Config = z.infer<typeof configSchema>;
 export const watchedRepoSchema = z.object({
   repo: z.string(),
   autoCreateReleases: z.boolean(),
+  ownPrsOnly: z.boolean(),
 });
 export type WatchedRepo = z.infer<typeof watchedRepoSchema>;
 

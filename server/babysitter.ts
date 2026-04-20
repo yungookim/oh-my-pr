@@ -72,6 +72,7 @@ type GitHubService = {
   fetchPullCloseState?: typeof fetchPullCloseState;
   fetchPullSummary: typeof fetchPullSummary;
   fetchCheckSnapshotsForRef?: typeof fetchCheckSnapshotsForRef;
+  getAuthenticatedLogin?: (octokit: Awaited<ReturnType<typeof buildOctokit>>) => Promise<string | null>;
   listFailingStatuses: typeof listFailingStatuses;
   listMergedPullsToday?: typeof listMergedPullsToday; // optional — absent in test mocks
   listOpenPullsForRepo: typeof listOpenPullsForRepo;
@@ -113,6 +114,11 @@ const defaultGitHubService: GitHubService = {
   fetchFeedbackItemsForPR,
   fetchPullCloseState,
   fetchPullSummary,
+  getAuthenticatedLogin: async (octokit) => {
+    const { data } = await octokit.rest.users.getAuthenticated();
+    const login = data.login?.trim().toLowerCase();
+    return login ? login : null;
+  },
   listFailingStatuses,
   listMergedPullsToday,
   listOpenPullsForRepo,
@@ -1131,6 +1137,25 @@ export class PRBabysitter {
       ...tracked.map((pr) => pr.repo),
       ...config.watchedRepos,
     ]);
+    const needsAuthenticatedLogin = Array.from(repoCandidates).some(
+      (repo) => (repoSettingsByRepo.get(repo)?.ownPrsOnly ?? true),
+    );
+    let authenticatedLoginPromise: Promise<string | null> | null = null;
+    const getAuthenticatedLogin = async (): Promise<string | null> => {
+      if (!needsAuthenticatedLogin) {
+        return null;
+      }
+
+      if (!authenticatedLoginPromise) {
+        authenticatedLoginPromise = (this.github.getAuthenticatedLogin?.(octokit) ?? Promise.resolve(null))
+          .catch((error) => {
+            console.error("Failed to determine authenticated GitHub login for watcher filtering", error);
+            return null;
+          });
+      }
+
+      return authenticatedLoginPromise;
+    };
 
     const repos = Array.from(repoCandidates)
       .map((repo) => parseRepoSlug(repo))
@@ -1151,6 +1176,16 @@ export class PRBabysitter {
       }
 
       const openNumbers = new Set(openPulls.map((p) => p.number));
+      const repoOwnPrsOnly = repoSettingsByRepo.get(repoSlug)?.ownPrsOnly ?? true;
+      const authenticatedLogin = repoOwnPrsOnly ? await getAuthenticatedLogin() : null;
+      const discoveryNumbers = new Set(
+        openPulls
+          .filter((pull) => !repoOwnPrsOnly || (
+            authenticatedLogin !== null
+            && pull.author.trim().toLowerCase() === authenticatedLogin
+          ))
+          .map((pull) => pull.number),
+      );
 
       // Archive tracked PRs that are no longer open on GitHub
       const trackedForRepo = tracked.filter((pr) => pr.repo === repoSlug);
@@ -1290,6 +1325,10 @@ export class PRBabysitter {
       for (const pull of openPulls) {
         let local = await this.storage.getPRByRepoAndNumber(repoSlug, pull.number);
         if (!local) {
+          if (!discoveryNumbers.has(pull.number)) {
+            continue;
+          }
+
           local = await this.storage.addPR({
             number: pull.number,
             title: pull.title,

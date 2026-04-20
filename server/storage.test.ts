@@ -87,6 +87,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   });
   await first.updateRepoSettings("alex-morgan-o/lolodex", {
     autoCreateReleases: false,
+    ownPrsOnly: false,
   });
   await first.updateConfig({
     pollIntervalMs: 45000,
@@ -216,6 +217,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.deepEqual(repoSettings, {
     repo: "alex-morgan-o/lolodex",
     autoCreateReleases: false,
+    ownPrsOnly: false,
   });
   assert.equal(runtime.drainMode, true);
   assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
@@ -303,11 +305,13 @@ test("SqliteStorage updateRepoSettings tracks a previously untracked repo", asyn
 
     const updated = await storage.updateRepoSettings("acme/widgets", {
       autoCreateReleases: false,
+      ownPrsOnly: false,
     });
 
     assert.deepEqual(updated, {
       repo: "acme/widgets",
       autoCreateReleases: false,
+      ownPrsOnly: false,
     });
 
     const after = await storage.getConfig();
@@ -317,6 +321,7 @@ test("SqliteStorage updateRepoSettings tracks a previously untracked repo", asyn
     assert.deepEqual(repo, {
       repo: "acme/widgets",
       autoCreateReleases: false,
+      ownPrsOnly: false,
     });
   } finally {
     storage.close();

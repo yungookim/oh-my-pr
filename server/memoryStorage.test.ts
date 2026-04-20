@@ -472,17 +472,20 @@ describe("MemStorage", () => {
       assert.deepEqual(repos, [{
         repo: "acme/widgets",
         autoCreateReleases: true,
+        ownPrsOnly: true,
       }]);
     });
 
     it("persists repo-specific release settings and keeps watched repos aligned", async () => {
       const updated = await storage.updateRepoSettings("acme/widgets", {
         autoCreateReleases: false,
+        ownPrsOnly: false,
       });
 
       assert.deepEqual(updated, {
         repo: "acme/widgets",
         autoCreateReleases: false,
+        ownPrsOnly: false,
       });
 
       const config = await storage.getConfig();
@@ -492,6 +495,7 @@ describe("MemStorage", () => {
       assert.deepEqual(repo, {
         repo: "acme/widgets",
         autoCreateReleases: false,
+        ownPrsOnly: false,
       });
     });
   });

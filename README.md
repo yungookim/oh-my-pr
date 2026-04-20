@@ -13,14 +13,14 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 
-Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI/CD logs, and gets your PR ready for merge to main. It uses your local Claude Code or Codex to address any issues identified in the PR or CI/CD pipeline and to ensure that any documentation is up to date. You can push a PR, walk away, and come back to a clean PR ready to be merged.
+Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI/CD logs, resolves conflicts, and gets your PR ready for merge to main. It uses your local Claude Code or Codex to address any issues identified in the PR or CI/CD pipeline and to ensure that any documentation is up to date. You can push a PR, walk away, and come back to a clean PR ready to be merged.
 
 <img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
 ## Features
 
-- Watch multiple repositories or add a single PR by URL.
-- Auto-register open PRs, archive closed or merged PRs, and keep syncing review activity.
+- Watch multiple repositories with a per-repo auto-discovery scope (`My PRs only` by default, or `My PRs + teammates`) or add a single PR by URL.
+- Auto-register matching open PRs from watched repos, archive closed or merged PRs, and keep syncing review activity.
 - Pause background automation for an individual tracked PR while keeping manual runs available.
 - Store PR state, background jobs, questions, release runs, logs, and social changelogs in SQLite with mirrored log files.
 - Queue repo sync, babysit/apply runs, PR questions, release processing, deployment healing, and social changelog generation in a durable SQLite-backed dispatcher that survives restarts.
@@ -38,13 +38,15 @@ Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI
 
 ## How It Works
 
-1. Add a repository to the watch list or register a PR directly by URL.
+1. Add a repository to the watch list or register a PR directly by URL. Watched repos default to `My PRs only`, and you can switch a repo to `My PRs + teammates` when you want team-wide discovery.
 2. The watcher enqueues a durable repo-sync job in SQLite.
-3. That sync job polls GitHub, auto-registers open PRs, syncs reviews and comments, archives PRs that closed upstream, records failing CI on the current head SHA, and queues babysitter runs for tracked PRs whose background watch is enabled.
+3. That sync job polls GitHub, auto-registers matching open PRs for each watched repo based on its watch scope, syncs reviews and comments, archives PRs that closed upstream, records failing CI on the current head SHA, and queues babysitter runs for tracked PRs whose background watch is enabled.
 4. Manual apply/babysit requests, PR questions, release processing, and social changelog generation go through the same durable queue before work executes in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
 5. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
 
 Repo sync, babysit/apply, PR Q&A, release processing, deployment healing, and social changelog generation all run through durable background jobs stored in `state.sqlite`. On startup the dispatcher reclaims expired job leases, and interrupted babysitter runs are resumed from stored run context when possible.
+
+PRs you register directly by URL stay tracked regardless of the watched repo's auto-discovery scope.
 
 ## CI Healing
 

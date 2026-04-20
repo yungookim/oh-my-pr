@@ -178,7 +178,7 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">Getting Started</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">Welcome to oh-my-pr — the autonomous PR babysitter that watches your repositories, triages review feedback, and dispatches AI agents to fix code.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">Welcome to oh-my-pr — the autonomous PR babysitter that watches the repositories and pull requests you choose, triages review feedback, and dispatches AI agents to fix code.</p>
 </header>
 
 <article class="doc-prose">
@@ -193,10 +193,10 @@
 <pre><code class="language-bash">npm install -g oh-my-pr
 </code></pre>
 <h2>Quick Start</h2>
-<h3>1. Start the dashboard</h3>
+<h3>1. Launch the terminal UI</h3>
 <pre><code class="language-bash">oh-my-pr
 </code></pre>
-<p>This launches the dashboard at <a href="http://localhost:5001">http://localhost:5001</a>.</p>
+<p>This opens the terminal UI. To start the web dashboard instead, run <code>oh-my-pr web</code> — it serves at <a href="http://localhost:5001">http://localhost:5001</a>.</p>
 <h3>Run from source</h3>
 <p>If you prefer to run from source instead:</p>
 <pre><code class="language-bash">git clone https://github.com/yungookim/oh-my-pr.git
@@ -208,17 +208,23 @@ npm run dev
 <ol>
 <li>Open the dashboard in your browser.</li>
 <li>Click <strong>Add Repository</strong> and paste the URL of a GitHub repository you manage.</li>
+<li>Choose <strong>Track automatically</strong>:<ul>
+<li><strong>My PRs only</strong> keeps the repo on the default scope and auto-discovers only PRs authored by your authenticated GitHub account.</li>
+<li><strong>My PRs + teammates</strong> switches the repo to team-wide discovery and auto-discovers every open PR in that repository.</li>
+</ul>
+</li>
 <li>Enter your GitHub Personal Access Token when prompted.</li>
 </ol>
 <h3>3. Watch oh-my-pr work</h3>
 <p>Once connected, oh-my-pr will:</p>
 <ul>
-<li><strong>Monitor</strong> open pull requests in real time.</li>
+<li><strong>Monitor</strong> matching open pull requests in real time based on each watched repo&#39;s scope.</li>
 <li><strong>Sync</strong> review comments and change requests.</li>
 <li><strong>Triage</strong> feedback into actionable tasks.</li>
 <li><strong>Dispatch</strong> AI agents (Claude Code or OpenAI Codex) to fix issues.</li>
 <li><strong>Push</strong> the fixes back to the PR branch.</li>
 </ul>
+<p>PRs added directly by URL are always tracked, even if the repo stays on <strong>My PRs only</strong>.</p>
 <h2>Desktop App</h2>
 <p>oh-my-pr is also available as a native desktop application powered by Tauri:</p>
 <pre><code class="language-bash">npm run tauri:dev    # Development
