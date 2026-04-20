@@ -23,6 +23,7 @@
    - [CI healing sessions](#ci-healing-sessions)
    - [Deployment healing sessions](#deployment-healing-sessions)
    - [Configuration](#configuration)
+   - [App updates](#app-updates)
    - [Agent models](#agent-models)
    - [Runtime & drain mode](#runtime--drain-mode)
    - [Social changelogs](#social-changelogs)
@@ -615,6 +616,43 @@ endpoint when changing the deployment-healing keys.
 
 ---
 
+### App updates
+
+#### `GET /api/app-update`
+
+Return the release-check result used by the dashboard update banner.
+
+The server reads the running app version from `APP_VERSION` and falls back to
+`"dev"` when unset. If the current version is a stable semver string, oh-my-pr
+checks the latest stable GitHub release for `yungookim/oh-my-pr`, ignores draft
+and prerelease releases, and compares the versions. If the current build is not
+semver or the GitHub release check fails, the endpoint returns a quiet fallback
+with `latestVersion: null`, the releases index URL, and `updateAvailable: false`.
+
+**Response** `200` — [AppUpdateStatus object](#appupdatestatus)
+
+**Example** `200` — newer release available
+```json
+{
+  "currentVersion": "1.0.0",
+  "latestVersion": "v1.1.0",
+  "latestReleaseUrl": "https://github.com/yungookim/oh-my-pr/releases/tag/v1.1.0",
+  "updateAvailable": true
+}
+```
+
+**Example** `200` — quiet fallback for a non-versioned build or failed check
+```json
+{
+  "currentVersion": "dev",
+  "latestVersion": null,
+  "latestReleaseUrl": "https://github.com/yungookim/oh-my-pr/releases",
+  "updateAvailable": false
+}
+```
+
+---
+
 ### Agent models
 
 #### `GET /api/agent-models`
@@ -907,6 +945,17 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   repo: string;               // "owner/repo"
   autoCreateReleases: boolean;
   ownPrsOnly: boolean;        // true => only auto-discover the authenticated user's PRs
+}
+```
+
+### AppUpdateStatus
+
+```typescript
+{
+  currentVersion: string;          // APP_VERSION or "dev"
+  latestVersion: string | null;    // latest stable GitHub release tag, e.g. "v1.1.0"
+  latestReleaseUrl: string;        // release page or releases index fallback
+  updateAvailable: boolean;        // true when latestVersion is newer than currentVersion
 }
 ```
 

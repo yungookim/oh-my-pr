@@ -8,6 +8,7 @@ import {
   type AppRuntimeDependencies,
   isAppRuntimeError,
 } from "./appRuntime";
+import { createAppUpdateChecker, type AppUpdateChecker } from "./appUpdate";
 import { GitHubIntegrationError } from "./github";
 
 function getErrorMessage(error: unknown): string {
@@ -42,6 +43,7 @@ function maskConfig<T extends { githubToken: string }>(config: T): T {
 
 export type RouteDependencies = AppRuntimeDependencies & {
   runtime?: AppRuntime;
+  appUpdateChecker?: AppUpdateChecker;
 };
 
 export async function registerRoutes(
@@ -50,6 +52,7 @@ export async function registerRoutes(
   dependencies: RouteDependencies = {},
 ): Promise<Server> {
   const runtime = dependencies.runtime ?? createAppRuntime(dependencies);
+  const appUpdateChecker = dependencies.appUpdateChecker ?? createAppUpdateChecker();
   await runtime.start();
 
   httpServer.on("close", () => {
@@ -293,6 +296,15 @@ export async function registerRoutes(
 
   app.get("/api/config", async (_req, res) => {
     res.json(maskConfig(await runtime.getConfig()));
+  });
+
+  app.get("/api/app-update", async (_req, res) => {
+    try {
+      const currentVersion = process.env.APP_VERSION || "dev";
+      res.json(await appUpdateChecker(currentVersion));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.get("/api/changelogs", async (_req, res) => {

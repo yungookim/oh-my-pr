@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { SocialChangelog } from "@shared/schema";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ export default function Changelogs() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <UpdateBanner />
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">

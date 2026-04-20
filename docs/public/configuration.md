@@ -74,6 +74,20 @@ New watched repos default to **My PRs only**. If you want team-wide tracking for
 
 PRs added directly by URL stay tracked regardless of a repo's `ownPrsOnly` setting.
 
+## App Update Banner
+
+On builds where `APP_VERSION` is a stable semver string, the dashboard calls
+`GET /api/app-update` and compares the running version to the latest stable
+GitHub release for `yungookim/oh-my-pr`. When a newer release exists, the
+dashboard shows an update banner with a link to the matching release page.
+
+Selecting `dismiss for now` stores a release-scoped key in browser
+`sessionStorage`, so the banner stays hidden only for the current browser
+session and only for that specific `latestVersion`. Opening a new browser
+session or publishing a newer release makes the banner eligible to appear
+again. If the app is running a non-semver build such as `dev`, or if the
+release check fails, the banner stays hidden and the API falls back quietly.
+
 ## PR Comment Branding
 
 Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, echoed `/codefactory` agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a `Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)` footer that links back to this repository.

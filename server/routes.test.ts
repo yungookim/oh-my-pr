@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";
-import type { NewPR } from "@shared/schema";
+import type { AppUpdateStatus, NewPR } from "@shared/schema";
 import { MemStorage } from "./memoryStorage";
+import type { RouteDependencies } from "./routes";
 import { registerRoutes } from "./routes";
 
 async function seedPR(storage: MemStorage, overrides: Partial<NewPR> = {}) {
@@ -26,7 +27,7 @@ async function seedPR(storage: MemStorage, overrides: Partial<NewPR> = {}) {
   });
 }
 
-async function createHarness(storage = new MemStorage()) {
+async function createHarness(storage = new MemStorage(), dependencies: Partial<RouteDependencies> = {}) {
   const app = express();
   app.use(express.json());
 
@@ -35,6 +36,7 @@ async function createHarness(storage = new MemStorage()) {
     storage,
     startBackgroundServices: false,
     startWatcher: false,
+    ...dependencies,
   });
 
   await new Promise<void>((resolve) => {
@@ -231,6 +233,33 @@ test("PATCH /api/repos/settings can update only ownPrsOnly", async () => {
       ownPrsOnly: false,
     });
   } finally {
+    await harness.close();
+  }
+});
+
+test("GET /api/app-update exposes the app update check result", async () => {
+  const originalVersion = process.env.APP_VERSION;
+  process.env.APP_VERSION = "1.0.0";
+  const expected: AppUpdateStatus = {
+    currentVersion: "1.0.0",
+    latestVersion: "v1.1.0",
+    latestReleaseUrl: "https://github.com/yungookim/oh-my-pr/releases/tag/v1.1.0",
+    updateAvailable: true,
+  };
+  const harness = await createHarness(new MemStorage(), {
+    appUpdateChecker: async (currentVersion) => ({
+      ...expected,
+      currentVersion,
+    }),
+  });
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/app-update`);
+    assert.equal(response.status, 200);
+    const payload = await response.json() as AppUpdateStatus;
+    assert.deepEqual(payload, expected);
+  } finally {
+    process.env.APP_VERSION = originalVersion;
     await harness.close();
   }
 });

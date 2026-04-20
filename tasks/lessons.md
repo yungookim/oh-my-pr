@@ -1,5 +1,13 @@
 # Lessons Learned
 
+## 2026-04-20 - Nail alert persistence and dismissal scope before shipping update notices
+- Pattern: I started toward a generic update alert before confirming whether the user wanted a one-time toast or a persistent banner with temporary dismissal.
+- Rule: When adding user-facing alerts or notices, confirm the persistence model and dismissal lifetime before implementation.
+- Prevention checklist:
+  - Classify each new alert as toast, session banner, or durable setting-backed notice before editing code.
+  - Ask whether dismissal should last for the current session, until the next version/change, or permanently.
+  - Keep the implementation aligned with the narrowest scope the user requested instead of defaulting to a broader persistence model.
+
 ## 2026-04-16 - Make visible automation/comment behavior user-configurable when reasonable
 - Pattern: I implemented repository-linked GitHub PR comment branding as always-on behavior, then the user corrected the requirement to allow turning it off in Settings.
 - Rule: When adding visible automation output behavior that changes how the product speaks on a user's behalf, decide before closing whether it should be user-configurable.

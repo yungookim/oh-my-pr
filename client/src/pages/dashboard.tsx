@@ -6,6 +6,7 @@ import { queryClient, apiRequest, fetchJson } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
 import type { Config, FeedbackItem, HealingSession, LogEntry, PR, PRQuestion, WatchedRepo } from "@shared/schema";
 import { OnboardingPanel } from "@/components/OnboardingPanel";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -912,6 +913,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <UpdateBanner />
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-label="PR Feedback Agent">

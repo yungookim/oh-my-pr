@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { toast } from "@/hooks/use-toast";
 import type { ReleaseRun } from "@shared/schema";
 
@@ -257,6 +258,7 @@ export default function Releases() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <UpdateBanner />
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-label="Release Management">

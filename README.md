@@ -31,6 +31,7 @@ Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI
 - Detect merge conflicts and optionally let the agent resolve them automatically.
 - Ask natural-language questions about any tracked PR from the dashboard or via MCP.
 - Configure trusted reviewers, ignored bots, polling, batching, run limits, and CI-healing retry budgets from settings.
+- Show a dashboard update banner for newer stable oh-my-pr releases, with a per-release dismissal that lasts for the current browser session.
 - Enable drain mode to stop claiming new queued work and optionally wait for active queue handlers to finish before deploys or upgrades.
 - Check onboarding status, install Claude or Codex review workflows, and generate social changelogs every 5 PRs merged to `main`.
 - Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.

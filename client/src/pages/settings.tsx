@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Config } from "@shared/schema";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
@@ -30,6 +31,7 @@ export default function Settings() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <UpdateBanner />
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-[11px] text-muted-foreground hover:text-foreground">
