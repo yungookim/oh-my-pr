@@ -250,6 +250,34 @@
 <li><strong>Deployment healing</strong> — Not yet exposed in the dashboard; use <code>PATCH /api/config</code> for the deployment-healing keys listed below.</li>
 <li><strong>Theme</strong> — Toggle between light and dark mode.</li>
 </ul>
+<h2>Repository Watch Settings</h2>
+<p>Watched repositories also have repo-level settings exposed in the dashboard&#39;s repository list and through <code>GET /api/repos/settings</code> plus <code>PATCH /api/repos/settings</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ownPrsOnly</code></td>
+<td><code>true</code></td>
+<td>Auto-discover only PRs authored by the authenticated GitHub user for that repo. This appears in the dashboard as <strong>My PRs only</strong>.</td>
+</tr>
+<tr>
+<td><code>ownPrsOnly</code></td>
+<td><code>false</code></td>
+<td>Auto-discover all open PRs in that repo. This appears in the dashboard as <strong>My PRs + teammates</strong>.</td>
+</tr>
+<tr>
+<td><code>autoCreateReleases</code></td>
+<td><code>true</code></td>
+<td>Keep release automation enabled for the repo when the rest of the release prerequisites are met.</td>
+</tr>
+</tbody></table>
+<p>New watched repos default to <strong>My PRs only</strong>. If you want team-wide tracking for a repository, switch it to <strong>My PRs + teammates</strong> in the dashboard or patch <code>ownPrsOnly: false</code> through <code>/api/repos/settings</code>.</p>
+<p>PRs added directly by URL stay tracked regardless of a repo&#39;s <code>ownPrsOnly</code> setting.</p>
 <h2>PR Comment Branding</h2>
 <p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, echoed <code>/codefactory</code> agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository.</p>
 <table>

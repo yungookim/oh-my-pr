@@ -178,13 +178,19 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">PR Babysitter</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is oh-my-pr&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing loops without manual intervention.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">The PR Babysitter is oh-my-pr&#39;s core feature — an autonomous system that continuously monitors your GitHub pull requests, takes action on review feedback, and can run bounded CI-healing and post-merge deployment-healing loops without manual intervention.</p>
 </header>
 
 <article class="doc-prose">
   <h2>How It Works</h2>
 <h3>1. Repository Watching</h3>
-<p>When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests. It tracks:</p>
+<p>When you add a repository to oh-my-pr, the babysitter begins polling for open pull requests that match that repo&#39;s watch scope:</p>
+<ul>
+<li><strong>My PRs only</strong> — the default mode. The watcher auto-discovers only PRs authored by the authenticated GitHub user.</li>
+<li><strong>My PRs + teammates</strong> — team-wide mode. The watcher auto-discovers every open PR in the repository.</li>
+<li><strong>Direct PR URLs</strong> — PRs you add explicitly by URL stay tracked regardless of the repo&#39;s watch scope.</li>
+</ul>
+<p>For tracked PRs, the babysitter syncs:</p>
 <ul>
 <li>New PRs opened against the repository.</li>
 <li>Review comments and change requests on existing PRs.</li>
@@ -249,6 +255,26 @@
 </ul>
 <p>Only <code>healable_in_branch</code> failures queue a dedicated repair attempt. Healing sessions move through explicit states such as <code>triaging</code>, <code>awaiting_repair_slot</code>, <code>repairing</code>, <code>awaiting_ci</code>, <code>verifying</code>, <code>healed</code>, <code>cooldown</code>, <code>blocked</code>, <code>escalated</code>, and <code>superseded</code>.</p>
 <p>The dashboard shows the latest session for each tracked PR, including the current state badge, attempt summary, latest fingerprint, reason text, and current head SHA. The local API exposes session history via <code>GET /api/healing-sessions</code> and <code>GET /api/healing-sessions/:id</code>.</p>
+<h3>6. Deployment Healing</h3>
+<p>When <code>autoHealDeployments</code> is enabled, the babysitter also inspects merged PRs for supported deployment markers and queues a durable <code>heal_deployment</code> job for eligible repositories. Platform detection currently supports:</p>
+<ul>
+<li><strong>Vercel</strong> — <code>vercel.json</code>, <code>.vercel/project.json</code>, or a <code>package.json</code> script containing <code>vercel</code></li>
+<li><strong>Railway</strong> — <code>railway.toml</code>, <code>railway.json</code>, or <code>nixpacks.toml</code></li>
+</ul>
+<p>For a detected platform, the deployment-healing flow is:</p>
+<ol>
+<li>Wait <code>deploymentCheckDelayMs</code> after merge so the deployment can appear upstream.</li>
+<li>Poll the platform CLI until the deployment reaches <code>ready</code>, reaches <code>error</code>, or <code>deploymentCheckTimeoutMs</code> elapses.</li>
+<li>If the deployment fails, capture the deployment logs and create a deployment-healing session.</li>
+<li>Run the configured coding agent from the merge SHA, push a <code>deploy-fix/&lt;platform&gt;-&lt;timestamp&gt;</code> branch, and open a follow-up PR back to the merged base branch.</li>
+<li>Mark the session as <code>fix_submitted</code> on success or <code>escalated</code> when monitoring times out or the repair attempt cannot be completed automatically.</li>
+</ol>
+<p>Deployment-healing sessions move through <code>monitoring</code>, <code>failed</code>, <code>fixing</code>, <code>fix_submitted</code>, and <code>escalated</code>. Operator visibility is currently API- and MCP-based via <code>GET /api/deployment-healing-sessions</code>, <code>GET /api/deployment-healing-sessions/:id</code>, <code>list_deployment_healing_sessions</code>, and <code>get_deployment_healing_session</code>; there is no dedicated dashboard panel yet.</p>
+<p>Deployment healing requires the matching platform CLI to be installed and authenticated on the same machine as oh-my-pr:</p>
+<ul>
+<li><code>vercel</code> for Vercel repositories</li>
+<li><code>railway</code> for Railway repositories</li>
+</ul>
 <h2>Feedback Lifecycle</h2>
 <p>Each feedback item moves through a defined state machine:</p>
 <pre><code>pending → triaged → dispatched → resolved
@@ -272,6 +298,7 @@
 <h2>Configuration</h2>
 <p>You can control babysitter behavior per repository:</p>
 <ul>
+<li><strong>Repo watch scope</strong> — Choose <code>My PRs only</code> (default) or <code>My PRs + teammates</code> for auto-discovery.</li>
 <li><strong>Poll interval</strong> — How often to check for new reviews (default: 60 seconds).</li>
 <li><strong>Auto-dispatch</strong> — Whether to automatically dispatch agents or require approval.</li>
 <li><strong>Agent preference</strong> — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.</li>

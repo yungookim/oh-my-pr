@@ -198,8 +198,8 @@ compiled output instead:
 
 | Tool name | Description |
 |-----------|-------------|
-| `list_repos` | List all watched repositories |
-| `add_repo` | Add a repo to the watch list |
+| `list_repos` | List watched repositories plus repos inferred from tracked PRs |
+| `add_repo` | Add a repo to the watch list (defaults to `My PRs only` discovery) |
 | `sync_repos` | Queue an immediate durable sync across all watched repos |
 | `list_prs` | List all tracked pull requests |
 | `list_archived_prs` | List archived (closed/merged) PRs |
@@ -247,11 +247,26 @@ Use `PATCH /api/config` to change `autoHealDeployments`,
 #### `GET /api/repos`
 
 Returns the union of explicitly watched repos and repos inferred from tracked PRs.
+Use `GET /api/repos/settings` when you need per-repo settings such as
+`ownPrsOnly`.
 
 **Response** `200`
 ```json
 ["owner/repo-a", "owner/repo-b"]
 ```
+
+---
+
+#### `GET /api/repos/settings`
+
+Returns repo-level settings for explicitly watched repos plus any repos inferred
+from currently tracked PRs.
+
+`ownPrsOnly: true` means the watcher auto-discovers only PRs authored by the
+authenticated GitHub user for that repo. `ownPrsOnly: false` enables team-wide
+discovery and auto-discovers all open PRs in the repo.
+
+**Response** `200` — array of [WatchedRepo objects](#watchedrepo)
 
 ---
 
@@ -265,10 +280,38 @@ Add a repository to the watch list.
 ```
 Accepts `"owner/repo"` slugs or full `https://github.com/owner/repo` URLs.
 
+New watched repos default to `ownPrsOnly: true` (`My PRs only`). To switch a
+repo to team-wide discovery, call `PATCH /api/repos/settings` after adding it.
+
 **Response** `201`
 ```json
 { "repo": "owner/repo" }
 ```
+
+---
+
+#### `PATCH /api/repos/settings`
+
+Update repo-level settings.
+
+`ownPrsOnly: true` keeps auto-discovery limited to PRs authored by the
+authenticated GitHub user. `ownPrsOnly: false` switches the repo to team-wide
+auto-discovery. Changing this setting does not remove PRs that were already
+tracked directly by URL.
+
+**Body**
+```json
+{
+  "repo": "owner/repo",
+  "ownPrsOnly": false,
+  "autoCreateReleases": true
+}
+```
+
+Provide `repo` plus one or both of `ownPrsOnly` and `autoCreateReleases`.
+
+**Response** `200` — updated [WatchedRepo object](#watchedrepo)
+**Response** `400` — invalid body or no settings provided
 
 ---
 
@@ -316,6 +359,9 @@ Get a single PR by its internal Code Factory ID.
 
 Register a GitHub PR by URL. Code Factory fetches the PR summary from GitHub,
 stores it, and queues an initial durable babysit run.
+
+This direct registration path is independent of watched-repo discovery scope,
+so the PR stays tracked even if its repo is configured as `ownPrsOnly: true`.
 
 **Body**
 ```json
@@ -851,6 +897,16 @@ Install the Code Factory code-review GitHub Actions workflow on a repository.
   watchedRepos: string[];
   trustedReviewers: string[];
   ignoredBots: string[];
+}
+```
+
+### WatchedRepo
+
+```typescript
+{
+  repo: string;               // "owner/repo"
+  autoCreateReleases: boolean;
+  ownPrsOnly: boolean;        // true => only auto-discover the authenticated user's PRs
 }
 ```
 

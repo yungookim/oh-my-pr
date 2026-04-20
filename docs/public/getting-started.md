@@ -1,6 +1,6 @@
 # Getting Started
 
-Welcome to oh-my-pr — the autonomous PR babysitter that watches your repositories, triages review feedback, and dispatches AI agents to fix code.
+Welcome to oh-my-pr — the autonomous PR babysitter that watches the repositories and pull requests you choose, triages review feedback, and dispatches AI agents to fix code.
 
 ## Prerequisites
 
@@ -41,17 +41,22 @@ npm run dev
 
 1. Open the dashboard in your browser.
 2. Click **Add Repository** and paste the URL of a GitHub repository you manage.
-3. Enter your GitHub Personal Access Token when prompted.
+3. Choose **Track automatically**:
+   - **My PRs only** keeps the repo on the default scope and auto-discovers only PRs authored by your authenticated GitHub account.
+   - **My PRs + teammates** switches the repo to team-wide discovery and auto-discovers every open PR in that repository.
+4. Enter your GitHub Personal Access Token when prompted.
 
 ### 3. Watch oh-my-pr work
 
 Once connected, oh-my-pr will:
 
-- **Monitor** open pull requests in real time.
+- **Monitor** matching open pull requests in real time based on each watched repo's scope.
 - **Sync** review comments and change requests.
 - **Triage** feedback into actionable tasks.
 - **Dispatch** AI agents (Claude Code or OpenAI Codex) to fix issues.
 - **Push** the fixes back to the PR branch.
+
+PRs added directly by URL are always tracked, even if the repo stays on **My PRs only**.
 
 ## Desktop App
 
