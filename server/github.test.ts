@@ -135,6 +135,46 @@ test("resolveGitHubAuthToken falls back to gh auth status when gh auth token is 
   });
 });
 
+test("resolveGitHubAuthToken reads the active gh auth status token regardless of line order", async () => {
+  await withoutGithubTokenEnv(async () => {
+    let callIndex = 0;
+    const token = await resolveGitHubAuthToken(config, {
+      ignoreCache: true,
+      runCommandFn: async (_command, args) => {
+        callIndex += 1;
+
+        if (callIndex === 1) {
+          assert.deepEqual(args, ["auth", "token"]);
+          return {
+            stdout: "",
+            stderr: "no oauth token found for github.com",
+            code: 1,
+          };
+        }
+
+        assert.deepEqual(args, ["auth", "status", "--hostname", "github.com", "--show-token"]);
+        return {
+          stdout: [
+            "github.com",
+            "  ✓ Logged in to github.com account inactive (keyring)",
+            "  - Token: gho_inactive_token   ",
+            "  - Active account: false",
+            "  ✓ Logged in to github.com account octo (keyring)",
+            "  - Token: gho_active_token   ",
+            "  - Active account: true",
+            "  - Token scopes: 'repo'",
+          ].join("\n"),
+          stderr: "",
+          code: 0,
+        };
+      },
+    });
+
+    assert.equal(token, "gho_active_token");
+    assert.equal(callIndex, 2);
+  });
+});
+
 test("buildOctokit retries once with gh auth when the saved github token gets 401", async () => {
   await withoutGithubTokenEnv(async () => {
     const authHeaders: string[] = [];
@@ -164,6 +204,38 @@ test("buildOctokit retries once with gh auth when the saved github token gets 40
 
     assert.equal(response.data.login, "octo");
     assert.deepEqual(authHeaders, ["token ghp_saved_token", "token gho_cli_token"]);
+  });
+});
+
+test("buildOctokit preserves per-request request options on gh auth retry", async () => {
+  await withoutGithubTokenEnv(async () => {
+    const controller = new AbortController();
+    const signals: Array<AbortSignal | null> = [];
+    const octokit = await buildOctokit(
+      { ...config, githubToken: "ghp_saved_token" },
+      {
+        ignoreCache: true,
+        runCommandFn: async () => ({ stdout: "gho_cli_token\n", stderr: "", code: 0 }),
+        requestFetch: async (_input, init) => {
+          signals.push(init?.signal ?? null);
+          const isFirst = signals.length === 1;
+          return new Response(
+            JSON.stringify(isFirst ? { message: "Bad credentials" } : { login: "octo" }),
+            {
+              status: isFirst ? 401 : 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        },
+      },
+    );
+
+    const response = await octokit.request("GET /user", {
+      request: { signal: controller.signal },
+    });
+
+    assert.equal(response.data.login, "octo");
+    assert.deepEqual(signals, [controller.signal, controller.signal]);
   });
 });
 
