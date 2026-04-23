@@ -91,10 +91,10 @@
   - Ask a scope question only when the named text maps to multiple equally plausible surfaces.
 
 ## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
-- Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
-- Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
+- Pattern: I framed a new PR-documentation feature as if it were about oh-my-pr's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
+- Rule: When designing or implementing oh-my-pr behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
 - Prevention checklist:
-  - Restate whether a request targets Code Factory's product behavior or this repository's internal workflow before proposing a design.
+  - Restate whether a request targets oh-my-pr's product behavior or this repository's internal workflow before proposing a design.
   - Validate that prompt contracts, defaults, and storage shape make sense for arbitrary user repositories, not just `README.md` or docs layout in this repo.
   - Avoid deriving product requirements from this repo's local docs/build pipeline unless the user explicitly wants repo-specific behavior.
   - Check whether the feature needs to generalize across heterogeneous repositories before choosing fixed file paths or heuristics.
@@ -322,3 +322,20 @@
   - Inventory existing images and diagrams and decide which are essential before deleting them.
   - If the goal is "more concise," default to shortening copy first and preserving high-signal visuals.
   - Call out any planned visual removals in the execution update when they are not explicitly requested.
+
+## 2026-04-22 - Keep core user-visible automation outcomes in simplified product docs
+- Pattern: I simplified the README structure correctly, but the user had to correct me to restore two core product behaviors: replying to PR comments and resolving threads on the user's behalf, and auto-creating GitHub releases for version-worthy changes.
+- Rule: When simplifying top-level product documentation, preserve the highest-value user-visible automation outcomes, not just the infrastructure and setup details.
+- Prevention checklist:
+  - Before finalizing a rewritten README, list the product's core "why this matters" behaviors and confirm each still appears near the top.
+  - Favor outcome-level bullets such as "replies on your behalf" and "creates releases automatically" over only implementation-level bullets such as queues, worktrees, or storage.
+  - Compare the rewritten feature summary against release docs, onboarding copy, and settings surfaces to catch dropped capabilities.
+  - Treat outbound automation and shipping automation as first-class behaviors in summaries because they answer common buyer objections.
+
+## 2026-04-22 - Keep the product screenshot above the README rationale section
+- Pattern: After simplifying the README, I removed the app screenshot from the top flow and the user had to correct me to keep it before `Why It Exists`.
+- Rule: When tightening the README for this repo, keep the main app screenshot in the top section as proof of the product before the rationale/details sections unless the user explicitly asks to remove or relocate it.
+- Prevention checklist:
+  - Treat the main app screenshot as part of the README narrative, not decorative filler.
+  - When reorganizing the top of the README, verify the order is pitch, product proof, then rationale.
+  - If I remove or relocate a high-signal screenshot, call it out explicitly before finalizing instead of assuming the user wants a text-only intro.

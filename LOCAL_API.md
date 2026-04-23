@@ -1,8 +1,8 @@
-# Code Factory — Local API & MCP Server
+# oh-my-pr — Local API & MCP Server
 
 > **Security notice**: Every API endpoint is restricted to the local machine.
 > Requests arriving from any non-loopback address are rejected with `HTTP 403`.
-> Code Factory is a **local-first** tool; never expose its port to the internet.
+> oh-my-pr is a **local-first** tool; never expose its port to the internet.
 
 ---
 
@@ -37,10 +37,10 @@
 
 ## Overview
 
-Code Factory runs an **Express HTTP server** (default port `5001`) that serves
+oh-my-pr runs an **Express HTTP server** (default port `5001`) that serves
 both its React dashboard and a machine-readable REST API.  The same API surface
 is also exposed as an **MCP (Model Context Protocol) server**, letting any
-MCP-compatible agent (Claude Desktop, OpenClaw, etc.) drive Code Factory through
+MCP-compatible agent (Claude Desktop, OpenClaw, etc.) drive oh-my-pr through
 structured tool calls without writing a single line of HTTP client code.
 
 ```
@@ -53,8 +53,8 @@ structured tool calls without writing a single line of HTTP client code.
 │  │ Desktop  │   :5001/api  │    │
 │  └──────────┘              ▼    │
 │       │              ┌──────────┤
-│       │ stdio MCP    │ Code     │
-│       └─────────────►│ Factory  │
+│       │ stdio MCP    │ oh-my-pr │
+│       └─────────────►│ server   │
 │                       │ server  │
 │                       └─────────┤
 │                            │    │
@@ -75,7 +75,7 @@ resumed from stored run context when possible.
 
 ## Quick start
 
-### 1. Start the Code Factory server
+### 1. Start the oh-my-pr server
 
 ```bash
 # development (auto-reloads)
@@ -108,7 +108,7 @@ curl -X POST http://localhost:5001/api/prs \
 ### 3. Use the MCP server
 
 ```bash
-# Start the MCP server (talks to the running Code Factory on port 5001)
+# Start the MCP server (talks to the running oh-my-pr server on port 5001)
 npm run mcp
 
 # Custom port
@@ -140,7 +140,7 @@ It checks the resolved IP address of each incoming request:
 
 ### Running behind a reverse proxy
 
-If you put Nginx or Caddy in front of Code Factory, make sure it forwards
+If you put Nginx or Caddy in front of oh-my-pr, make sure it forwards
 `X-Forwarded-For` and that Express's `trust proxy` setting is configured
 appropriately.  If `trust proxy` is not set, `req.ip` will always be
 `127.0.0.1` (the proxy itself) — which is fine for a purely local setup but
@@ -155,7 +155,7 @@ The MCP server (`server/mcp.ts`) implements the
 the standard transport used by Claude Desktop and most agent frameworks.
 
 It translates every MCP tool call into an HTTP request to `127.0.0.1:5001`,
-so the Code Factory main server must be running for any tool to work.
+so the oh-my-pr main server must be running for any tool to work.
 
 ### Claude Desktop / OpenClaw config
 
@@ -165,9 +165,9 @@ Add the following block to your MCP host's configuration file
 ```json
 {
   "mcpServers": {
-    "codefactory": {
+    "oh-my-pr": {
       "command": "npx",
-      "args": ["tsx", "/absolute/path/to/codefactory/server/mcp.ts"],
+      "args": ["tsx", "/absolute/path/to/oh-my-pr/server/mcp.ts"],
       "env": {
         "CODEFACTORY_PORT": "5001"
       }
@@ -176,7 +176,7 @@ Add the following block to your MCP host's configuration file
 }
 ```
 
-Replace `/absolute/path/to/codefactory` with the actual path.
+Replace `/absolute/path/to/oh-my-pr` with the actual path.
 
 If you have already built the project (`npm run build`), you can use the
 compiled output instead:
@@ -184,9 +184,9 @@ compiled output instead:
 ```json
 {
   "mcpServers": {
-    "codefactory": {
+    "oh-my-pr": {
       "command": "node",
-      "args": ["/absolute/path/to/codefactory/dist/mcp.cjs"],
+      "args": ["/absolute/path/to/oh-my-pr/dist/mcp.cjs"],
       "env": {
         "CODEFACTORY_PORT": "5001"
       }
@@ -349,7 +349,7 @@ List archived (closed/merged) PRs.
 
 #### `GET /api/prs/:id`
 
-Get a single PR by its internal Code Factory ID.
+Get a single PR by its internal oh-my-pr ID.
 
 **Response** `200` — [PR object](#pr)
 **Response** `404` — `{ "error": "PR not found" }`
@@ -358,7 +358,7 @@ Get a single PR by its internal Code Factory ID.
 
 #### `POST /api/prs`
 
-Register a GitHub PR by URL. Code Factory fetches the PR summary from GitHub,
+Register a GitHub PR by URL. oh-my-pr fetches the PR summary from GitHub,
 stores it, and queues an initial durable babysit run.
 
 This direct registration path is independent of watched-repo discovery scope,
@@ -529,7 +529,7 @@ List all persisted healing sessions, newest first.
 
 #### `GET /api/healing-sessions/:id`
 
-Get one healing session by its internal Code Factory ID.
+Get one healing session by its internal oh-my-pr ID.
 
 **Response** `200` — [HealingSession object](#healingsession)
 **Response** `404` — `{ "error": "Healing session not found" }`
@@ -559,7 +559,7 @@ List persisted deployment-healing sessions, newest first.
 
 #### `GET /api/deployment-healing-sessions/:id`
 
-Get one deployment-healing session by its internal Code Factory ID.
+Get one deployment-healing session by its internal oh-my-pr ID.
 
 **Response** `200` — [DeploymentHealingSession object](#deploymenthealingsession)
 **Response** `404` — `{ "error": "Deployment healing session not found" }`
@@ -733,7 +733,7 @@ APIs may still enqueue work that remains pending until drain mode is disabled.
 ### Social changelogs
 
 Social changelog generation is automatic and durable. When a merge-count
-milestone is reached, Code Factory creates a changelog row with
+milestone is reached, oh-my-pr creates a changelog row with
 `status: "generating"` and then fills in `content` from a queued background
 job. If the app restarts before completion, the queued job is reclaimed from
 SQLite.
@@ -758,8 +758,8 @@ Get a single social-media changelog by ID.
 ### Releases
 
 Release evaluation and publishing are also durable background jobs. When a
-tracked PR is archived as merged and automatic releases are enabled, Code
-Factory persists a release run and queues background processing. Retrying a
+tracked PR is archived as merged and automatic releases are enabled, oh-my-pr
+persists a release run and queues background processing. Retrying a
 failed release run resets it to `detected` and re-queues processing.
 
 #### `GET /api/releases`
@@ -772,7 +772,7 @@ List all persisted release runs, newest first.
 
 #### `GET /api/releases/:id`
 
-Get one release run by its internal Code Factory ID.
+Get one release run by its internal oh-my-pr ID.
 
 **Response** `200` — [ReleaseRun object](#releaserun)
 **Response** `404` — not found
@@ -795,7 +795,7 @@ queued job will not be claimed until drain mode is disabled.
 #### `GET /api/onboarding/status`
 
 Check the onboarding status of all watched repositories (e.g., whether the
-Code Factory GitHub Actions workflow is installed).
+oh-my-pr GitHub Actions workflow is installed).
 
 **Response** `200`
 ```json
@@ -811,7 +811,7 @@ Code Factory GitHub Actions workflow is installed).
 
 #### `POST /api/onboarding/install-review`
 
-Install the Code Factory code-review GitHub Actions workflow on a repository.
+Install the oh-my-pr code-review GitHub Actions workflow on a repository.
 
 **Body**
 ```json
@@ -1109,7 +1109,7 @@ All error responses share this shape:
 
 | Variable             | Default        | Description |
 |----------------------|----------------|-------------|
-| `PORT`               | `5001`         | HTTP port for the Code Factory server |
+| `PORT`               | `5001`         | HTTP port for the oh-my-pr server |
 | `CODEFACTORY_PORT`   | `5001`         | Port the MCP server connects to (MCP only) |
 | `OH_MY_PR_HOME`      | `~/.oh-my-pr` | Directory for SQLite DB, logs, repos, worktrees |
 | `PR_BABYSITTER_ROOT` | —              | Override worktree root directory |

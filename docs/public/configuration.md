@@ -100,7 +100,7 @@ This toggle is available in the dashboard settings page and as `includeRepositor
 
 ## CI Healing Settings
 
-Code Factory can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.
+oh-my-pr can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -114,7 +114,7 @@ The dashboard shows healing state on each tracked PR, while the local API expose
 
 ## Deployment Healing Settings
 
-Code Factory can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.
+oh-my-pr can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.
 
 A repository is eligible only when platform detection finds one of these markers in the app-owned repo cache:
 
@@ -130,7 +130,7 @@ A repository is eligible only when platform detection finds one of these markers
 
 These values map to `autoHealDeployments`, `deploymentCheckDelayMs`, `deploymentCheckTimeoutMs`, and `deploymentCheckPollIntervalMs` in `GET /api/config` and `PATCH /api/config`.
 
-Deployment healing also requires the matching platform CLI on the machine running Code Factory:
+Deployment healing also requires the matching platform CLI on the machine running oh-my-pr:
 
 - Install and authenticate `vercel` to heal Vercel deployments.
 - Install and authenticate `railway` to heal Railway deployments.
