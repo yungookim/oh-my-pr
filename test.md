@@ -10,7 +10,7 @@ This repository expects development to be test-led, narrow, and proven before a 
 - Run the full current TypeScript test surface, including client utility tests, with:
 
 ```sh
-node --import tsx --test server/*.test.ts client/src/lib/*.test.ts
+npm run test:all
 ```
 
 - When a change affects production bundling, startup behavior, shared contracts, or client/server integration, also run `npm run build`.
@@ -57,9 +57,9 @@ Follow the patterns already used in this repository:
 - Use small local factories and harnesses, such as `seedPR`, `createHarness`, or `makeFeedbackItem`, when setup repeats or realistic object shape matters.
 - Prefer direct assertions on outputs, persisted state, queued jobs, and side effects over snapshots.
 - Use deterministic timestamps, IDs, PR numbers, and repository names.
-- Use `mkdtemp(path.join(os.tmpdir(), "..."))` for filesystem tests so runs are isolated and repeatable.
+- Use `mkdtemp(path.join(os.tmpdir(), "test-"))` for filesystem tests so runs are isolated and repeatable.
 - Stub external boundaries with injected dependencies or local fakes instead of calling GitHub, shelling out to real repositories, or depending on global machine state.
-- Restore mutated globals and environment variables in `finally` blocks.
+- Restore mutated globals and environment variables with `node:test` cleanup hooks such as `t.after()`, `after()`, or `afterEach()`.
 - Close HTTP servers, storage handles, child processes, and temporary resources before a test exits.
 - Prefer in-memory storage (`MemStorage`) for route and orchestration behavior unless SQLite persistence itself is under test.
 - Prefer raw SQLite setup only when verifying migration, reload, locking, or persistence behavior.

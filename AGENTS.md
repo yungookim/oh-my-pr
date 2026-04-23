@@ -10,7 +10,9 @@ Use `npm install` to install dependencies. `npm run dev` starts the local servic
 Use strict TypeScript, 2-space indentation, double quotes, and semicolons to match the existing code. Keep React code under `client/src/`, server modules under `server/`, and shared contracts in `shared/`. Prefer the existing path aliases: `@/` for client imports and `@shared/` for shared modules. Follow established file naming: camelCase for server helpers such as `repoWorkspace.ts`, kebab-case for route files such as `not-found.tsx`, and `*.test.ts` for tests.
 
 ## Testing Guidelines
-Follow the standardized test guidance in `test.md`. Use the red-green-refactor loop for every feature, bug fix, refactor, or behavior change before production code, run the relevant Node test suite and `npm run check` before completion, and maintain at least 70% coverage of the affected critical path for critical app workflows. Add focused regression coverage for changes to storage, GitHub sync, repo workspace isolation, background jobs, CI/deployment healing, or babysitter flows.
+Follow the standardized test guidance in `test.md`. Use the red-green-refactor loop for every feature, bug fix, refactor, or behavior change. Before completion, run the relevant Node test suite and `npm run check`. Maintain at least 70% coverage of the affected critical path for critical app workflows.
+
+Add focused regression coverage for changes to storage, GitHub sync, repo workspace isolation, background jobs, CI/deployment healing, or babysitter flows.
 
 ## Agent Defaults
 When agents are used, default to `codingAgent: "claude"` and `model: "opus"`. There is no separate "thinking"/reasoning-effort configuration flag in this app today; agent reasoning behavior follows the selected model/runtime defaults. These defaults are set in `server/defaultConfig.ts` and can be changed at runtime via the dashboard model selector or the `/api/config` endpoint.
