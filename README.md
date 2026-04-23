@@ -16,7 +16,7 @@ If you regularly lose time to review comments, flaky checks, merge conflicts, an
 
 <img width="1365" height="686" alt="oh-my-pr dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
-Warning: oh-my-pr helps developers ship high-quality code fast, and the tradeoff is heavy coding-agent usage. Expect it to use lots of tokens, which can increase your AI provider costs. It's built for tokenmaxxing.
+Warning: oh-my-pr helps developers ship high-quality code fast, and the tradeoff is heavy coding-agent usage. Expect it to use lots of tokens, which can increase your AI provider costs. It's built for tokenmaxing.
 
 ## Why It Exists
 
