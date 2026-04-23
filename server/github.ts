@@ -299,14 +299,21 @@ export async function fetchCheckSnapshotsForRef(
 }
 
 export async function resolveGitHubAuthToken(config: Config): Promise<string | undefined> {
+  const configuredToken = config.githubTokens
+    .map((token) => token.trim())
+    .find(Boolean);
+  if (configuredToken) {
+    return configuredToken;
+  }
+
+  const legacyConfiguredToken = config.githubToken?.trim();
+  if (legacyConfiguredToken) {
+    return legacyConfiguredToken;
+  }
+
   const envToken = process.env.GITHUB_TOKEN?.trim();
   if (envToken) {
     return envToken;
-  }
-
-  const configuredToken = config.githubToken?.trim();
-  if (configuredToken) {
-    return configuredToken;
   }
 
   const now = Date.now();

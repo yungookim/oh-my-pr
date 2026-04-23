@@ -288,7 +288,7 @@ export function OnboardingPanel() {
                         Run <InlineCode>gh auth login</InlineCode> on this machine, or set <InlineCode>GITHUB_TOKEN</InlineCode> before starting the app.
                       </Step>
                       <Step number={2}>
-                        Prefer the built-in token field if you want the app to remember it. Open <Link href="/settings" className="underline underline-offset-2">settings</Link> to paste a Personal Access Token.
+                        Prefer the built-in token list if you want the app to remember it. Open <Link href="/settings" className="underline underline-offset-2">settings</Link> to paste a Personal Access Token.
                       </Step>
                     </div>
                   </div>

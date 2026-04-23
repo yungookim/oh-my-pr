@@ -301,20 +301,21 @@ const TOOLS: Tool[] = [
   {
     name: "get_config",
     description:
-      "Read the current Code Factory configuration. GitHub token is redacted.",
+      "Read the current Code Factory configuration. GitHub tokens are redacted.",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
     name: "update_config",
     description:
       "Partially update Code Factory configuration. All fields are optional; only provided " +
-      "fields are changed. Available fields: githubToken, codingAgent, maxTurns, " +
+      "fields are changed. Available fields: githubTokens, githubToken (legacy), codingAgent, maxTurns, " +
       "batchWindowMs, pollIntervalMs, maxChangesPerRun, autoResolveMergeConflicts, autoUpdateDocs, " +
       "includeRepositoryLinksInGitHubComments, " +
       "watchedRepos, trustedReviewers, ignoredBots.",
     inputSchema: {
       type: "object",
       properties: {
+        githubTokens: { type: "array", items: { type: "string" } },
         githubToken: { type: "string" },
         codingAgent: { type: "string", enum: ["claude", "codex"] },
         maxTurns: { type: "number" },

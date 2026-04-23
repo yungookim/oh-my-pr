@@ -570,9 +570,10 @@ Get one deployment-healing session by its internal oh-my-pr ID.
 
 #### `GET /api/config`
 
-Read the current configuration.  The GitHub token is redacted to `***xxxx`.
+Read the current configuration. GitHub tokens are redacted to ordered `***xxxx`
+values.
 
-**Response** `200` — [Config object](#config) (token redacted)
+**Response** `200` — [Config object](#config) (tokens redacted)
 
 ---
 
@@ -583,7 +584,7 @@ Partially update the configuration.  Only the provided fields are changed.
 **Body** (all fields optional)
 ```json
 {
-  "githubToken": "ghp_xxxxxxxxxxxx",
+  "githubTokens": ["ghp_xxxxxxxxxxxx", "github_pat_yyyyyyyyyyyy"],
   "codingAgent": "claude",
   "maxTurns": 15,
   "batchWindowMs": 300000,
@@ -608,7 +609,7 @@ Partially update the configuration.  Only the provided fields are changed.
 }
 ```
 
-**Response** `200` — updated [Config object](#config) (token redacted)
+**Response** `200` — updated [Config object](#config) (tokens redacted)
 
 Deployment-healing configuration is REST-writable today. The MCP
 `update_config` tool still exposes its older field subset, so use this REST
@@ -913,7 +914,8 @@ Install the oh-my-pr code-review GitHub Actions workflow on a repository.
 
 ```typescript
 {
-  githubToken: string;         // Redacted to "***xxxx" in GET responses
+  githubTokens: string[];      // Ordered and redacted to "***xxxx" in GET responses
+  githubToken?: string;        // Legacy single-token field, redacted when present
   codingAgent: "claude" | "codex";
   maxTurns: number;
   batchWindowMs: number;

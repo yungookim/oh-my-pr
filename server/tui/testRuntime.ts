@@ -284,7 +284,7 @@ export function createTestRuntime(params?: Partial<TestRuntimeState>): TestTuiRu
     ],
     repos: params?.repos ?? ["acme/widgets"],
     config: params?.config ?? {
-      githubToken: "",
+      githubTokens: [],
       codingAgent: "claude",
       maxTurns: 15,
       batchWindowMs: 300000,

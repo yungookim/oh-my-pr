@@ -9,7 +9,7 @@ import { ReleaseManager, type ReleaseGitHubService } from "./releaseManager";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
-    githubToken: "",
+    githubTokens: [],
     codingAgent: "claude",
     maxTurns: 15,
     batchWindowMs: 300000,

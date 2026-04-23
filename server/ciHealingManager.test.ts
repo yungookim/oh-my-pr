@@ -6,7 +6,7 @@ import type { Config, PR } from "@shared/schema";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
-    githubToken: "",
+    githubTokens: [],
     codingAgent: "claude",
     maxTurns: 15,
     batchWindowMs: 300000,

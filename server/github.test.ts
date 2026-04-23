@@ -21,6 +21,7 @@ import {
   parseRepoSlug,
   postFollowUpForFeedbackItem,
   postStatusReplyForFeedbackItem,
+  resolveGitHubAuthToken,
   resolveNextSemverTag,
   resolveReviewThread,
   selectLatestSemverTag,
@@ -28,7 +29,7 @@ import {
 } from "./github";
 
 const config: Config = {
-  githubToken: "",
+  githubTokens: [],
   codingAgent: "claude",
   maxTurns: 15,
   batchWindowMs: 300000,
@@ -46,6 +47,15 @@ const config: Config = {
   trustedReviewers: [],
   ignoredBots: ["dependabot[bot]", "codecov[bot]", "github-actions[bot]"],
 };
+
+function restoreEnvValue(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
 
 function makeFeedbackItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
   return {
@@ -70,6 +80,55 @@ function makeFeedbackItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
     ...overrides,
   };
 }
+
+test("resolveGitHubAuthToken prefers ordered config tokens before env token", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: ["first-token", "second-token"],
+    });
+
+    assert.equal(token, "first-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
+});
+
+test("resolveGitHubAuthToken supports legacy single-token config", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: [],
+      githubToken: "legacy-token",
+    });
+
+    assert.equal(token, "legacy-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
+});
+
+test("resolveGitHubAuthToken falls back to env token after configured tokens", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: [],
+    });
+
+    assert.equal(token, "env-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
+});
 
 test("checkOnboardingStatus reads workflow files with authenticated API content calls", async () => {
   const getContentCalls: Array<{ owner: string; repo: string; path: string }> = [];

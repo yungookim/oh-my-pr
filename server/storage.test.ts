@@ -74,6 +74,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
   const first = new SqliteStorage(root);
   await first.updateConfig({
+    githubTokens: ["ghs_first", "ghs_second"],
     pollIntervalMs: 45000,
     autoCreateReleases: false,
     autoUpdateDocs: false,
@@ -213,6 +214,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(config.maxHealingAttemptsPerFingerprint, 4);
   assert.equal(config.maxConcurrentHealingRuns, 2);
   assert.equal(config.healingCooldownMs, 123456);
+  assert.deepEqual(config.githubTokens, ["ghs_first", "ghs_second"]);
   assert.deepEqual(config.watchedRepos, ["alex-morgan-o/lolodex"]);
   assert.deepEqual(repoSettings, {
     repo: "alex-morgan-o/lolodex",
@@ -255,7 +257,7 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
 
   try {
     await storage.updateConfig({
-      githubToken: "tok_123",
+      githubTokens: ["tok_123", "tok_456"],
       autoCreateReleases: false,
       autoUpdateDocs: false,
       includeRepositoryLinksInGitHubComments: false,
@@ -289,6 +291,23 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
       drainRequestedAt: null,
       drainReason: null,
     });
+  } finally {
+    db.close();
+    storage.close();
+  }
+});
+
+test("SqliteStorage migrates legacy github_token into ordered githubTokens", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+  const db = createRawDatabase(root);
+
+  try {
+    db.exec("UPDATE config SET github_token = 'ghs_legacy', github_tokens_json = '[]' WHERE id = 1");
+
+    const config = await storage.getConfig();
+
+    assert.deepEqual(config.githubTokens, ["ghs_legacy"]);
   } finally {
     db.close();
     storage.close();
