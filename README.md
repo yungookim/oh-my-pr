@@ -15,6 +15,8 @@
 
 Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI/CD logs, resolves conflicts, and gets your PR ready for merge to main. It uses your local Claude Code or Codex to address any issues identified in the PR or CI/CD pipeline and to ensure that any documentation is up to date. You can push a PR, walk away, and come back to a clean PR ready to be merged.
 
+**Warning:** Oh-my-pr is built to help developers ship high-quality code fast, and the tradeoff is heavy coding-agent usage. Expect it to use lots of tokens, which can increase your AI provider costs.
+
 <img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
 ## Features
