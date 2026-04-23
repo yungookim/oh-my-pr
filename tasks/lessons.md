@@ -83,10 +83,10 @@
   - Ask a scope question only when the named text maps to multiple equally plausible surfaces.
 
 ## 2026-03-28 - Design product features around user repositories, not this repo's own workflow
-- Pattern: I framed a new PR-documentation feature as if it were about Code Factory's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
-- Rule: When designing or implementing Code Factory behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
+- Pattern: I framed a new PR-documentation feature as if it were about oh-my-pr's own repository and CI/docs pipeline, when the user intended a product capability that agents apply to any tracked repository.
+- Rule: When designing or implementing oh-my-pr behavior, default to repository-agnostic product semantics unless the user explicitly scopes the request to this repo's own operations.
 - Prevention checklist:
-  - Restate whether a request targets Code Factory's product behavior or this repository's internal workflow before proposing a design.
+  - Restate whether a request targets oh-my-pr's product behavior or this repository's internal workflow before proposing a design.
   - Validate that prompt contracts, defaults, and storage shape make sense for arbitrary user repositories, not just `README.md` or docs layout in this repo.
   - Avoid deriving product requirements from this repo's local docs/build pipeline unless the user explicitly wants repo-specific behavior.
   - Check whether the feature needs to generalize across heterogeneous repositories before choosing fixed file paths or heuristics.

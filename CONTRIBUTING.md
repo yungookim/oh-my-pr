@@ -1,6 +1,6 @@
-# Contributing to Code Factory
+# Contributing to oh-my-pr
 
-Thanks for your interest in contributing to Code Factory! This document provides guidelines and information for contributors.
+Thanks for your interest in contributing to oh-my-pr! This document provides guidelines and information for contributors.
 
 ## Code of Conduct
 

@@ -1,7 +1,7 @@
 # oh-my-pr
 
 <p align="center">
-  <img width="409" height="409" alt="Code Factory logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+  <img width="409" height="409" alt="oh-my-pr logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
 </p>
 
 [![npm version](https://img.shields.io/npm/v/oh-my-pr.svg)](https://www.npmjs.com/package/oh-my-pr)
@@ -14,7 +14,7 @@ oh-my-pr is a local-first GitHub PR babysitter. It watches the pull requests you
 
 If you regularly lose time to review comments, flaky checks, merge conflicts, and back-and-forth cleanup before merge, this is the tool for that.
 
-<img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
+<img width="1365" height="686" alt="oh-my-pr dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
 ## Why It Exists
 
@@ -71,7 +71,7 @@ Then:
 
 ### Local-First
 
-oh-my-pr runs on your machine and works with your local agent CLI. Repository caches, worktrees, logs, and app state live under `~/.oh-my-pr` by default. Set `OH_MY_PR_HOME` if you want a different location.
+oh-my-pr runs on your machine and works with your local agent CLI. Repository caches (`repos/`), worktrees (`worktrees/`), logs (`log/`), and app state (`state.sqlite`) live under `~/.oh-my-pr` by default. Set `OH_MY_PR_HOME` if you want a different location.
 
 ### Isolation
 
@@ -132,7 +132,7 @@ npm install
 npm run dev
 ```
 
-The dashboard serves on `http://localhost:5001` by default. All `/api/*` routes are restricted to loopback callers.
+The dashboard is available at `http://localhost:5001` by default. All `/api/*` routes are restricted to loopback callers.
 
 ## Docs
 
