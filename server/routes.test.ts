@@ -67,6 +67,81 @@ async function createHarness(storage = new MemStorage(), dependencies: Partial<R
   };
 }
 
+test("GET/PATCH /api/config masks and persists ordered github tokens", async () => {
+  const harness = await createHarness();
+
+  try {
+    const patchResponse = await fetch(`${harness.baseUrl}/api/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ githubTokens: ["ghs_alpha1234", "ghs_beta5678"] }),
+    });
+
+    assert.equal(patchResponse.status, 200);
+    const patched = await patchResponse.json() as { githubTokens: string[]; githubToken: string };
+    assert.deepEqual(patched.githubTokens, ["***1234", "***5678"]);
+    assert.equal(patched.githubToken, "***1234");
+
+    const stored = await harness.storage.getConfig();
+    assert.deepEqual(stored.githubTokens, ["ghs_alpha1234", "ghs_beta5678"]);
+
+    const getResponse = await fetch(`${harness.baseUrl}/api/config`);
+    assert.equal(getResponse.status, 200);
+    const fetched = await getResponse.json() as { githubTokens: string[]; githubToken: string };
+    assert.deepEqual(fetched.githubTokens, ["***1234", "***5678"]);
+    assert.equal(fetched.githubToken, "***1234");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("PATCH /api/config preserves masked github tokens when reordering", async () => {
+  const harness = await createHarness();
+
+  try {
+    await harness.storage.updateConfig({
+      githubTokens: ["ghs_alpha1234", "ghs_beta5678"],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ githubTokens: ["***5678", "***1234", "ghs_gamma9999"] }),
+    });
+
+    assert.equal(response.status, 200);
+    const patched = await response.json() as { githubTokens: string[] };
+    assert.deepEqual(patched.githubTokens, ["***5678", "***1234", "***9999"]);
+
+    const stored = await harness.storage.getConfig();
+    assert.deepEqual(stored.githubTokens, ["ghs_beta5678", "ghs_alpha1234", "ghs_gamma9999"]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("PATCH /api/config accepts legacy single githubToken updates", async () => {
+  const harness = await createHarness();
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ githubToken: "ghs_legacy9999" }),
+    });
+
+    assert.equal(response.status, 200);
+    const patched = await response.json() as { githubTokens: string[]; githubToken: string };
+    assert.deepEqual(patched.githubTokens, ["***9999"]);
+    assert.equal(patched.githubToken, "***9999");
+
+    const stored = await harness.storage.getConfig();
+    assert.deepEqual(stored.githubTokens, ["ghs_legacy9999"]);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("POST /api/prs/:id/questions enqueues a durable answer_pr_question job", async () => {
   const harness = await createHarness();
   const pr = await seedPR(harness.storage);

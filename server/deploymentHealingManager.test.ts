@@ -6,7 +6,7 @@ import type { Config } from "@shared/schema";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
-    githubToken: "", codingAgent: "claude", maxTurns: 15, batchWindowMs: 300000,
+    githubTokens: [], codingAgent: "claude", maxTurns: 15, batchWindowMs: 300000,
     pollIntervalMs: 120000, maxChangesPerRun: 20, autoResolveMergeConflicts: true,
     autoCreateReleases: true, autoUpdateDocs: true, autoHealCI: false,
     maxHealingAttemptsPerSession: 3, maxHealingAttemptsPerFingerprint: 2,

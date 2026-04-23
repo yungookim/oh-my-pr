@@ -2,6 +2,7 @@ import type { Express, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
 import { configSchema } from "@shared/schema";
+import type { Config } from "@shared/schema";
 import {
   createAppRuntime,
   type AppRuntime,
@@ -10,6 +11,8 @@ import {
 } from "./appRuntime";
 import { createAppUpdateChecker, type AppUpdateChecker } from "./appUpdate";
 import { GitHubIntegrationError } from "./github";
+
+const TOKEN_MASK_PREFIX = "***";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -34,10 +37,57 @@ function sendAppAwareError(res: Response, error: unknown): void {
   res.status(500).json({ error: getErrorMessage(error) });
 }
 
-function maskConfig<T extends { githubToken: string }>(config: T): T {
+function maskToken(token: string): string {
+  return token ? `${TOKEN_MASK_PREFIX}${token.slice(-4)}` : "";
+}
+
+function resolveMaskedGithubTokens(currentTokens: string[], requestedTokens: string[]): string[] {
+  const existing = currentTokens.map((token) => ({
+    token,
+    masked: maskToken(token),
+    used: false,
+  }));
+
+  return requestedTokens
+    .map((requestedToken) => {
+      const trimmed = requestedToken.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      if (trimmed.startsWith(TOKEN_MASK_PREFIX)) {
+        const match = existing.find((entry) => !entry.used && entry.masked === trimmed);
+        if (match) {
+          match.used = true;
+          return match.token;
+        }
+      }
+
+      return trimmed;
+    })
+    .filter(Boolean);
+}
+
+function resolveConfigSecrets(current: Config, updates: Partial<Config>): Partial<Config> {
+  const requestedTokens = updates.githubTokens
+    ?? (updates.githubToken !== undefined ? [updates.githubToken] : undefined);
+  if (requestedTokens === undefined) {
+    return updates;
+  }
+
+  const { githubToken: _legacyGithubToken, ...rest } = updates;
+  return {
+    ...rest,
+    githubTokens: resolveMaskedGithubTokens(current.githubTokens, requestedTokens),
+  };
+}
+
+function maskConfig(config: Config): Config {
+  const githubTokens = config.githubTokens.map(maskToken);
   return {
     ...config,
-    githubToken: config.githubToken ? `***${config.githubToken.slice(-4)}` : "",
+    githubTokens,
+    githubToken: githubTokens[0] ?? "",
   };
 }
 
@@ -350,7 +400,8 @@ export async function registerRoutes(
   app.patch("/api/config", async (req, res) => {
     try {
       const updates = configSchema.partial().parse(req.body);
-      res.json(maskConfig(await runtime.updateConfig(updates)));
+      const current = await runtime.getConfig();
+      res.json(maskConfig(await runtime.updateConfig(resolveConfigSecrets(current, updates))));
     } catch (error: unknown) {
       sendAppAwareError(res, error);
     }

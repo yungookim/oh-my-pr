@@ -449,7 +449,7 @@ describe("MemStorage", () => {
 
     it("returns the updated config", async () => {
       const updated = await storage.updateConfig({
-        githubToken: "tok_123",
+        githubTokens: ["tok_123", "tok_456"],
         includeRepositoryLinksInGitHubComments: false,
         autoHealCI: true,
         maxHealingAttemptsPerSession: 5,
@@ -459,6 +459,7 @@ describe("MemStorage", () => {
       });
       const fetched = await storage.getConfig();
       assert.deepEqual(updated, fetched);
+      assert.deepEqual(fetched.githubTokens, ["tok_123", "tok_456"]);
     });
   });
 

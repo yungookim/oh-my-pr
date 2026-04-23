@@ -396,18 +396,27 @@ export async function fetchCheckSnapshotsForRef(
   });
 }
 
+function resolveConfiguredGitHubToken(config: Config): string | undefined {
+  return [
+    ...(config.githubTokens ?? []),
+    config.githubToken ?? "",
+  ]
+    .map((token) => token.trim())
+    .find(Boolean);
+}
+
 export async function resolveGitHubAuthToken(
   config: Config,
   deps: GitHubAuthResolutionDeps = {},
 ): Promise<string | undefined> {
+  const configuredToken = resolveConfiguredGitHubToken(config);
+  if (configuredToken) {
+    return configuredToken;
+  }
+
   const envToken = process.env.GITHUB_TOKEN?.trim();
   if (envToken) {
     return envToken;
-  }
-
-  const configuredToken = config.githubToken?.trim();
-  if (configuredToken) {
-    return configuredToken;
   }
 
   return resolveGhAuthToken(deps);
@@ -493,7 +502,7 @@ export async function buildOctokit(
   deps: BuildOctokitDeps = {},
 ): Promise<Octokit> {
   const envToken = process.env.GITHUB_TOKEN?.trim();
-  const configuredToken = config.githubToken?.trim();
+  const configuredToken = resolveConfiguredGitHubToken(config);
   const buildClient = (authToken?: string) => new Octokit({
     auth: authToken,
     request: {
@@ -504,10 +513,10 @@ export async function buildOctokit(
     },
   });
 
-  const primaryToken = envToken || configuredToken || (await resolveGhAuthToken(deps));
+  const primaryToken = configuredToken || envToken || (await resolveGhAuthToken(deps));
   const octokit = buildClient(primaryToken);
 
-  if (!envToken && configuredToken) {
+  if (configuredToken) {
     let fallbackOctokit: Octokit | null = null;
     octokit.hook.wrap("request", async (request, options) => {
       try {

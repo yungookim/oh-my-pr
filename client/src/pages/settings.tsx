@@ -11,8 +11,25 @@ export default function Settings() {
     queryKey: ["/api/config"],
   });
 
-  const [githubToken, setGithubToken] = useState("");
+  const [newGithubToken, setNewGithubToken] = useState("");
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const githubTokens = config?.githubTokens ?? (config?.githubToken ? [config.githubToken] : []);
+
+  const updateGithubTokens = (tokens: string[]) => {
+    updateConfigMutation.mutate({ githubTokens: tokens });
+  };
+  const moveGithubToken = (fromIndex: number, toIndex: number) => {
+    const next = [...githubTokens];
+    const [token] = next.splice(fromIndex, 1);
+    if (!token) {
+      return;
+    }
+    next.splice(toIndex, 0, token);
+    updateGithubTokens(next);
+  };
+  const removeGithubToken = (index: number) => {
+    updateGithubTokens(githubTokens.filter((_, i) => i !== index));
+  };
 
   const updateConfigMutation = useMutation({
     mutationFn: async (updates: Partial<Config>) => {
@@ -208,59 +225,105 @@ export default function Settings() {
             </div>
           </section>
 
-          {/* GitHub Token */}
+          {/* GitHub Tokens */}
           <section>
             <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               GitHub
             </h2>
             <div className="flex flex-col gap-4 rounded border border-border p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm">Token</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {config?.githubToken || "not set"}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm">Tokens</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Tried in order before GITHUB_TOKEN and gh auth.
+                    </div>
                   </div>
+                  {!showTokenInput && (
+                    <button
+                      onClick={() => setShowTokenInput(true)}
+                      className="border border-border px-2 py-1 text-xs hover:bg-muted"
+                    >
+                      add
+                    </button>
+                  )}
                 </div>
+                {githubTokens.length ? (
+                  <div className="flex flex-col gap-2">
+                    {githubTokens.map((token, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between gap-3 border border-border px-2 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-xs">{token}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            priority {index + 1}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => moveGithubToken(index, index - 1)}
+                            disabled={index === 0 || updateConfigMutation.isPending}
+                            className="border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                          >
+                            up
+                          </button>
+                          <button
+                            onClick={() => moveGithubToken(index, index + 1)}
+                            disabled={index === githubTokens.length - 1 || updateConfigMutation.isPending}
+                            className="border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                          >
+                            down
+                          </button>
+                          <button
+                            onClick={() => removeGithubToken(index)}
+                            disabled={updateConfigMutation.isPending}
+                            className="border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                          >
+                            remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-muted-foreground">none configured</div>
+                )}
                 {showTokenInput ? (
                   <div className="flex items-center gap-2">
                     <input
                       type="password"
-                      value={githubToken}
-                      onChange={(e) => setGithubToken(e.target.value)}
+                      value={newGithubToken}
+                      onChange={(e) => setNewGithubToken(e.target.value)}
                       placeholder="ghp_..."
-                      className="border border-border bg-transparent px-2 py-1 text-sm focus:border-foreground focus:outline-none"
+                      className="min-w-0 flex-1 border border-border bg-transparent px-2 py-1 text-sm focus:border-foreground focus:outline-none"
                     />
                     <button
                       onClick={() => {
-                        if (githubToken) {
-                          updateConfigMutation.mutate({ githubToken });
-                          setGithubToken("");
+                        const token = newGithubToken.trim();
+                        if (token) {
+                          updateGithubTokens([...githubTokens, token]);
+                          setNewGithubToken("");
                           setShowTokenInput(false);
                         }
                       }}
-                      disabled={!githubToken || updateConfigMutation.isPending}
+                      disabled={!newGithubToken.trim() || updateConfigMutation.isPending}
                       className="border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                     >
-                      save
+                      add
                     </button>
                     <button
                       onClick={() => {
                         setShowTokenInput(false);
-                        setGithubToken("");
+                        setNewGithubToken("");
                       }}
                       className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                     >
                       cancel
                     </button>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => setShowTokenInput(true)}
-                    className="border border-border px-2 py-1 text-xs hover:bg-muted"
-                  >
-                    update
-                  </button>
-                )}
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between gap-3">

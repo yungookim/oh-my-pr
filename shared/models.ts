@@ -334,9 +334,17 @@ export function applyDeploymentHealingSessionUpdate(
 // ── Config ────────────────────────────────────────────────────────────────────
 
 export function applyConfigUpdate(existing: Config, updates: Partial<Config>): Config {
+  const updatedGithubTokens = updates.githubTokens
+    ?? (updates.githubToken !== undefined ? [updates.githubToken] : existing.githubTokens);
+  const normalizedGithubTokens = updatedGithubTokens
+    .map((token) => token.trim())
+    .filter(Boolean);
+
   return configSchema.parse({
     ...existing,
     ...updates,
+    githubTokens: normalizedGithubTokens,
+    githubToken: undefined,
     watchedRepos: updates.watchedRepos ?? existing.watchedRepos,
     trustedReviewers: updates.trustedReviewers ?? existing.trustedReviewers,
     ignoredBots: updates.ignoredBots ?? existing.ignoredBots,

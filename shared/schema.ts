@@ -391,7 +391,8 @@ export const deploymentHealingSessionSchema = z.object({
 export type DeploymentHealingSession = z.infer<typeof deploymentHealingSessionSchema>;
 
 export const configSchema = z.object({
-  githubToken: z.string(),
+  githubTokens: z.array(z.string()),
+  githubToken: z.string().optional(),
   codingAgent: z.enum(["codex", "claude"]),
   maxTurns: z.number(),
   batchWindowMs: z.number(),

@@ -18,7 +18,7 @@ import {
 describe("DEFAULT_CONFIG", () => {
   it("has all required fields defined by Config type", () => {
     const requiredFields = [
-      "githubToken",
+      "githubTokens",
       "codingAgent",
       "maxTurns",
       "batchWindowMs",
@@ -77,9 +77,9 @@ describe("DEFAULT_CONFIG", () => {
     assert.equal(DEFAULT_CONFIG.trustedReviewers.length, 0, "trustedReviewers should be empty by default");
   });
 
-  it("has empty string as default githubToken", () => {
-    assert.equal(typeof DEFAULT_CONFIG.githubToken, "string");
-    assert.equal(DEFAULT_CONFIG.githubToken, "");
+  it("has empty array as default githubTokens", () => {
+    assert.ok(Array.isArray(DEFAULT_CONFIG.githubTokens));
+    assert.deepEqual(DEFAULT_CONFIG.githubTokens, []);
   });
 
   it("has positive numbers for numeric fields", () => {

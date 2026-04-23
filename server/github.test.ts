@@ -22,15 +22,15 @@ import {
   parseRepoSlug,
   postFollowUpForFeedbackItem,
   postStatusReplyForFeedbackItem,
-  resolveNextSemverTag,
   resolveGitHubAuthToken,
+  resolveNextSemverTag,
   resolveReviewThread,
   selectLatestSemverTag,
   updateStatusReply,
 } from "./github";
 
 const config: Config = {
-  githubToken: "",
+  githubTokens: [],
   codingAgent: "claude",
   maxTurns: 15,
   batchWindowMs: 300000,
@@ -39,15 +39,29 @@ const config: Config = {
   autoResolveMergeConflicts: true,
   autoCreateReleases: true,
   autoUpdateDocs: true,
+  includeRepositoryLinksInGitHubComments: true,
   autoHealCI: false,
   maxHealingAttemptsPerSession: 3,
   maxHealingAttemptsPerFingerprint: 2,
   maxConcurrentHealingRuns: 1,
   healingCooldownMs: 300000,
+  autoHealDeployments: false,
+  deploymentCheckDelayMs: 60000,
+  deploymentCheckTimeoutMs: 600000,
+  deploymentCheckPollIntervalMs: 15000,
   watchedRepos: [],
   trustedReviewers: [],
   ignoredBots: ["dependabot[bot]", "codecov[bot]", "github-actions[bot]"],
 };
+
+function restoreEnvValue(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
 
 function makeFeedbackItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
   return {
@@ -91,11 +105,7 @@ async function withoutGithubTokenEnv(fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
   } finally {
-    if (original === undefined) {
-      delete process.env.GITHUB_TOKEN;
-    } else {
-      process.env.GITHUB_TOKEN = original;
-    }
+    restoreEnvValue("GITHUB_TOKEN", original);
   }
 }
 
@@ -266,6 +276,55 @@ test("buildOctokit does not retry beyond the gh auth fallback when it also gets 
     );
     assert.equal(requestCount, 2);
   });
+});
+
+test("resolveGitHubAuthToken prefers ordered config tokens before env token", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: ["first-token", "second-token"],
+    });
+
+    assert.equal(token, "first-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
+});
+
+test("resolveGitHubAuthToken supports legacy single-token config", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: [],
+      githubToken: "legacy-token",
+    });
+
+    assert.equal(token, "legacy-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
+});
+
+test("resolveGitHubAuthToken falls back to env token after configured tokens", async () => {
+  const original = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "env-token";
+
+  try {
+    const token = await resolveGitHubAuthToken({
+      ...config,
+      githubTokens: [],
+    });
+
+    assert.equal(token, "env-token");
+  } finally {
+    restoreEnvValue("GITHUB_TOKEN", original);
+  }
 });
 
 test("checkOnboardingStatus reads workflow files with authenticated API content calls", async () => {

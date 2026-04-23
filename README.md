@@ -1,10 +1,7 @@
-# Oh-my-PR
-**This project is going to save you tons of time by automating the whole PR process.**
-
-**Local-first GitHub PR babysitter for Codex and Claude**
+# oh-my-pr
 
 <p align="center">
-  <img width="409" height="409" alt="Code Factory logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+  <img width="409" height="409" alt="oh-my-pr logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
 </p>
 
 [![npm version](https://img.shields.io/npm/v/oh-my-pr.svg)](https://www.npmjs.com/package/oh-my-pr)
@@ -13,81 +10,122 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 
-Oh-my-pr babysits your PRs from your local machine, reads all PR comments and CI/CD logs, resolves conflicts, and gets your PR ready for merge to main. It uses your local Claude Code or Codex to address any issues identified in the PR or CI/CD pipeline and to ensure that any documentation is up to date. You can push a PR, walk away, and come back to a clean PR ready to be merged.
+oh-my-pr is a local-first GitHub PR babysitter. It watches the pull requests you care about, reads review feedback and CI failures, then uses your local Codex or Claude CLI to make fixes in isolated worktrees and push them back to the PR branch.
 
-<img width="1365" height="686" alt="Code Factory dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
+If you regularly lose time to review comments, flaky checks, merge conflicts, and back-and-forth cleanup before merge, this is the tool for that.
 
-## Features
+<img width="1365" height="686" alt="oh-my-pr dashboard" src="https://github.com/user-attachments/assets/66dfa082-c732-4989-8b05-f19aa550acb5" />
 
-- Watch multiple repositories with a per-repo auto-discovery scope (`My PRs only` by default, or `My PRs + teammates`) or add a single PR by URL.
-- Auto-register matching open PRs from watched repos, archive closed or merged PRs, and keep syncing review activity.
-- Pause background automation for an individual tracked PR while keeping manual runs available.
-- Store PR state, background jobs, questions, release runs, logs, and social changelogs in SQLite with mirrored log files.
-- Queue repo sync, babysit/apply runs, PR questions, release processing, deployment healing, and social changelog generation in a durable SQLite-backed dispatcher that survives restarts.
-- Triage feedback into `accept`, `reject`, or `flag`, with manual overrides and retry for failed or warned items.
-- Run `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`, then push verified fixes back to the PR branch.
-- Evaluate review comments and failing CI statuses, post GitHub follow-ups, resolve review threads, and heal CI failures through persisted CI healing sessions per PR head.
-- Monitor merged Vercel or Railway deployments, capture deployment logs on failure, and open follow-up `deploy-fix/*` PRs when deployment healing is enabled.
-- Detect merge conflicts and optionally let the agent resolve them automatically.
-- Ask natural-language questions about any tracked PR from the dashboard or via MCP.
-- Configure trusted reviewers, ignored bots, polling, batching, run limits, and CI-healing retry budgets from settings.
-- Show a dashboard update banner for newer stable oh-my-pr releases, with a per-release dismissal that lasts for the current browser session.
-- Enable drain mode to stop claiming new queued work and optionally wait for active queue handlers to finish before deploys or upgrades.
-- Check onboarding status, install Claude or Codex review workflows, and generate social changelogs every 5 PRs merged to `main`.
-- Use the React dashboard, local REST API, MCP server, or optional Tauri desktop shell.
+Warning: oh-my-pr helps developers ship high-quality code fast, and the tradeoff is heavy coding-agent usage. Expect it to use lots of tokens, which can increase your AI provider costs. It's built for tokenmaxxing.
 
-## How It Works
+## Why It Exists
 
-1. Add a repository to the watch list or register a PR directly by URL. Watched repos default to `My PRs only`, and you can switch a repo to `My PRs + teammates` when you want team-wide discovery.
-2. The watcher enqueues a durable repo-sync job in SQLite.
-3. That sync job polls GitHub, auto-registers matching open PRs for each watched repo based on its watch scope, syncs reviews and comments, archives PRs that closed upstream, records failing CI on the current head SHA, and queues babysitter runs for tracked PRs whose background watch is enabled.
-4. Manual apply/babysit requests, PR questions, release processing, and social changelog generation go through the same durable queue before work executes in an app-owned repo cache and isolated git worktree under `~/.oh-my-pr`.
-5. The agent applies fixes, verifies the result, pushes to the PR branch, updates GitHub threads, and writes logs for the full run.
+Pull requests often stall for boring reasons:
 
-Repo sync, babysit/apply, PR Q&A, release processing, deployment healing, and social changelog generation all run through durable background jobs stored in `state.sqlite`. On startup the dispatcher reclaims expired job leases, and interrupted babysitter runs are resumed from stored run context when possible.
+- review comments arrive after you have switched context
+- CI fails after you think the work is done
+- fixes require reopening local context and rebuilding the same mental model
+- merge prep becomes repetitive babysitting instead of real development
 
-PRs you register directly by URL stay tracked regardless of the watched repo's auto-discovery scope.
-
-## CI Healing
-
-When `Automatic CI healing` is enabled, Code Factory creates a healing session for each failing PR head SHA, classifies failures as safe to fix in-branch or blocked external, and runs bounded repair attempts in isolated worktrees. The dashboard surfaces the current session state and retry budget, and the local API exposes `GET /api/healing-sessions` plus `GET /api/healing-sessions/:id` for operator visibility.
-
-## Deployment Healing
-
-When deployment healing is enabled through `PATCH /api/config`, Code Factory inspects merged PRs for supported deployment markers, waits for the post-merge deployment to appear, and polls the matching platform CLI for success or failure. On failure, it captures deployment logs, runs the configured agent from the merge commit in the app-owned repo cache, pushes a `deploy-fix/<platform>-<timestamp>` branch, and opens a follow-up PR against the merged base branch.
-
-Deployment healing currently supports Vercel and Railway repositories detected from common repo-local config files. It requires the matching CLI in `PATH` and authenticated on the same machine running Code Factory. Session history is exposed through `GET /api/deployment-healing-sessions`, `GET /api/deployment-healing-sessions/:id`, and the matching MCP read tools.
+oh-my-pr keeps that loop moving from your machine. You push a branch, let it watch the PR, and come back to something much closer to merge-ready.
 
 ## Quick Start
+
+You need:
+
+- Node.js 22+
+- `git`
+- GitHub auth via `gh auth login` or `GITHUB_TOKEN`
+- either the `codex` CLI or `claude` CLI installed and authenticated locally
+
+Install and launch:
 
 ```bash
 npm install -g oh-my-pr
 oh-my-pr
 ```
 
-That's it. The terminal UI launches in your shell. Run `oh-my-pr web` to start the web dashboard instead.
-
-### Prerequisites
-
-- **Node.js 22+** (tested with Node v24.12.0)
-- **git**
-- GitHub auth via `gh auth login`, `GITHUB_TOKEN`, app config, or a saved dashboard token
-- Either the `codex` CLI or `claude` CLI installed and authenticated locally
-- Optional for deployment healing: the `vercel` CLI and/or `railway` CLI installed and authenticated for repositories you want to auto-heal after merge
-
-### CLI Usage
+That opens the terminal UI. If you prefer the browser dashboard, run:
 
 ```bash
-oh-my-pr              Launch the terminal UI (default)
-oh-my-pr web          Start the web dashboard server (opens browser)
-oh-my-pr mcp          Start the MCP server for Claude Desktop / OpenClaw
-oh-my-pr --help       Show help message
-oh-my-pr --version    Print the version
+oh-my-pr web
+```
+
+Then:
+
+1. Add a GitHub repository you want to watch.
+2. Choose whether to auto-discover only your PRs or your team's PRs too.
+3. Add a PR directly by URL if you want to track just one pull request.
+4. Let oh-my-pr sync comments, checks, and follow-up work.
+
+## What It Does
+
+- Watches repositories and tracked PRs for review activity, comments, and failing checks
+- Triages feedback into actionable items
+- Runs `codex` or `claude` in isolated worktrees under `~/.oh-my-pr`
+- Replies to GitHub PR comments on your behalf and resolves conversations to keep the thread clean
+- Pushes verified fixes back to the PR branch
+- Can automatically create a GitHub release when a merged PR is important enough to justify a version bump
+- Keeps logs, run history, and PR state on your machine
+- Exposes the same system through a dashboard, local API, and MCP server
+
+## Technical Details
+
+### Local-First
+
+oh-my-pr runs on your machine and works with your local agent CLI. Repository caches (`repos/`), worktrees (`worktrees/`), logs (`log/`), and app state (`state.sqlite`) live under `~/.oh-my-pr` by default. Set `OH_MY_PR_HOME` if you want a different location.
+
+### Isolation
+
+Each fix run happens in an app-owned repository cache and an isolated git worktree. That keeps agent changes scoped to the PR branch instead of mutating your day-to-day checkout.
+
+### GitHub Auth
+
+You can authenticate with:
+
+- `gh auth login`
+- `GITHUB_TOKEN`
+- app config in the dashboard
+- a saved dashboard token
+
+### Watch Scope
+
+Watched repositories default to `My PRs only`. You can switch a repo to `My PRs + teammates`, or skip auto-discovery entirely and register a single PR by URL.
+
+### Interfaces
+
+oh-my-pr can be used in a few ways:
+
+- terminal UI: `oh-my-pr`
+- web dashboard: `oh-my-pr web`
+- MCP server: `oh-my-pr mcp`
+- local REST API: see [LOCAL_API.md](LOCAL_API.md)
+- optional Tauri desktop shell
+
+### Optional Automation
+
+If you enable them, oh-my-pr can also:
+
+- attempt bounded CI healing for failing PR heads
+- monitor merged deployments and open follow-up fix PRs for supported Vercel and Railway failures
+- create GitHub releases automatically for merged changes that are worthy of a new version
+- answer natural-language questions about tracked PRs through the dashboard or MCP
+
+Those features are optional and documented in the linked docs below.
+
+## Commands
+
+```bash
+oh-my-pr              # terminal UI
+oh-my-pr web          # web dashboard
+oh-my-pr mcp          # MCP server
+oh-my-pr --help       # help
+oh-my-pr --version    # version
 ```
 
 Set `PORT` to change the default web server port (`5001`).
 
-### Run From Source
+## Run From Source
 
 ```bash
 git clone https://github.com/yungookim/oh-my-pr.git
@@ -96,17 +134,7 @@ npm install
 npm run dev
 ```
 
-The dashboard is served on port `5001` by default. All `/api/*` routes are restricted to loopback callers.
-
-## MCP and API
-
-Oh-my-pr exposes the same local system through REST and MCP.
-
-```bash
-oh-my-pr mcp
-```
-
-Use it with MCP hosts such as Claude Desktop or OpenClaw, or call the REST API directly from local tooling. Full endpoint and tool docs live in [LOCAL_API.md](LOCAL_API.md).
+The dashboard is available at `http://localhost:5001` by default. All `/api/*` routes are restricted to loopback callers.
 
 ## Docs
 
@@ -115,6 +143,7 @@ Use it with MCP hosts such as Claude Desktop or OpenClaw, or call the REST API d
 - [Agent Dispatch](docs/public/agent-dispatch.md)
 - [Configuration](docs/public/configuration.md)
 - [Local API and MCP](LOCAL_API.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Development
 
@@ -129,21 +158,6 @@ Use it with MCP hosts such as Claude Desktop or OpenClaw, or call the REST API d
 | `npm run test` | Run the server test suite |
 | `npm run tauri:dev` | Start the Tauri desktop app in development |
 | `npm run tauri:build` | Build the Tauri desktop app |
-
-## Local State
-
-By default Code Factory stores its runtime data in `~/.oh-my-pr`:
-
-- `state.sqlite` for durable app state, runtime flags, background jobs, questions, releases, and changelogs
-- `log/` for mirrored activity logs
-- `repos/` for app-owned repository caches
-- `worktrees/` for isolated PR worktrees
-
-Set `OH_MY_PR_HOME` to override the root path. The legacy `CODEFACTORY_HOME` name is still supported for compatibility.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

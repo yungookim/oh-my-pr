@@ -71,6 +71,10 @@ export class MemStorage implements IStorage {
   private deploymentHealingSessions: Map<string, DeploymentHealingSession> = new Map();
   private repoSettings: Map<string, WatchedRepo> = new Map();
 
+  private cloneConfig(config: Config): Config {
+    return structuredClone(config);
+  }
+
   private cloneHealingSession(session: HealingSession): HealingSession {
     return { ...session };
   }
@@ -200,13 +204,13 @@ export class MemStorage implements IStorage {
   }
 
   async getConfig(): Promise<Config> {
-    return { ...this.config };
+    return this.cloneConfig(this.config);
   }
 
   async updateConfig(updates: Partial<Config>): Promise<Config> {
     this.config = applyConfigUpdate(this.config, updates);
     this.syncRepoSettings();
-    return { ...this.config };
+    return this.cloneConfig(this.config);
   }
 
   async listRepoSettings(): Promise<WatchedRepo[]> {
