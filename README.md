@@ -1,5 +1,9 @@
 # oh-my-pr
 
+<p align="center">
+  <img width="409" height="409" alt="Code Factory logo" src="https://github.com/user-attachments/assets/ca339a71-40d9-4619-900f-55825f30a57f" />
+</p>
+
 [![npm version](https://img.shields.io/npm/v/oh-my-pr.svg)](https://www.npmjs.com/package/oh-my-pr)
 [![CI](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml/badge.svg)](https://github.com/yungookim/oh-my-pr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
