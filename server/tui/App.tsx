@@ -11,6 +11,8 @@ import { PrDetailPane } from "./components/PrDetailPane";
 import { ContextPane } from "./components/ContextPane";
 import { Footer } from "./components/Footer";
 import { OnboardingScreen } from "./components/OnboardingScreen";
+import { getRepoActionRows } from "./components/RepoManagerPane";
+import { getGithubTokens, getSettingsActionRows } from "./components/SettingsPane";
 import { color, glyph } from "./theme";
 
 type AppProps = {
@@ -20,20 +22,22 @@ type AppProps = {
   refreshMs?: number;
 };
 
-function getContextItemCount(contextMode: ContextMode): number {
-  if (contextMode === "repos") {
-    return 3;
-  }
-
-  if (contextMode === "settings") {
-    return 4;
-  }
-
-  return 0;
-}
-
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function swapItems<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  if (fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) {
+    return items;
+  }
+
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  if (item === undefined) {
+    return items;
+  }
+  next.splice(toIndex, 0, item);
+  return next;
 }
 
 export default function App(props: AppProps) {
@@ -50,12 +54,20 @@ export default function App(props: AppProps) {
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
   const snapshot = useRuntimeSnapshot(props.runtime, selectedPrId, props.refreshMs ?? 1500);
+  const repoActionRows = useMemo(() => getRepoActionRows(snapshot.repoSettings), [snapshot.repoSettings]);
+  const settingsActionRows = useMemo(() => getSettingsActionRows(snapshot.config), [snapshot.config]);
+  const contextItemCounts = useMemo(() => ({
+    logs: 0,
+    ask: 0,
+    repos: repoActionRows.length,
+    settings: settingsActionRows.length,
+  }), [repoActionRows.length, settingsActionRows.length]);
   const selection = useSelectionState({
     prCount: snapshot.prs.length,
     feedbackCount: snapshot.selectedPr?.feedbackItems.length ?? 0,
-    contextItemCount: 4,
+    contextItemCounts,
   });
-  const contextItemCount = getContextItemCount(selection.contextMode);
+  const contextItemCount = contextItemCounts[selection.contextMode];
 
   useEffect(() => {
     if (snapshot.prs.length === 0) {
@@ -165,6 +177,11 @@ export default function App(props: AppProps) {
       } else if (selection.inputMode === "addPr") {
         await props.runtime.addPR(value);
         setStatus("PR added");
+      } else if (selection.inputMode === "addGithubToken" && snapshot.config) {
+        await props.runtime.updateConfig({
+          githubTokens: [...getGithubTokens(snapshot.config), value],
+        });
+        setStatus("GitHub token added");
       }
     } catch (error) {
       handleFailure(error);
@@ -179,18 +196,34 @@ export default function App(props: AppProps) {
     }
 
     const current = snapshot.config;
+    const row = settingsActionRows[selection.selectedContextIndex];
     let updates: Partial<Config> | null = null;
 
-    if (selection.selectedContextIndex === 0) {
+    if (!row) {
+      return;
+    }
+
+    if (row.kind === "codingAgent") {
       updates = { codingAgent: current.codingAgent === "claude" ? "codex" : "claude" };
-    } else if (selection.selectedContextIndex === 1) {
-      updates = { autoResolveMergeConflicts: !current.autoResolveMergeConflicts };
-    } else if (selection.selectedContextIndex === 2) {
-      updates = { autoUpdateDocs: !current.autoUpdateDocs };
-    } else if (selection.selectedContextIndex === 3) {
-      updates = {
-        includeRepositoryLinksInGitHubComments: !current.includeRepositoryLinksInGitHubComments,
-      };
+    } else if (row.kind === "toggle") {
+      updates = { [row.field]: !row.value };
+    } else if (row.kind === "addGithubToken") {
+      selection.beginInput("addGithubToken");
+      return;
+    } else if (row.kind === "tokenMoveUp") {
+      if (row.disabled) {
+        setStatus("GitHub token already first");
+        return;
+      }
+      updates = { githubTokens: swapItems(getGithubTokens(current), row.index, row.index - 1) };
+    } else if (row.kind === "tokenMoveDown") {
+      if (row.disabled) {
+        setStatus("GitHub token already last");
+        return;
+      }
+      updates = { githubTokens: swapItems(getGithubTokens(current), row.index, row.index + 1) };
+    } else if (row.kind === "tokenRemove") {
+      updates = { githubTokens: getGithubTokens(current).filter((_, index) => index !== row.index) };
     }
 
     if (!updates) {
@@ -212,7 +245,12 @@ export default function App(props: AppProps) {
     }
 
     if (selection.contextMode === "repos") {
-      if (selection.selectedContextIndex === 0) {
+      const row = repoActionRows[selection.selectedContextIndex];
+      if (!row) {
+        return;
+      }
+
+      if (row.kind === "sync") {
         try {
           await props.runtime.syncRepos();
           setStatus("Repository sync queued");
@@ -222,13 +260,30 @@ export default function App(props: AppProps) {
         return;
       }
 
-      if (selection.selectedContextIndex === 1) {
+      if (row.kind === "addRepo") {
         selection.beginInput("addRepo");
         return;
       }
 
-      if (selection.selectedContextIndex === 2) {
+      if (row.kind === "addPr") {
         selection.beginInput("addPr");
+        return;
+      }
+
+      try {
+        if (row.kind === "scope") {
+          await props.runtime.updateRepoSettings(row.repo.repo, {
+            ownPrsOnly: !row.repo.ownPrsOnly,
+          });
+          setStatus(row.repo.ownPrsOnly ? "Tracking teammates too" : "Tracking only your PRs");
+        } else if (row.kind === "release") {
+          await props.runtime.updateRepoSettings(row.repo.repo, {
+            autoCreateReleases: !row.repo.autoCreateReleases,
+          });
+          setStatus(row.repo.autoCreateReleases ? "Auto-release disabled" : "Auto-release enabled");
+        }
+      } catch (error) {
+        handleFailure(error);
       }
       return;
     }
@@ -471,6 +526,7 @@ export default function App(props: AppProps) {
             logs={snapshot.logs}
             questions={snapshot.questions}
             repos={snapshot.repos}
+            repoSettings={snapshot.repoSettings}
             config={snapshot.config}
             selectedContextIndex={selection.selectedContextIndex}
             inputMode={selection.inputMode}

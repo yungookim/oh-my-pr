@@ -9,6 +9,7 @@ export type TuiRuntime = Pick<
   | "listLogs"
   | "listPRQuestions"
   | "listRepos"
+  | "listRepoSettings"
   | "getConfig"
   | "queueBabysit"
   | "setWatchEnabled"
@@ -18,6 +19,7 @@ export type TuiRuntime = Pick<
   | "addRepo"
   | "addPR"
   | "updateConfig"
+  | "updateRepoSettings"
   | "syncRepos"
 >;
 

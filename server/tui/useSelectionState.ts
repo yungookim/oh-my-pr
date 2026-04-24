@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 export type ActivePane = "prs" | "feedback" | "context";
 export type ContextMode = "logs" | "ask" | "repos" | "settings";
-export type InputMode = "none" | "ask" | "addRepo" | "addPr";
+export type InputMode = "none" | "ask" | "addRepo" | "addPr" | "addGithubToken";
+export type ContextItemCounts = Record<ContextMode, number>;
 
 export type SelectionState = {
   activePane: ActivePane;
@@ -39,7 +40,7 @@ function clampIndex(index: number, count: number): number {
 export function useSelectionState(params: {
   prCount: number;
   feedbackCount: number;
-  contextItemCount: number;
+  contextItemCounts: ContextItemCounts;
 }): SelectionState {
   const [activePane, setActivePane] = useState<ActivePane>("prs");
   const [contextMode, setContextModeState] = useState<ContextMode>("logs");
@@ -50,6 +51,7 @@ export function useSelectionState(params: {
   const [expandedFeedbackIds, setExpandedFeedbackIds] = useState<Set<string>>(new Set());
   const [inputMode, setInputMode] = useState<InputMode>("none");
   const [inputValue, setInputValue] = useState("");
+  const contextItemCount = params.contextItemCounts[contextMode];
 
   useEffect(() => {
     setSelectedPrIndexState((current) => clampIndex(current, params.prCount));
@@ -60,8 +62,8 @@ export function useSelectionState(params: {
   }, [params.feedbackCount]);
 
   useEffect(() => {
-    setSelectedContextIndexState((current) => clampIndex(current, params.contextItemCount));
-  }, [params.contextItemCount]);
+    setSelectedContextIndexState((current) => clampIndex(current, contextItemCount));
+  }, [contextItemCount]);
 
   return {
     activePane,
@@ -115,7 +117,7 @@ export function useSelectionState(params: {
         return;
       }
 
-      setSelectedContextIndexState((current) => clampIndex(current - 1, params.contextItemCount));
+      setSelectedContextIndexState((current) => clampIndex(current - 1, contextItemCount));
     },
     moveDown() {
       if (activePane === "prs") {
@@ -129,7 +131,7 @@ export function useSelectionState(params: {
         return;
       }
 
-      setSelectedContextIndexState((current) => clampIndex(current + 1, params.contextItemCount));
+      setSelectedContextIndexState((current) => clampIndex(current + 1, contextItemCount));
     },
     toggleExpandedFeedback(feedbackId) {
       setExpandedFeedbackIds((current) => {
@@ -155,7 +157,7 @@ export function useSelectionState(params: {
       setInputValue("");
     },
     setSelectedContextIndex(index) {
-      setSelectedContextIndexState(clampIndex(index, params.contextItemCount));
+      setSelectedContextIndexState(clampIndex(index, contextItemCount));
     },
   };
 }

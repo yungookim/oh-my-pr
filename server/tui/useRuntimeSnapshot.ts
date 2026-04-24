@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Config, LogEntry, PR, PRQuestion } from "@shared/schema";
+import type { Config, LogEntry, PR, PRQuestion, WatchedRepo } from "@shared/schema";
 import type { TuiRuntime, TuiRuntimeSnapshot } from "./types";
 
 export type TuiSnapshot = {
@@ -8,6 +8,7 @@ export type TuiSnapshot = {
   logs: LogEntry[];
   questions: PRQuestion[];
   repos: string[];
+  repoSettings: WatchedRepo[];
   config: Config | null;
   runtime: TuiRuntimeSnapshot | null;
   loading: boolean;
@@ -25,6 +26,7 @@ export function useRuntimeSnapshot(
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [questions, setQuestions] = useState<PRQuestion[]>([]);
   const [repos, setRepos] = useState<string[]>([]);
+  const [repoSettings, setRepoSettings] = useState<WatchedRepo[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<TuiRuntimeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,9 +37,10 @@ export function useRuntimeSnapshot(
 
     const refresh = async () => {
       try {
-        const [nextPrs, nextRepos, nextConfig, nextRuntime] = await Promise.all([
+        const [nextPrs, nextRepos, nextRepoSettings, nextConfig, nextRuntime] = await Promise.all([
           runtime.listPRs("active"),
           runtime.listRepos(),
+          runtime.listRepoSettings(),
           runtime.getConfig(),
           runtime.getRuntimeSnapshot(),
         ]);
@@ -58,6 +61,7 @@ export function useRuntimeSnapshot(
 
         setPrs(nextPrs);
         setRepos(nextRepos);
+        setRepoSettings(nextRepoSettings);
         setConfig(nextConfig);
         setRuntimeSnapshot(nextRuntime);
         setSelectedPr(nextSelectedPr);
@@ -103,6 +107,7 @@ export function useRuntimeSnapshot(
     logs,
     questions,
     repos,
+    repoSettings,
     config,
     runtime: runtimeSnapshot,
     loading,
@@ -110,6 +115,7 @@ export function useRuntimeSnapshot(
     refresh: async () => {
       const nextPrs = await runtime.listPRs("active");
       const nextRepos = await runtime.listRepos();
+      const nextRepoSettings = await runtime.listRepoSettings();
       const nextConfig = await runtime.getConfig();
       const nextRuntime = await runtime.getRuntimeSnapshot();
       const nextSelectedPr = selectedPrId
@@ -124,6 +130,7 @@ export function useRuntimeSnapshot(
 
       setPrs(nextPrs);
       setRepos(nextRepos);
+      setRepoSettings(nextRepoSettings);
       setConfig(nextConfig);
       setRuntimeSnapshot(nextRuntime);
       setSelectedPr(nextSelectedPr);

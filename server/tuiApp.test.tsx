@@ -9,6 +9,13 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
+async function typeText(ui: ReturnType<typeof render>, value: string) {
+  for (const character of value) {
+    ui.stdin.write(character);
+    await flush();
+  }
+}
+
 test("tui renders stable panes, moves PR selection, and switches context tabs", async () => {
   const runtime = createTestRuntime();
   const ui = render(<App runtime={runtime} screenWidth={160} screenHeight={24} refreshMs={0} />);
@@ -83,8 +90,7 @@ test("tui onboarding shows inline validation errors for invalid repo slugs", asy
 
   try {
     await flush();
-    ui.stdin.write("not a slug");
-    await flush();
+    await typeText(ui, "not a slug");
     ui.stdin.write("\r");
     await flush();
 
@@ -108,8 +114,7 @@ test("tui onboarding transitions into the main UI after adding a repo", async ()
 
   try {
     await flush();
-    ui.stdin.write("acme/widgets");
-    await flush();
+    await typeText(ui, "acme/widgets");
     ui.stdin.write("\r");
     await flush();
     await flush();

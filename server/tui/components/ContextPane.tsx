@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { Config, LogEntry, PRQuestion } from "@shared/schema";
+import type { Config, LogEntry, PRQuestion, WatchedRepo } from "@shared/schema";
 import type { ContextMode, InputMode } from "../useSelectionState";
 import { LogPane } from "./LogPane";
 import { AskPane } from "./AskPane";
@@ -17,6 +17,7 @@ type ContextPaneProps = {
   logs: LogEntry[];
   questions: PRQuestion[];
   repos: string[];
+  repoSettings: WatchedRepo[];
   config: Config | null;
   selectedContextIndex: number;
   inputMode: InputMode;
@@ -84,13 +85,19 @@ export function ContextPane(props: ContextPaneProps) {
         {props.mode === "repos" && (
           <RepoManagerPane
             repos={props.repos}
+            repoSettings={props.repoSettings}
             selectedActionIndex={props.selectedContextIndex}
             inputMode={props.inputMode}
             inputValue={props.inputValue}
           />
         )}
         {props.mode === "settings" && (
-          <SettingsPane config={props.config} selectedIndex={props.selectedContextIndex} />
+          <SettingsPane
+            config={props.config}
+            selectedIndex={props.selectedContextIndex}
+            inputMode={props.inputMode}
+            inputValue={props.inputValue}
+          />
         )}
       </Box>
     </Box>

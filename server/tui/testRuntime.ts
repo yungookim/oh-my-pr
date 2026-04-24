@@ -1,9 +1,10 @@
-import type { Config, FeedbackItem, LogEntry, PR, PRQuestion } from "@shared/schema";
+import type { Config, FeedbackItem, LogEntry, PR, PRQuestion, WatchedRepo } from "@shared/schema";
 import type { TuiRuntime, TuiRuntimeSnapshot } from "./types";
 
 type TestRuntimeState = {
   prs: PR[];
   repos: string[];
+  repoSettings: WatchedRepo[];
   config: Config;
   runtime: TuiRuntimeSnapshot;
   logs: Record<string, LogEntry[]>;
@@ -92,6 +93,10 @@ export class TestTuiRuntime implements TuiRuntime {
     return [...this.state.repos];
   }
 
+  async listRepoSettings(): Promise<WatchedRepo[]> {
+    return this.state.repoSettings.map((repo) => ({ ...repo }));
+  }
+
   async getConfig(): Promise<Config> {
     return { ...this.state.config };
   }
@@ -156,12 +161,33 @@ export class TestTuiRuntime implements TuiRuntime {
 
     const normalized = repo.toLowerCase();
     this.state.repos = Array.from(new Set([...this.state.repos, normalized]));
+    if (!this.state.repoSettings.some((entry) => entry.repo === normalized)) {
+      this.state.repoSettings = [
+        ...this.state.repoSettings,
+        { repo: normalized, autoCreateReleases: true, ownPrsOnly: true },
+      ];
+    }
     this.state.config = {
       ...this.state.config,
       watchedRepos: Array.from(new Set([...this.state.config.watchedRepos, normalized])),
     };
     this.emitChange();
     return { repo: normalized };
+  }
+
+  async updateRepoSettings(repo: string, updates: Partial<Omit<WatchedRepo, "repo">>): Promise<WatchedRepo> {
+    const existing = this.state.repoSettings.find((entry) => entry.repo === repo) ?? {
+      repo,
+      autoCreateReleases: true,
+      ownPrsOnly: true,
+    };
+    const updated = { ...existing, ...updates };
+    this.state.repoSettings = [
+      ...this.state.repoSettings.filter((entry) => entry.repo !== repo),
+      updated,
+    ].sort((a, b) => a.repo.localeCompare(b.repo));
+    this.emitChange();
+    return { ...updated };
   }
 
   async addPR(url: string): Promise<PR> {
@@ -283,6 +309,13 @@ export function createTestRuntime(params?: Partial<TestRuntimeState>): TestTuiRu
       },
     ],
     repos: params?.repos ?? ["acme/widgets"],
+    repoSettings: params?.repoSettings ?? [
+      {
+        repo: "acme/widgets",
+        autoCreateReleases: true,
+        ownPrsOnly: true,
+      },
+    ],
     config: params?.config ?? {
       githubTokens: [],
       codingAgent: "claude",
