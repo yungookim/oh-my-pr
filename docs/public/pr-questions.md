@@ -11,7 +11,7 @@ Instead of manually reading through large diffs, you can ask questions like:
 - "What are the architectural implications of this change?"
 - "Does this PR introduce any security concerns?"
 
-oh-my-pr uses an AI agent to analyze the PR diff, review comments, and commit history to provide accurate answers.
+oh-my-pr queues the question as a durable background job and asks the configured local agent to answer from the PR context currently stored in the app.
 
 ## How to Use
 
@@ -23,13 +23,14 @@ The agent will analyze the PR context and return a detailed answer within second
 
 ## What the Agent Sees
 
-When answering a question, the agent has access to:
+When answering a question, the agent receives:
 
-- The **full diff** of the PR.
-- All **review comments** and threads.
-- The **PR description** and title.
-- The **commit history** on the branch.
-- The **surrounding code context** in affected files.
+- PR metadata such as title, number, repository, branch, author, URL, status, and last check time.
+- Current test/lint pass/fail fields when known.
+- Feedback items stored on the PR, including status, decision, author, file, line, and a body excerpt.
+- The most recent 50 activity log entries for the PR.
+
+The Q&A agent does not fetch the full diff, commit history, external docs, or issue trackers unless that information is already present in the stored PR context or logs.
 
 ## Use Cases
 

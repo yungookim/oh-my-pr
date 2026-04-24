@@ -18,7 +18,8 @@ Be respectful and constructive in every interaction. Harassment, discrimination,
 ```bash
 npm run check    # TypeScript typecheck
 npm run lint     # ESLint
-npm run test     # Tests
+npm run test     # Server tests
+npm run test:all # Server plus client lib tests
 ```
 
 ## Code Style
@@ -27,7 +28,7 @@ npm run test     # Tests
 - **2-space indentation**, double quotes, semicolons
 - **camelCase** for server helper functions
 - **kebab-case** for API route paths
-- Tests are colocated with source files in `server/` (e.g., `foo.ts` → `foo.test.ts`)
+- Tests use `*.test.ts`; server tests live in `server/`, and client library tests live beside the relevant files in `client/src/lib/`.
 
 See [AGENTS.md](AGENTS.md) for more detailed repository guidelines and development practices.
 

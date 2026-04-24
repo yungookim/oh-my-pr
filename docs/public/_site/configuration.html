@@ -202,24 +202,19 @@
 <td>Data directory for state and logs</td>
 </tr>
 <tr>
-<td><code>PR_BABYSITTER_ROOT</code></td>
-<td><code>/tmp/pr-babysitter</code></td>
-<td>Root directory for agent worktrees</td>
+<td><code>CODEFACTORY_HOME</code></td>
+<td>—</td>
+<td>Legacy alias used only when <code>OH_MY_PR_HOME</code> is not set</td>
 </tr>
 <tr>
-<td><code>CODEFACTORY_AGENT</code></td>
-<td>(auto)</td>
-<td>Preferred agent: <code>claude</code> or <code>codex</code></td>
-</tr>
-<tr>
-<td><code>DATABASE_URL</code></td>
-<td>(SQLite)</td>
-<td>PostgreSQL connection string (optional)</td>
+<td><code>CODEFACTORY_PORT</code></td>
+<td><code>5001</code></td>
+<td>Port the MCP server connects to</td>
 </tr>
 <tr>
 <td><code>GITHUB_TOKEN</code></td>
 <td>—</td>
-<td>Default GitHub personal access token</td>
+<td>Fallback GitHub token when no dashboard token is configured; <code>gh auth</code> is used after that</td>
 </tr>
 </tbody></table>
 <h2>Storage</h2>
@@ -228,13 +223,6 @@
 <pre><code>~/.oh-my-pr/state.sqlite
 </code></pre>
 <p>No external database is required. This is ideal for single-user setups.</p>
-<h3>PostgreSQL</h3>
-<p>For team deployments, configure a PostgreSQL connection:</p>
-<pre><code class="language-bash">DATABASE_URL=postgresql://user:pass@localhost:5432/oh_my_pr
-</code></pre>
-<p>Then push the schema:</p>
-<pre><code class="language-bash">npm run db:push
-</code></pre>
 <h2>Activity Logs</h2>
 <p>oh-my-pr writes daily activity logs to:</p>
 <pre><code>~/.oh-my-pr/log/
@@ -243,7 +231,7 @@
 <h2>Dashboard Settings</h2>
 <p>The settings page in the dashboard provides a UI for:</p>
 <ul>
-<li><strong>GitHub Token management</strong> — Add, update, or rotate tokens.</li>
+<li><strong>GitHub token management</strong> — Add, remove, and reorder saved tokens before falling back to <code>GITHUB_TOKEN</code> or <code>gh auth</code>.</li>
 <li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
 <li><strong>PR comment branding</strong> — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the <code>Posted by oh-my-pr</code> footer.</li>
 <li><strong>CI healing</strong> — Enable autonomous CI repair and tune retry/session limits.</li>
@@ -307,7 +295,7 @@ release check fails, the banner stays hidden and the API falls back quietly.</p>
 </tbody></table>
 <p>This toggle is available in the dashboard settings page and as <code>includeRepositoryLinksInGitHubComments</code> (boolean) in <code>GET /api/config</code>, <code>PATCH /api/config</code>, and the MCP <code>update_config</code> tool. Turning it off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.</p>
 <h2>CI Healing Settings</h2>
-<p>Code Factory can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.</p>
+<p>oh-my-pr can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.</p>
 <table>
 <thead>
 <tr>
@@ -344,7 +332,7 @@ release check fails, the banner stays hidden and the API falls back quietly.</p>
 </tbody></table>
 <p>The dashboard shows healing state on each tracked PR, while the local API exposes <code>GET /api/healing-sessions</code> and <code>GET /api/healing-sessions/:id</code> for external tooling.</p>
 <h2>Deployment Healing Settings</h2>
-<p>Code Factory can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.</p>
+<p>oh-my-pr can monitor merged PRs for failed Vercel or Railway deployments and open a follow-up fix PR when the deployment breaks after merge.</p>
 <p>A repository is eligible only when platform detection finds one of these markers in the app-owned repo cache:</p>
 <ul>
 <li><strong>Vercel</strong> — <code>vercel.json</code>, <code>.vercel/project.json</code>, or a <code>package.json</code> script containing <code>vercel</code></li>
@@ -380,12 +368,12 @@ release check fails, the banner stays hidden and the API falls back quietly.</p>
 </tr>
 </tbody></table>
 <p>These values map to <code>autoHealDeployments</code>, <code>deploymentCheckDelayMs</code>, <code>deploymentCheckTimeoutMs</code>, and <code>deploymentCheckPollIntervalMs</code> in <code>GET /api/config</code> and <code>PATCH /api/config</code>.</p>
-<p>Deployment healing also requires the matching platform CLI on the machine running Code Factory:</p>
+<p>Deployment healing also requires the matching platform CLI on the machine running oh-my-pr:</p>
 <ul>
 <li>Install and authenticate <code>vercel</code> to heal Vercel deployments.</li>
 <li>Install and authenticate <code>railway</code> to heal Railway deployments.</li>
 </ul>
-<p>Deployment session history is exposed through <code>GET /api/deployment-healing-sessions</code>, <code>GET /api/deployment-healing-sessions/:id</code>, and the matching MCP read tools. The dashboard settings page and MCP <code>update_config</code> tool do not yet expose these deployment-healing knobs on this branch.</p>
+<p>Deployment session history is exposed through <code>GET /api/deployment-healing-sessions</code>, <code>GET /api/deployment-healing-sessions/:id</code>, and the matching MCP read tools. The dashboard settings page and MCP <code>update_config</code> tool do not yet expose these deployment-healing knobs; use <code>PATCH /api/config</code> for them.</p>
 <h2>Build &amp; Deploy</h2>
 <h3>Development</h3>
 <pre><code class="language-bash">npm run dev          # Start dev server with hot reload

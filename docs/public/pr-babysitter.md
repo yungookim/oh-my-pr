@@ -32,14 +32,13 @@ Every review comment is captured and stored locally. oh-my-pr understands GitHub
 
 ### 3. Feedback Triage
 
-Not all feedback is equal. oh-my-pr classifies each piece of feedback:
+Not all feedback is equal. oh-my-pr classifies each piece of feedback into the triage decisions used by the app:
 
-| Category | Description | Action |
+| Decision | Description | Action |
 |----------|-------------|--------|
-| **Blocking** | Must be fixed before merge | Agent dispatched immediately |
-| **Suggestion** | Improvement that should be considered | Queued for agent review |
-| **Nitpick** | Style or preference issue | Logged but deprioritized |
-| **Question** | Reviewer needs clarification | Flagged for human response |
+| **accept** | Actionable feedback that should be fixed | Queued for the configured agent |
+| **reject** | No code change is needed, such as acknowledgements or app-authored follow-ups | Marked rejected and eligible for thread closure |
+| **flag** | Actionability is unclear | Flagged for human review |
 
 ### 4. Automated Resolution
 
@@ -90,22 +89,26 @@ Deployment healing requires the matching platform CLI to be installed and authen
 Each feedback item moves through a defined state machine:
 
 ```
-pending → triaged → dispatched → resolved
-                  ↘ skipped
+pending → queued → in_progress → resolved
+      ↘ rejected
+      ↘ flagged
+      ↘ failed / warning
 ```
 
 - **pending** — Feedback just synced from GitHub.
-- **triaged** — Classified by category and priority.
-- **dispatched** — An agent is actively working on it.
+- **queued** — Accepted feedback waiting for an agent run.
+- **in_progress** — An agent is actively working on it.
 - **resolved** — The agent successfully addressed the feedback.
-- **skipped** — Determined to not need automated action.
+- **rejected** — Determined to not need a code change.
+- **flagged** — Needs human review before automation should continue.
+- **failed** / **warning** — The run could not complete cleanly or needs operator attention.
 
 ## Merge Conflict Resolution
 
 When a PR branch falls behind the base branch, oh-my-pr can automatically:
 
 1. Detect the conflict.
-2. Rebase the branch.
+2. Merge the base branch into the PR worktree.
 3. Use an AI agent to resolve non-trivial merge conflicts.
 4. Push the resolved branch.
 
@@ -116,7 +119,7 @@ You can control babysitter behavior per repository:
 - **Repo watch scope** — Choose `My PRs only` (default) or `My PRs + teammates` for auto-discovery.
 - **Poll interval** — How often to check for new reviews (default: 60 seconds).
 - **Auto-dispatch** — Whether to automatically dispatch agents or require approval.
-- **Agent preference** — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.
+- **Agent preference** — Choose the global coding agent, with CLI fallback when the preferred tool is not installed.
 - **Per-PR watch toggle** — Pause one tracked PR's background automation while keeping manual runs available.
 
 See [Configuration](./configuration.md) for details.

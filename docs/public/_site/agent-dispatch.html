@@ -178,7 +178,7 @@
     <span>Documentation</span>
   </div>
   <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl">Agent Dispatch</h1>
-  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">oh-my-pr dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.</p>
+  <p class="mt-4 max-w-3xl text-lg leading-relaxed text-gray-400">oh-my-pr dispatches local AI agents to fix accepted review feedback, failing status checks, documentation tasks, and merge conflicts. Agents run from your machine inside app-owned git worktrees.</p>
 </header>
 
 <article class="doc-prose">
@@ -202,11 +202,12 @@
 <td>Quick fixes, single-file edits, style corrections</td>
 </tr>
 </tbody></table>
-<p>oh-my-pr automatically detects which CLI tools are available on your system and selects the most appropriate agent for each task.</p>
+<p>The global coding agent defaults to <code>claude</code>. If the configured CLI is unavailable, oh-my-pr falls back to the other supported CLI when it is installed. If neither <code>claude</code> nor <code>codex</code> is available, the run fails with a clear setup error.</p>
 <h2>How Dispatch Works</h2>
 <h3>1. Worktree Isolation</h3>
-<p>Before an agent runs, oh-my-pr creates a <strong>temporary git worktree</strong>:</p>
-<pre><code>/tmp/pr-babysitter/&lt;repo&gt;/&lt;pr-number&gt;/
+<p>Before an agent runs, oh-my-pr refreshes an app-owned repository cache and creates an isolated git worktree:</p>
+<pre><code>~/.oh-my-pr/repos/&lt;owner&gt;__&lt;repo&gt;/
+~/.oh-my-pr/worktrees/&lt;owner&gt;__&lt;repo&gt;/pr-&lt;pr-number&gt;-&lt;run-id&gt;/
 </code></pre>
 <p>This ensures:</p>
 <ul>
@@ -217,24 +218,24 @@
 <h3>2. Agent Execution</h3>
 <p>The agent receives:</p>
 <ul>
-<li>The <strong>review feedback</strong> to address.</li>
-<li>The <strong>file context</strong> (relevant source files).</li>
-<li>The <strong>PR description</strong> for broader understanding.</li>
-<li>Any <strong>previous agent attempts</strong> (to avoid repeating failed approaches).</li>
+<li>The approved <strong>review-comment tasks</strong> with file, line, source URL, thread, and audit-token metadata.</li>
+<li>The approved <strong>status-check tasks</strong> when CI/status repair is needed.</li>
+<li>The approved <strong>documentation task</strong> summary when the docs assessment says updates are required.</li>
+<li>The PR branch, base/head repository, and remote information needed to commit and push safely.</li>
 </ul>
 <h3>3. Validation</h3>
 <p>After the agent completes:</p>
 <ul>
-<li>Changes are <strong>diffed</strong> against the original branch.</li>
-<li>If configured, <strong>tests are run</strong> to validate the fix.</li>
-<li>The diff is <strong>logged</strong> for human review in the dashboard.</li>
+<li>The agent is expected to run relevant verification and commit/push changed files to the PR branch.</li>
+<li>oh-my-pr checks the worktree state, records logs, updates run metadata, and polls CI when needed.</li>
+<li>GitHub follow-up replies and review-thread resolution are handled by oh-my-pr after the agent returns.</li>
 </ul>
 <h3>4. Commit &amp; Push</h3>
-<p>If validation passes, oh-my-pr:</p>
+<p>When the run succeeds, oh-my-pr:</p>
 <ul>
-<li>Creates a <strong>descriptive commit message</strong> explaining what was fixed.</li>
-<li>Pushes the commit to the <strong>PR branch</strong> on GitHub.</li>
-<li>Updates the <strong>feedback status</strong> to resolved.</li>
+<li>Verifies that the branch advanced or that no changes were necessary.</li>
+<li>Updates the <strong>feedback status</strong> and run metadata.</li>
+<li>Posts reviewer-facing follow-up summaries and resolves eligible review threads.</li>
 </ul>
 <h2>Agent Runs in the Dashboard</h2>
 <p>Every agent run is tracked in the oh-my-pr dashboard:</p>
@@ -244,13 +245,13 @@
 <li><strong>Diff</strong> — Exact changes the agent made.</li>
 <li><strong>Logs</strong> — Full agent output for debugging.</li>
 </ul>
-<h2>Model Discovery</h2>
-<p>oh-my-pr discovers available models from your local CLI installations. You can view and refresh available models from the <strong>Settings</strong> page in the dashboard.</p>
+<h2>Agent Selection</h2>
+<p>The active coding agent is stored in app config as <code>codingAgent</code> and can be changed from the dashboard, terminal UI settings pane, REST API, or MCP <code>update_config</code> tool. Agent reasoning/model behavior follows the selected CLI runtime; oh-my-pr does not expose a separate model-discovery or model-selection surface today.</p>
 <h2>Customization</h2>
-<p>Override the default agent per repository or globally:</p>
+<p>Override the default agent globally:</p>
 <ul>
-<li>Set <code>CODEFACTORY_AGENT=claude</code> or <code>CODEFACTORY_AGENT=codex</code> as an environment variable.</li>
-<li>Configure per-repo preferences in the dashboard under repository settings.</li>
+<li>Change <strong>Coding Agent</strong> in the dashboard or terminal UI settings.</li>
+<li>Patch <code>codingAgent</code> through <code>PATCH /api/config</code> or MCP <code>update_config</code>.</li>
 </ul>
 <p>See <a href="./configuration.html">Configuration</a> for all options.</p>
 

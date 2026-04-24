@@ -1,6 +1,6 @@
 # Agent Dispatch
 
-oh-my-pr dispatches local AI agents to fix code based on review feedback. Agents run entirely on your machine — your code never leaves your environment.
+oh-my-pr dispatches local AI agents to fix accepted review feedback, failing status checks, documentation tasks, and merge conflicts. Agents run from your machine inside app-owned git worktrees.
 
 ## Supported Agents
 
@@ -9,16 +9,17 @@ oh-my-pr dispatches local AI agents to fix code based on review feedback. Agents
 | **Claude Code** | `claude` | Complex reasoning, multi-file refactors, architectural changes |
 | **OpenAI Codex** | `codex` | Quick fixes, single-file edits, style corrections |
 
-oh-my-pr automatically detects which CLI tools are available on your system and selects the most appropriate agent for each task.
+The global coding agent defaults to `claude`. If the configured CLI is unavailable, oh-my-pr falls back to the other supported CLI when it is installed. If neither `claude` nor `codex` is available, the run fails with a clear setup error.
 
 ## How Dispatch Works
 
 ### 1. Worktree Isolation
 
-Before an agent runs, oh-my-pr creates a **temporary git worktree**:
+Before an agent runs, oh-my-pr refreshes an app-owned repository cache and creates an isolated git worktree:
 
 ```
-/tmp/pr-babysitter/<repo>/<pr-number>/
+~/.oh-my-pr/repos/<owner>__<repo>/
+~/.oh-my-pr/worktrees/<owner>__<repo>/pr-<pr-number>-<run-id>/
 ```
 
 This ensures:
@@ -29,24 +30,24 @@ This ensures:
 ### 2. Agent Execution
 
 The agent receives:
-- The **review feedback** to address.
-- The **file context** (relevant source files).
-- The **PR description** for broader understanding.
-- Any **previous agent attempts** (to avoid repeating failed approaches).
+- The approved **review-comment tasks** with file, line, source URL, thread, and audit-token metadata.
+- The approved **status-check tasks** when CI/status repair is needed.
+- The approved **documentation task** summary when the docs assessment says updates are required.
+- The PR branch, base/head repository, and remote information needed to commit and push safely.
 
 ### 3. Validation
 
 After the agent completes:
-- Changes are **diffed** against the original branch.
-- If configured, **tests are run** to validate the fix.
-- The diff is **logged** for human review in the dashboard.
+- The agent is expected to run relevant verification and commit/push changed files to the PR branch.
+- oh-my-pr checks the worktree state, records logs, updates run metadata, and polls CI when needed.
+- GitHub follow-up replies and review-thread resolution are handled by oh-my-pr after the agent returns.
 
 ### 4. Commit & Push
 
-If validation passes, oh-my-pr:
-- Creates a **descriptive commit message** explaining what was fixed.
-- Pushes the commit to the **PR branch** on GitHub.
-- Updates the **feedback status** to resolved.
+When the run succeeds, oh-my-pr:
+- Verifies that the branch advanced or that no changes were necessary.
+- Updates the **feedback status** and run metadata.
+- Posts reviewer-facing follow-up summaries and resolves eligible review threads.
 
 ## Agent Runs in the Dashboard
 
@@ -57,15 +58,15 @@ Every agent run is tracked in the oh-my-pr dashboard:
 - **Diff** — Exact changes the agent made.
 - **Logs** — Full agent output for debugging.
 
-## Model Discovery
+## Agent Selection
 
-oh-my-pr discovers available models from your local CLI installations. You can view and refresh available models from the **Settings** page in the dashboard.
+The active coding agent is stored in app config as `codingAgent` and can be changed from the dashboard, terminal UI settings pane, REST API, or MCP `update_config` tool. Agent reasoning/model behavior follows the selected CLI runtime; oh-my-pr does not expose a separate model-discovery or model-selection surface today.
 
 ## Customization
 
-Override the default agent per repository or globally:
+Override the default agent globally:
 
-- Set `CODEFACTORY_AGENT=claude` or `CODEFACTORY_AGENT=codex` as an environment variable.
-- Configure per-repo preferences in the dashboard under repository settings.
+- Change **Coding Agent** in the dashboard or terminal UI settings.
+- Patch `codingAgent` through `PATCH /api/config` or MCP `update_config`.
 
 See [Configuration](./configuration.md) for all options.

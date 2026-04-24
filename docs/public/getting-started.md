@@ -6,7 +6,8 @@ Welcome to oh-my-pr — the autonomous PR babysitter that watches the repositori
 
 - **Node.js 22+** — [Download](https://nodejs.org/)
 - **Git** — installed and configured
-- **GitHub Personal Access Token** — with `repo` scope ([create one](https://github.com/settings/tokens))
+- **GitHub auth** — `gh auth login`, `GITHUB_TOKEN`, or one or more saved dashboard tokens
+- **Local AI agent CLI** — either `claude` or `codex` installed and authenticated
 
 ## Installation
 
@@ -39,12 +40,12 @@ npm run dev
 
 ### 2. Connect a GitHub repository
 
-1. Open the dashboard in your browser.
-2. Click **Add Repository** and paste the URL of a GitHub repository you manage.
-3. Choose **Track automatically**:
+1. In the terminal UI, open the repository manager and add a GitHub repository. In the browser dashboard, click **Add Repository**.
+2. Choose the repository discovery scope:
    - **My PRs only** keeps the repo on the default scope and auto-discovers only PRs authored by your authenticated GitHub account.
    - **My PRs + teammates** switches the repo to team-wide discovery and auto-discovers every open PR in that repository.
-4. Enter your GitHub Personal Access Token when prompted.
+3. Add a direct PR URL when you want to track one pull request regardless of the repo's discovery scope.
+4. Add GitHub credentials through the dashboard settings if you are not using `gh auth login` or `GITHUB_TOKEN`.
 
 ### 3. Watch oh-my-pr work
 

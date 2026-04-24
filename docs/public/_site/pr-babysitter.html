@@ -207,34 +207,29 @@
 <li><strong>Review threads</strong> — multi-message conversations about a specific change.</li>
 </ul>
 <h3>3. Feedback Triage</h3>
-<p>Not all feedback is equal. oh-my-pr classifies each piece of feedback:</p>
+<p>Not all feedback is equal. oh-my-pr classifies each piece of feedback into the triage decisions used by the app:</p>
 <table>
 <thead>
 <tr>
-<th>Category</th>
+<th>Decision</th>
 <th>Description</th>
 <th>Action</th>
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Blocking</strong></td>
-<td>Must be fixed before merge</td>
-<td>Agent dispatched immediately</td>
+<td><strong>accept</strong></td>
+<td>Actionable feedback that should be fixed</td>
+<td>Queued for the configured agent</td>
 </tr>
 <tr>
-<td><strong>Suggestion</strong></td>
-<td>Improvement that should be considered</td>
-<td>Queued for agent review</td>
+<td><strong>reject</strong></td>
+<td>No code change is needed, such as acknowledgements or app-authored follow-ups</td>
+<td>Marked rejected and eligible for thread closure</td>
 </tr>
 <tr>
-<td><strong>Nitpick</strong></td>
-<td>Style or preference issue</td>
-<td>Logged but deprioritized</td>
-</tr>
-<tr>
-<td><strong>Question</strong></td>
-<td>Reviewer needs clarification</td>
-<td>Flagged for human response</td>
+<td><strong>flag</strong></td>
+<td>Actionability is unclear</td>
+<td>Flagged for human review</td>
 </tr>
 </tbody></table>
 <h3>4. Automated Resolution</h3>
@@ -277,21 +272,25 @@
 </ul>
 <h2>Feedback Lifecycle</h2>
 <p>Each feedback item moves through a defined state machine:</p>
-<pre><code>pending → triaged → dispatched → resolved
-                  ↘ skipped
+<pre><code>pending → queued → in_progress → resolved
+      ↘ rejected
+      ↘ flagged
+      ↘ failed / warning
 </code></pre>
 <ul>
 <li><strong>pending</strong> — Feedback just synced from GitHub.</li>
-<li><strong>triaged</strong> — Classified by category and priority.</li>
-<li><strong>dispatched</strong> — An agent is actively working on it.</li>
+<li><strong>queued</strong> — Accepted feedback waiting for an agent run.</li>
+<li><strong>in_progress</strong> — An agent is actively working on it.</li>
 <li><strong>resolved</strong> — The agent successfully addressed the feedback.</li>
-<li><strong>skipped</strong> — Determined to not need automated action.</li>
+<li><strong>rejected</strong> — Determined to not need a code change.</li>
+<li><strong>flagged</strong> — Needs human review before automation should continue.</li>
+<li><strong>failed</strong> / <strong>warning</strong> — The run could not complete cleanly or needs operator attention.</li>
 </ul>
 <h2>Merge Conflict Resolution</h2>
 <p>When a PR branch falls behind the base branch, oh-my-pr can automatically:</p>
 <ol>
 <li>Detect the conflict.</li>
-<li>Rebase the branch.</li>
+<li>Merge the base branch into the PR worktree.</li>
 <li>Use an AI agent to resolve non-trivial merge conflicts.</li>
 <li>Push the resolved branch.</li>
 </ol>
@@ -301,7 +300,7 @@
 <li><strong>Repo watch scope</strong> — Choose <code>My PRs only</code> (default) or <code>My PRs + teammates</code> for auto-discovery.</li>
 <li><strong>Poll interval</strong> — How often to check for new reviews (default: 60 seconds).</li>
 <li><strong>Auto-dispatch</strong> — Whether to automatically dispatch agents or require approval.</li>
-<li><strong>Agent preference</strong> — Choose between Claude Code, OpenAI Codex, or let oh-my-pr decide.</li>
+<li><strong>Agent preference</strong> — Choose the global coding agent, with CLI fallback when the preferred tool is not installed.</li>
 <li><strong>Per-PR watch toggle</strong> — Pause one tracked PR&#39;s background automation while keeping manual runs available.</li>
 </ul>
 <p>See <a href="./configuration.html">Configuration</a> for details.</p>

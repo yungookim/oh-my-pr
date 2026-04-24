@@ -186,7 +186,8 @@
 <ul>
 <li><strong>Node.js 22+</strong> — <a href="https://nodejs.org/">Download</a></li>
 <li><strong>Git</strong> — installed and configured</li>
-<li><strong>GitHub Personal Access Token</strong> — with <code>repo</code> scope (<a href="https://github.com/settings/tokens">create one</a>)</li>
+<li><strong>GitHub auth</strong> — <code>gh auth login</code>, <code>GITHUB_TOKEN</code>, or one or more saved dashboard tokens</li>
+<li><strong>Local AI agent CLI</strong> — either <code>claude</code> or <code>codex</code> installed and authenticated</li>
 </ul>
 <h2>Installation</h2>
 <p>Install from npm:</p>
@@ -206,14 +207,14 @@ npm run dev
 </code></pre>
 <h3>2. Connect a GitHub repository</h3>
 <ol>
-<li>Open the dashboard in your browser.</li>
-<li>Click <strong>Add Repository</strong> and paste the URL of a GitHub repository you manage.</li>
-<li>Choose <strong>Track automatically</strong>:<ul>
+<li>In the terminal UI, open the repository manager and add a GitHub repository. In the browser dashboard, click <strong>Add Repository</strong>.</li>
+<li>Choose the repository discovery scope:<ul>
 <li><strong>My PRs only</strong> keeps the repo on the default scope and auto-discovers only PRs authored by your authenticated GitHub account.</li>
 <li><strong>My PRs + teammates</strong> switches the repo to team-wide discovery and auto-discovers every open PR in that repository.</li>
 </ul>
 </li>
-<li>Enter your GitHub Personal Access Token when prompted.</li>
+<li>Add a direct PR URL when you want to track one pull request regardless of the repo&#39;s discovery scope.</li>
+<li>Add GitHub credentials through the dashboard settings if you are not using <code>gh auth login</code> or <code>GITHUB_TOKEN</code>.</li>
 </ol>
 <h3>3. Watch oh-my-pr work</h3>
 <p>Once connected, oh-my-pr will:</p>

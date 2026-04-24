@@ -141,6 +141,7 @@ The dashboard is available at `http://localhost:5001` by default. All `/api/*` r
 - [Getting Started](docs/public/getting-started.md)
 - [PR Babysitter](docs/public/pr-babysitter.md)
 - [Agent Dispatch](docs/public/agent-dispatch.md)
+- [PR Q&A](docs/public/pr-questions.md)
 - [Configuration](docs/public/configuration.md)
 - [Local API and MCP](LOCAL_API.md)
 - [Contributing](CONTRIBUTING.md)
