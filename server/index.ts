@@ -3,7 +3,6 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { localOnlyMiddleware } from "./localOnly";
 import { createServer } from "http";
-import open from "open";
 
 const app = express();
 const httpServer = createServer(app);
@@ -36,6 +35,11 @@ export function log(message: string, source = "express") {
     hour12: true,
   });
   console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+async function openDashboard(url: string) {
+  const { default: open } = await import("open");
+  await open(url);
 }
 
 (async () => {
@@ -89,8 +93,8 @@ export function log(message: string, source = "express") {
       }
 
       // Auto-open browser (skip when Tauri manages the window)
-      if (!process.env.TAURI_DEV) {
-        open(url).catch((err) => {
+      if (!process.env.TAURI_DEV && !process.env.OH_MY_PR_DESKTOP) {
+        openDashboard(url).catch((err) => {
           log(`Could not open browser automatically: ${err.message}`);
         });
       }

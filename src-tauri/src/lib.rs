@@ -105,6 +105,7 @@ fn start_server(resource_dir: PathBuf, port: u16) -> Result<Child, String> {
     Command::new(&node)
         .arg(&server_script)
         .env("NODE_ENV", "production")
+        .env("OH_MY_PR_DESKTOP", "1")
         .env("PORT", port.to_string())
         .current_dir(&resource_dir)
         .spawn()
