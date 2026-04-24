@@ -123,7 +123,7 @@ oh-my-pr --help       # help
 oh-my-pr --version    # version
 ```
 
-Set `PORT` to change the default web server port (`5001`).
+Set `PORT` to change the default web server port (`5001`). If an MCP host needs to connect to a non-default server port, set `OH_MY_PR_PORT` for `oh-my-pr mcp`.
 
 ## Run From Source
 

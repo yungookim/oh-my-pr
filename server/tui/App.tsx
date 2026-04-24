@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { Config, FeedbackItem } from "@shared/schema";
 import { useRuntimeSnapshot } from "./useRuntimeSnapshot";
-import { type ContextMode, useSelectionState } from "./useSelectionState";
+import { useSelectionState } from "./useSelectionState";
 import type { TuiRuntime } from "./types";
 import { getFeedbackActions, getLayoutMode } from "./viewModel";
 import { Header } from "./components/Header";

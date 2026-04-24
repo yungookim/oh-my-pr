@@ -1,10 +1,10 @@
-# Native App Framework Evaluation for CodeFactory
+# Native App Framework Evaluation for oh-my-pr
 
 ## Context
 
-CodeFactory is currently a web application (React frontend + Express backend) that runs locally and opens in the user's browser. We want to convert it into a native desktop app with the following critical requirement:
+oh-my-pr is currently a web application (React frontend + Express backend) that runs locally and opens in the user's browser. We want to convert it into a native desktop app with the following critical requirement:
 
-- **Single-instance enforcement**: Only one instance of CodeFactory may run on the OS at a time.
+- **Single-instance enforcement**: Only one instance of oh-my-pr may run on the OS at a time.
 
 This document evaluates frameworks as alternatives to Electron.
 
@@ -22,7 +22,7 @@ This document evaluates frameworks as alternatives to Electron.
 | **Tech stack** | Rust for backend/system APIs, any web framework for frontend. Our existing React/Vite frontend can be reused with minimal changes. |
 | **Frontend reuse** | Excellent. Tauri serves the web frontend in a webview. Our React + Tailwind + shadcn/ui frontend works as-is. |
 | **System APIs** | File system, system tray, notifications, clipboard, dialogs, shell commands, auto-start, global shortcuts, deep linking, IPC (commands + events). |
-| **Child process spawning** | Supported via `tauri-plugin-shell` (sidecar and command execution). Critical for CodeFactory's `codex`/`claude` CLI agent spawning. |
+| **Child process spawning** | Supported via `tauri-plugin-shell` (sidecar and command execution). Critical for oh-my-pr's `codex`/`claude` CLI agent spawning. |
 | **Auto-update** | Built-in [`tauri-plugin-updater`](https://v2.tauri.app/plugin/updater/) with cryptographic signature verification, differential updates, and flexible restart strategies. |
 | **Cross-platform** | Windows, macOS, Linux. Also supports iOS/Android (Tauri v2). |
 | **Maturity** | Tauri v2 is stable (released 2024). Large community, active development, used in production by many projects. |
@@ -70,7 +70,7 @@ fn main() {
 ```go
 app := wails.CreateApp(&wails.AppConfig{
     SingleInstanceLock: &options.SingleInstanceLock{
-        UniqueId: "com.codefactory.app",
+        UniqueId: "com.yungookim.ohmypr",
         OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
             // Focus main window
             runtime.WindowUnminimise(ctx)
@@ -137,7 +137,7 @@ app := wails.CreateApp(&wails.AppConfig{
 
 ## Recommendation: Tauri
 
-**Tauri is the clear winner for CodeFactory** for the following reasons:
+**Tauri is the clear winner for oh-my-pr** for the following reasons:
 
 ### 1. First-class single-instance support
 The `tauri-plugin-single-instance` plugin provides exactly what we need with zero custom code — OS-level mutex enforcement with a callback to handle the second instance's arguments (e.g., to focus the existing window or handle deep links).
@@ -145,22 +145,22 @@ The `tauri-plugin-single-instance` plugin provides exactly what we need with zer
 ### 2. Full frontend reuse
 Our React + Vite + Tailwind + shadcn/ui frontend works in Tauri's webview with minimal changes. The migration primarily affects the backend integration layer, not the UI.
 
-### 3. Practical migration path for CodeFactory
+### 3. Practical migration path for oh-my-pr
 Two viable approaches:
 
 - **Option A — Sidecar architecture** (recommended for faster migration): Run the existing Express server as a Tauri sidecar process. The webview connects to `localhost:5001` as it does today. Tauri provides the native shell (window management, system tray, single-instance, auto-update). This preserves the entire existing backend.
 
 - **Option B — Full Tauri commands**: Port Express API routes to Tauri commands in Rust. More work upfront but tighter integration and better security (no open localhost port).
 
-### 4. Production-ready features CodeFactory needs
+### 4. Production-ready features oh-my-pr needs
 - **Shell command execution**: Critical for spawning `codex`/`claude` CLI agents — supported via `tauri-plugin-shell`.
 - **File system access**: Critical for worktree management, SQLite database, logs — supported via `tauri-plugin-fs`.
-- **System tray**: Run CodeFactory in background while babysitting PRs.
+- **System tray**: Run oh-my-pr in background while babysitting PRs.
 - **Notifications**: Alert when PR feedback needs attention.
 - **Auto-update**: Push updates to users seamlessly.
 
 ### 5. Small footprint
-~3-10 MB bundle (vs. Electron's 150+ MB) means fast downloads and low disk usage. ~30-40 MB memory fits CodeFactory's "runs in the background" use case.
+~3-10 MB bundle (vs. Electron's 150+ MB) means fast downloads and low disk usage. ~30-40 MB memory fits oh-my-pr's "runs in the background" use case.
 
 ---
 

@@ -247,10 +247,10 @@
 <h2>Model Discovery</h2>
 <p>oh-my-pr discovers available models from your local CLI installations. You can view and refresh available models from the <strong>Settings</strong> page in the dashboard.</p>
 <h2>Customization</h2>
-<p>Override the default agent per repository or globally:</p>
+<p>Choose the global agent used for autonomous runs:</p>
 <ul>
-<li>Set <code>CODEFACTORY_AGENT=claude</code> or <code>CODEFACTORY_AGENT=codex</code> as an environment variable.</li>
-<li>Configure per-repo preferences in the dashboard under repository settings.</li>
+<li>Use the dashboard or terminal UI settings to switch between Claude Code and OpenAI Codex.</li>
+<li>Set <code>codingAgent</code> to <code>claude</code> or <code>codex</code> through <code>PATCH /api/config</code> or the MCP <code>update_config</code> tool.</li>
 </ul>
 <p>See <a href="./configuration.html">Configuration</a> for all options.</p>
 

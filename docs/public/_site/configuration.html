@@ -197,6 +197,11 @@
 <td>HTTP server port</td>
 </tr>
 <tr>
+<td><code>OH_MY_PR_PORT</code></td>
+<td><code>5001</code></td>
+<td>Port the MCP server connects to when the HTTP server is not on the default port</td>
+</tr>
+<tr>
 <td><code>OH_MY_PR_HOME</code></td>
 <td><code>~/.oh-my-pr</code></td>
 <td>Data directory for state and logs</td>
@@ -205,11 +210,6 @@
 <td><code>PR_BABYSITTER_ROOT</code></td>
 <td><code>/tmp/pr-babysitter</code></td>
 <td>Root directory for agent worktrees</td>
-</tr>
-<tr>
-<td><code>CODEFACTORY_AGENT</code></td>
-<td>(auto)</td>
-<td>Preferred agent: <code>claude</code> or <code>codex</code></td>
 </tr>
 <tr>
 <td><code>DATABASE_URL</code></td>
@@ -222,6 +222,7 @@
 <td>Default GitHub personal access token</td>
 </tr>
 </tbody></table>
+<p><code>CODEFACTORY_PORT</code> is still accepted by the MCP server as a legacy fallback, but new MCP configurations should use <code>OH_MY_PR_PORT</code>.</p>
 <h2>Storage</h2>
 <h3>SQLite (Default)</h3>
 <p>By default, oh-my-pr stores all state in a local SQLite database:</p>
@@ -244,6 +245,7 @@
 <p>The settings page in the dashboard provides a UI for:</p>
 <ul>
 <li><strong>GitHub Token management</strong> — Add, update, or rotate tokens.</li>
+<li><strong>Agent selection</strong> — Choose whether autonomous runs use Claude Code or OpenAI Codex.</li>
 <li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
 <li><strong>PR comment branding</strong> — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the <code>Posted by oh-my-pr</code> footer.</li>
 <li><strong>CI healing</strong> — Enable autonomous CI repair and tune retry/session limits.</li>
@@ -290,7 +292,7 @@ session or publishing a newer release makes the banner eligible to appear
 again. If the app is running a non-semver build such as <code>dev</code>, or if the
 release check fails, the banner stays hidden and the API falls back quietly.</p>
 <h2>PR Comment Branding</h2>
-<p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, echoed <code>/codefactory</code> agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository.</p>
+<p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository.</p>
 <table>
 <thead>
 <tr>
