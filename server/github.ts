@@ -47,6 +47,7 @@ type GitHubCommitStatusResponse = {
 };
 
 type GitHubCheckRunResponse = {
+  id?: number | null;
   name?: string | null;
   status?: string | null;
   conclusion?: string | null;
@@ -58,7 +59,21 @@ type GitHubCheckRunResponse = {
     title?: string | null;
     summary?: string | null;
   } | null;
+  app?: {
+    slug?: string | null;
+  } | null;
 };
+
+type GitHubActionsJobStepResponse = {
+  name?: string | null;
+  conclusion?: string | null;
+};
+
+type GitHubActionsJobResponse = {
+  steps?: GitHubActionsJobStepResponse[] | null;
+};
+
+const GITHUB_ACTIONS_JOB_ENRICHMENT_BATCH_SIZE = 4;
 
 export type GitHubPullCloseState = {
   number: number;
@@ -367,6 +382,97 @@ export function buildFeedbackAuditToken(feedbackId: string): string {
   return `codefactory-feedback:${feedbackId}`;
 }
 
+function isGitHubActionsCheckRun(run: GitHubCheckRunResponse): run is GitHubCheckRunResponse & { id: number } {
+  return run.app?.slug === "github-actions" && typeof run.id === "number";
+}
+
+function summarizeFailedGitHubActionsSteps(job: GitHubActionsJobResponse): string | null {
+  const failedStepNames = (job.steps ?? [])
+    .filter((step) => step.conclusion === "failure")
+    .map((step) => step.name?.trim())
+    .filter((name): name is string => Boolean(name));
+
+  if (failedStepNames.length === 0) {
+    return null;
+  }
+
+  return `Failed steps: ${Array.from(new Set(failedStepNames)).join(", ")}`;
+}
+
+function isGenericCheckRunFailureSummary(summary: string | null | undefined): boolean {
+  const currentSummary = summary?.trim() ?? "";
+  return (
+    currentSummary === "" ||
+    /^(?:check run(?: [a-z_]+)?|failed|failure)$/i.test(currentSummary)
+  );
+}
+
+function mergeCheckRunFailureSummary(
+  run: GitHubCheckRunResponse,
+  failedStepsSummary: string | null,
+): GitHubCheckRunResponse {
+  if (!failedStepsSummary) {
+    return run;
+  }
+
+  if (!isGenericCheckRunFailureSummary(run.output?.summary)) {
+    return run;
+  }
+
+  return {
+    ...run,
+    output: {
+      ...(run.output ?? {}),
+      summary: failedStepsSummary,
+    },
+  };
+}
+
+async function enrichCheckRunWithGitHubActionsSteps(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+  run: GitHubCheckRunResponse,
+): Promise<GitHubCheckRunResponse> {
+  if (!isGitHubActionsCheckRun(run) || run.conclusion !== "failure") {
+    return run;
+  }
+  if (!isGenericCheckRunFailureSummary(run.output?.summary)) {
+    return run;
+  }
+
+  try {
+    const response = await octokit.request("GET /repos/{owner}/{repo}/actions/jobs/{job_id}", {
+      owner: repo.owner,
+      repo: repo.repo,
+      job_id: run.id,
+    });
+
+    return mergeCheckRunFailureSummary(
+      run,
+      summarizeFailedGitHubActionsSteps(response.data as GitHubActionsJobResponse),
+    );
+  } catch {
+    return run;
+  }
+}
+
+async function enrichCheckRunsWithGitHubActionsSteps(
+  octokit: Octokit,
+  repo: ParsedRepoSlug,
+  runs: GitHubCheckRunResponse[],
+): Promise<GitHubCheckRunResponse[]> {
+  const enrichedRuns: GitHubCheckRunResponse[] = [];
+
+  for (let index = 0; index < runs.length; index += GITHUB_ACTIONS_JOB_ENRICHMENT_BATCH_SIZE) {
+    const batch = runs.slice(index, index + GITHUB_ACTIONS_JOB_ENRICHMENT_BATCH_SIZE);
+    enrichedRuns.push(...(await Promise.all(
+      batch.map((run) => enrichCheckRunWithGitHubActionsSteps(octokit, repo, run)),
+    )));
+  }
+
+  return enrichedRuns;
+}
+
 export async function fetchCheckSnapshotsForRef(
   octokit: Octokit,
   repo: ParsedRepoSlug,
@@ -388,11 +494,17 @@ export async function fetchCheckSnapshotsForRef(
     })),
   ]);
 
+  const checkRuns = await enrichCheckRunsWithGitHubActionsSteps(
+    octokit,
+    repo,
+    (checkRunsResponse.data.check_runs ?? []) as GitHubCheckRunResponse[],
+  );
+
   return normalizeCheckSnapshotsFromRef({
     prId,
     sha: headSha,
     statuses: (statusResponse.data.statuses ?? []) as GitHubCommitStatusResponse[],
-    checkRuns: (checkRunsResponse.data.check_runs ?? []) as GitHubCheckRunResponse[],
+    checkRuns,
   });
 }
 
