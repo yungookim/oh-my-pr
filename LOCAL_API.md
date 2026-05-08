@@ -645,7 +645,9 @@ Partially update the configuration.  Only the provided fields are changed.
   "autoResolveMergeConflicts": true,
   "autoCreateReleases": true,
   "autoUpdateDocs": true,
+  "githubCommentAppName": "oh-my-pr",
   "includeRepositoryLinksInGitHubComments": true,
+  "postGitHubProgressReplies": false,
   "autoHealCI": false,
   "maxHealingAttemptsPerSession": 3,
   "maxHealingAttemptsPerFingerprint": 2,
@@ -982,7 +984,9 @@ Install the oh-my-pr code-review GitHub Actions workflow on a repository.
   autoResolveMergeConflicts: boolean;
   autoCreateReleases: boolean;
   autoUpdateDocs: boolean;
+  githubCommentAppName: string; // Defaults to "oh-my-pr"; blank removes the GitHub reply signature
   includeRepositoryLinksInGitHubComments: boolean;
+  postGitHubProgressReplies: boolean;
   autoHealCI: boolean;
   maxHealingAttemptsPerSession: number;
   maxHealingAttemptsPerFingerprint: number;
