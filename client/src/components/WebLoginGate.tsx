@@ -51,7 +51,8 @@ export function WebLoginGate({ children }: WebLoginGateProps) {
       })
       .catch((authError: unknown) => {
         if (!cancelled) {
-          setError(authError instanceof Error ? authError.message : "Could not check login state.");
+          const message = authError instanceof Error ? authError.message : "";
+          setError(getErrorMessage(message, "Could not check login state."));
         }
       });
 
@@ -81,7 +82,11 @@ export function WebLoginGate({ children }: WebLoginGateProps) {
       }
 
       setPassword("");
-      setStatus(JSON.parse(responseText) as AuthStatus);
+      try {
+        setStatus(JSON.parse(responseText) as AuthStatus);
+      } catch {
+        setError(getErrorMessage(responseText, "Login failed."));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +96,7 @@ export function WebLoginGate({ children }: WebLoginGateProps) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
         <div className="border border-border px-4 py-3 text-xs uppercase text-muted-foreground">
-          Loading oh-my-pr
+          {error ?? "Loading oh-my-pr"}
         </div>
       </div>
     );

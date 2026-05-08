@@ -10,6 +10,23 @@ const serverLog = childLogger("server");
 const app = express();
 const httpServer = createServer(app);
 
+function readTrustProxySetting(value: string | undefined): boolean | number | string {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "false") {
+    return false;
+  }
+  if (trimmed === "true") {
+    return true;
+  }
+
+  const numericValue = Number(trimmed);
+  if (Number.isInteger(numericValue) && numericValue >= 0) {
+    return numericValue;
+  }
+
+  return trimmed;
+}
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -28,6 +45,7 @@ app.use(express.urlencoded({ extended: false }));
 
 // Keep loopback API access local-first while allowing authenticated remote
 // dashboard sessions when web credentials are configured.
+app.set("trust proxy", readTrustProxySetting(process.env.OH_MY_PR_TRUST_PROXY));
 const webAuth = configureWebAuth(app);
 app.use("/api", webAuth.apiAccessMiddleware);
 

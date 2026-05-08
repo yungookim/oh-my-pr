@@ -73,14 +73,10 @@ function isLoopbackRequest(req: Request): boolean {
 }
 
 function safeEqual(actual: string, expected: string): boolean {
-  const actualBuffer = Buffer.from(actual);
-  const expectedBuffer = Buffer.from(expected);
+  const actualHash = crypto.createHash("sha256").update(actual).digest();
+  const expectedHash = crypto.createHash("sha256").update(expected).digest();
 
-  if (actualBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+  return crypto.timingSafeEqual(actualHash, expectedHash);
 }
 
 function buildAuthStatus(req: Request, credentials: WebAuthCredentials | null): AuthStatus {
@@ -135,6 +131,11 @@ function destroySession(req: Request): Promise<void> {
   });
 }
 
+function buildSessionPhaseError(phase: string, error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(`Web auth ${phase} failed: ${message}`, { cause: error });
+}
+
 export function configureWebAuth(app: Express, config = readWebAuthConfig()): WebAuthHandlers {
   const credentials = getCredentials(config);
   const sessionSecret = config.sessionSecret ?? crypto.randomBytes(32).toString("hex");
@@ -151,7 +152,7 @@ export function configureWebAuth(app: Express, config = readWebAuthConfig()): We
       cookie: {
         httpOnly: true,
         sameSite: "lax",
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         maxAge: SESSION_MAX_AGE_MS,
       },
     }),
@@ -168,7 +169,7 @@ export function configureWebAuth(app: Express, config = readWebAuthConfig()): We
     res.json(buildAuthStatus(req, credentials));
   });
 
-  app.post("/api/auth/login", loginLimiter, async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res, next) => {
     if (!credentials) {
       res.status(403).json({
         error: "Remote login is not configured",
@@ -188,17 +189,29 @@ export function configureWebAuth(app: Express, config = readWebAuthConfig()): We
       return;
     }
 
-    await regenerateSession(req);
-    req.session.authenticatedWebUser = credentials.username;
-    await saveSession(req);
+    let phase = "session regeneration";
+    try {
+      await regenerateSession(req);
+      req.session.authenticatedWebUser = credentials.username;
+      phase = "session save";
+      await saveSession(req);
+    } catch (error) {
+      next(buildSessionPhaseError(phase, error));
+      return;
+    }
 
     res.json(buildAuthStatus(req, credentials));
   });
 
-  app.post("/api/auth/logout", async (req, res) => {
-    if (req.session.authenticatedWebUser) {
-      await destroySession(req);
-      res.clearCookie(SESSION_NAME);
+  app.post("/api/auth/logout", async (req, res, next) => {
+    try {
+      if (req.session.authenticatedWebUser) {
+        await destroySession(req);
+        res.clearCookie(SESSION_NAME);
+      }
+    } catch (error) {
+      next(buildSessionPhaseError("session destroy", error));
+      return;
     }
 
     res.json(buildAuthStatus(req, credentials));
