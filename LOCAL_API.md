@@ -1,8 +1,10 @@
 # oh-my-pr — Local API & MCP Server
 
-> **Security notice**: Every API endpoint is restricted to the local machine.
-> Requests arriving from any non-loopback address are rejected with `HTTP 403`.
-> oh-my-pr is a **local-first** tool; never expose its port to the internet.
+> **Security notice**: Loopback API access is allowed without login. Remote web
+> and API access is disabled unless `OH_MY_PR_WEB_USERNAME` and
+> `OH_MY_PR_WEB_PASSWORD` are set, and then requires a signed dashboard session.
+> Put TLS in front of the server before using remote access on an untrusted
+> network.
 
 ---
 
@@ -44,7 +46,7 @@ structured tool calls without writing a single line of HTTP client code.
 
 ```
 ┌─────────────────────────────────┐
-│  local machine only             │
+│  local-first machine            │
 │                                 │
 │  ┌──────────┐    HTTP           │
 │  │ OpenClaw │──────────────┐    │
@@ -84,9 +86,10 @@ npm run dev
 npm run build && npm start
 ```
 
-The server binds to `0.0.0.0:5001` (configurable via `PORT`), but the
-localhost-only middleware rejects every `/api/*` call that does not originate
-from `127.0.0.1` or `::1`.
+The server binds to `0.0.0.0:5001` (configurable via `PORT`). Requests from
+`127.0.0.1` or `::1` can call `/api/*` directly. Remote requests require a web
+login when `OH_MY_PR_WEB_USERNAME` and `OH_MY_PR_WEB_PASSWORD` are configured;
+otherwise they are rejected.
 
 If you enable deployment healing for Vercel or Railway repositories, install
 and authenticate the matching platform CLI on the same machine:
@@ -118,24 +121,50 @@ OH_MY_PR_PORT=5001 npm run mcp
 
 ## Security model
 
-### Localhost-only enforcement
+### Local-first enforcement
 
-The middleware in `server/localOnly.ts` runs before every `/api/*` handler.
-It checks the resolved IP address of each incoming request:
+The web access middleware runs before every protected `/api/*` handler. It
+checks the resolved IP address of each incoming request:
 
 | Source IP              | Allowed? |
 |------------------------|----------|
-| `127.0.0.1`            | ✅ yes   |
-| `::1`                  | ✅ yes   |
-| `::ffff:127.x.x.x`     | ✅ yes   |
-| `127.x.x.x` (any /8)  | ✅ yes   |
-| Everything else        | ❌ 403   |
+| `127.0.0.1`            | yes, no login required |
+| `::1`                  | yes, no login required |
+| `::ffff:127.x.x.x`     | yes, no login required |
+| `127.x.x.x` (any /8)  | yes, no login required |
+| Everything else        | yes only after dashboard login |
 
 **What this means in practice**
 
-- Only processes running on the same machine can call the API.
-- Docker containers, VMs, LAN peers, and the internet are all rejected.
-- The UI (served at `/`) is unaffected — it uses a browser on the same host.
+- Processes running on the same machine can call the API without login.
+- Docker containers, VMs, LAN peers, and the internet need a dashboard session.
+- Remote login is opt-in; without credentials, non-loopback API calls receive
+  `403`.
+- The UI is served at `/`; remote browsers see a login screen before API data
+  loads.
+
+### Remote dashboard login
+
+Set these variables before starting the server:
+
+```bash
+OH_MY_PR_WEB_USERNAME=operator
+OH_MY_PR_WEB_PASSWORD='choose-a-long-password'
+OH_MY_PR_SESSION_SECRET='choose-a-long-random-secret'
+```
+
+`OH_MY_PR_SESSION_SECRET` is optional; when omitted, oh-my-pr creates an
+in-memory secret at startup and existing sessions are invalidated on restart.
+Use HTTPS at the proxy/load-balancer layer before sending credentials across an
+untrusted network.
+
+The login endpoints are:
+
+| Route | Description |
+|-------|-------------|
+| `GET /api/auth/status` | Return whether the current caller needs login and is authenticated |
+| `POST /api/auth/login` | Authenticate with `{ "username": "...", "password": "..." }` |
+| `POST /api/auth/logout` | Destroy the current dashboard session |
 
 ### Running behind a reverse proxy
 
@@ -1158,7 +1187,8 @@ All error responses share this shape:
 | Status | Meaning |
 |--------|---------|
 | `400`  | Validation error (bad input) |
-| `403`  | Request blocked — not from localhost |
+| `401`  | Login required or invalid credentials |
+| `403`  | Request blocked — remote login is not configured |
 | `404`  | Resource not found |
 | `409`  | Conflict — e.g. drain mode is active |
 | `500`  | Internal server error |
@@ -1173,6 +1203,9 @@ All error responses share this shape:
 | `OH_MY_PR_PORT`      | `5001`         | Port the MCP server connects to (MCP only) |
 | `OH_MY_PR_HOME`      | `~/.oh-my-pr` | Directory for SQLite DB, logs, repos, worktrees |
 | `CODEFACTORY_HOME`   | —              | Legacy alias used only when `OH_MY_PR_HOME` is not set |
+| `OH_MY_PR_WEB_USERNAME` | —           | Username for opt-in remote dashboard/API login |
+| `OH_MY_PR_WEB_PASSWORD` | —           | Password for opt-in remote dashboard/API login |
+| `OH_MY_PR_SESSION_SECRET` | generated at startup | Secret for signing remote dashboard sessions |
 | `GITHUB_TOKEN`       | —              | Fallback GitHub token after saved app tokens and before `gh auth` |
 | `NODE_ENV`           | `development`  | Set to `production` for production builds |
 | `TAURI_DEV`          | —              | Set to skip auto-opening the browser (used by Tauri) |

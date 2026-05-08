@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { localOnlyMiddleware } from "./localOnly";
+import { configureWebAuth } from "./webAuth";
 import { createServer } from "http";
 import { childLogger, logger } from "./logger";
 
@@ -26,9 +26,10 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-// Restrict every /api route to local-machine callers only.
-// Any request arriving from a non-loopback IP is rejected with 403.
-app.use("/api", localOnlyMiddleware);
+// Keep loopback API access local-first while allowing authenticated remote
+// dashboard sessions when web credentials are configured.
+const webAuth = configureWebAuth(app);
+app.use("/api", webAuth.apiAccessMiddleware);
 
 export function log(message: string, source = "express") {
   logger.info({ source }, message);
