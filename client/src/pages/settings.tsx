@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Config, RuntimeState } from "@shared/schema";
@@ -17,7 +17,13 @@ export default function Settings() {
 
   const [newGithubToken, setNewGithubToken] = useState("");
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const [githubCommentAppNameDraft, setGithubCommentAppNameDraft] = useState("oh-my-pr");
   const githubTokens = config?.githubTokens ?? (config?.githubToken ? [config.githubToken] : []);
+  const githubCommentAppName = config?.githubCommentAppName ?? "oh-my-pr";
+
+  useEffect(() => {
+    setGithubCommentAppNameDraft(githubCommentAppName);
+  }, [githubCommentAppName]);
 
   const updateGithubTokens = (tokens: string[]) => {
     updateConfigMutation.mutate({ githubTokens: tokens });
@@ -476,10 +482,10 @@ export default function Settings() {
                 </div>
                 <input
                   id="settings-github-comment-app-name"
-                  key={config?.githubCommentAppName ?? "oh-my-pr"}
                   type="text"
-                  defaultValue={config?.githubCommentAppName ?? "oh-my-pr"}
+                  value={githubCommentAppNameDraft}
                   placeholder="leave blank to remove"
+                  onChange={(e) => setGithubCommentAppNameDraft(e.target.value)}
                   onBlur={(e) => {
                     const githubCommentAppName = e.target.value;
                     if (githubCommentAppName !== (config?.githubCommentAppName ?? "oh-my-pr")) {
