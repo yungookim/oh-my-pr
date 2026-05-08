@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG: Config = {
   autoCreateReleases: false,
   autoUpdateDocs: true,
   includeRepositoryLinksInGitHubComments: true,
+  githubCommentAppName: "oh-my-pr",
   postGitHubProgressReplies: false,
   autoHealCI: false,
   maxHealingAttemptsPerSession: 3,

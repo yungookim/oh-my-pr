@@ -341,12 +341,16 @@ export function applyConfigUpdate(existing: Config, updates: Partial<Config>): C
   const normalizedGithubTokens = updatedGithubTokens
     .map((token) => token.trim())
     .filter(Boolean);
+  const githubCommentAppName = updates.githubCommentAppName === undefined
+    ? existing.githubCommentAppName
+    : updates.githubCommentAppName.trim();
 
   return configSchema.parse({
     ...existing,
     ...updates,
     githubTokens: normalizedGithubTokens,
     githubToken: undefined,
+    githubCommentAppName,
     watchedRepos: updates.watchedRepos ?? existing.watchedRepos,
     trustedReviewers: updates.trustedReviewers ?? existing.trustedReviewers,
     ignoredBots: updates.ignoredBots ?? existing.ignoredBots,

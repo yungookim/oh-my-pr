@@ -167,18 +167,21 @@ test("runtime updateConfig persists updates and exposes them through getConfig",
     codingAgent: "codex",
     autoUpdateDocs: false,
     includeRepositoryLinksInGitHubComments: false,
+    githubCommentAppName: "Review Bot",
     postGitHubProgressReplies: true,
   });
 
   assert.equal(updated.codingAgent, "codex");
   assert.equal(updated.autoUpdateDocs, false);
   assert.equal(updated.includeRepositoryLinksInGitHubComments, false);
+  assert.equal(updated.githubCommentAppName, "Review Bot");
   assert.equal(updated.postGitHubProgressReplies, true);
 
   const config = await runtime.getConfig();
   assert.equal(config.codingAgent, "codex");
   assert.equal(config.autoUpdateDocs, false);
   assert.equal(config.includeRepositoryLinksInGitHubComments, false);
+  assert.equal(config.githubCommentAppName, "Review Bot");
   assert.equal(config.postGitHubProgressReplies, true);
 });
 
