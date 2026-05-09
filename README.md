@@ -99,6 +99,20 @@ oh-my-pr can be used in a few ways:
 - local REST API: see [LOCAL_API.md](LOCAL_API.md)
 - optional Tauri desktop shell
 
+Local browser and API access work without a dashboard login. To use the web
+dashboard from another machine, set remote web credentials before starting the
+server:
+
+```bash
+OH_MY_PR_WEB_USERNAME=operator \
+OH_MY_PR_WEB_PASSWORD='choose-a-long-password' \
+OH_MY_PR_SESSION_SECRET='choose-a-long-random-secret' \
+oh-my-pr
+```
+
+Remote API requests then require a signed dashboard session. Put TLS in front
+of the server before using remote access over an untrusted network.
+
 ### Logging
 
 Server output is structured (pino) and goes to two destinations by default:
@@ -158,7 +172,9 @@ npm install
 npm run dev
 ```
 
-The dashboard is available at `http://localhost:5001` by default. All `/api/*` routes are restricted to loopback callers.
+The dashboard is available at `http://localhost:5001` by default. Loopback API
+requests work without login; remote dashboard/API access requires
+`OH_MY_PR_WEB_USERNAME` and `OH_MY_PR_WEB_PASSWORD`.
 
 ## Docs
 

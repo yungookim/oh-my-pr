@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { localOnlyMiddleware } from "./localOnly";
+import { configureWebAuth } from "./webAuth";
 import { createServer } from "http";
 import { childLogger, logger } from "./logger";
 
@@ -9,6 +9,23 @@ const serverLog = childLogger("server");
 
 const app = express();
 const httpServer = createServer(app);
+
+function readTrustProxySetting(value: string | undefined): boolean | number | string {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === "false") {
+    return false;
+  }
+  if (trimmed === "true") {
+    return true;
+  }
+
+  const numericValue = Number(trimmed);
+  if (Number.isInteger(numericValue) && numericValue >= 0) {
+    return numericValue;
+  }
+
+  return trimmed;
+}
 
 declare module "http" {
   interface IncomingMessage {
@@ -26,9 +43,11 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-// Restrict every /api route to local-machine callers only.
-// Any request arriving from a non-loopback IP is rejected with 403.
-app.use("/api", localOnlyMiddleware);
+// Keep loopback API access local-first while allowing authenticated remote
+// dashboard sessions when web credentials are configured.
+app.set("trust proxy", readTrustProxySetting(process.env.OH_MY_PR_TRUST_PROXY));
+const webAuth = configureWebAuth(app);
+app.use("/api", webAuth.apiAccessMiddleware);
 
 export function log(message: string, source = "express") {
   logger.info({ source }, message);

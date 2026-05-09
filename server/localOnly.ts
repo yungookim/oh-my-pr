@@ -1,13 +1,12 @@
 /**
  * localOnly.ts
  *
- * Express middleware that restricts every API route to requests originating
- * from the local machine (127.0.0.1 / ::1 / ::ffff:127.0.0.1).
+ * Express helpers for recognizing requests originating from the local machine
+ * (127.0.0.1 / ::1 / ::ffff:127.0.0.1).
  *
- * Any request that arrives from a non-loopback address is rejected with
- * HTTP 403 before it reaches any route handler.  This enforces the security
- * boundary described in LOCAL_API.md: oh-my-pr is a local-first tool and
- * must never be reachable from external networks.
+ * The middleware below preserves the strict local-only behavior for callers
+ * that need it. The web server uses the exported loopback helper so local
+ * callers can bypass dashboard login while remote callers authenticate.
  *
  * Usage
  * -----
@@ -29,7 +28,7 @@ const LOOPBACK_ADDRESSES = new Set([
  * Returns `true` when the raw IP string is a loopback address.
  * Handles IPv4, IPv6, and IPv4-mapped IPv6 (::ffff:127.x.x.x).
  */
-function isLoopback(ip: string | undefined): boolean {
+export function isLoopbackAddress(ip: string | undefined): boolean {
   if (!ip) return false;
 
   // Strip brackets from IPv6 literals (e.g. "[::1]")
@@ -63,7 +62,7 @@ export function localOnlyMiddleware(
   // Express sets req.ip after trust-proxy resolution; fall back to socket address.
   const ip = req.ip ?? req.socket?.remoteAddress;
 
-  if (!isLoopback(ip)) {
+  if (!isLoopbackAddress(ip)) {
     res.status(403).json({
       error: "Forbidden",
       message:

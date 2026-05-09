@@ -11,6 +11,7 @@ import Changelogs from "@/pages/changelogs";
 import Releases from "@/pages/releases";
 import Logs from "@/pages/logs";
 import NotFound from "@/pages/not-found";
+import { WebLoginGate } from "@/components/WebLoginGate";
 
 function AppRouter() {
   return (
@@ -31,9 +32,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
-          <Router hook={useHashLocation}>
-            <AppRouter />
-          </Router>
+          <WebLoginGate>
+            <Router hook={useHashLocation}>
+              <AppRouter />
+            </Router>
+          </WebLoginGate>
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
