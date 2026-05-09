@@ -65,7 +65,7 @@ The settings page in the dashboard provides a UI for:
 - **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
 - **Runtime drain mode** — Pause new background automation and manual agent-triggering actions while allowing in-flight work to finish. During drain mode, the dashboard disables Run now/apply, feedback retry, Ask Agent, manual Release, and release retry actions; matching API calls return `409` instead of queueing new agent work.
 - **Ignored bots** — Add or remove bot logins whose comments and reviews should be ignored.
-- **PR comment branding** — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the `Posted by oh-my-pr` footer.
+- **PR comment branding** — Customize the app name shown in agent-authored GitHub PR comments, or remove that signature entirely. Toggle whether the signature links back to oh-my-pr and includes the `Posted by oh-my-pr` footer.
 - **GitHub progress replies** — Toggle whether the babysitter posts public Accepted/running/completed status replies while working through review comments.
 - **CI healing** — Enable autonomous CI repair and tune retry/session limits.
 - **Deployment healing** — Not yet exposed in the dashboard; use `PATCH /api/config` for the deployment-healing keys listed below.
@@ -115,14 +115,15 @@ release check fails, the banner stays hidden and the API falls back quietly.
 
 ## PR Comment Branding
 
-Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a `Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)` footer that links back to this repository.
+Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr by default. Each comment references the configured app name and, by default, appends a `Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)` footer that links back to this repository. Set the GitHub reply signature to a different name to replace `oh-my-pr`, or leave it blank to remove the visible app signature from GitHub replies and footers.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Repository links in PR comments` | `true` | When enabled, babysitter comments render the app name as a Markdown link to the oh-my-pr repo and append the `Posted by oh-my-pr` footer. When disabled, comments reference `oh-my-pr` as plain text and omit the footer. |
+| `GitHub reply signature` | `oh-my-pr` | App name shown in public GitHub replies and `Posted by ...` footers. Leave blank to remove the signature. |
+| `Repository links in PR comments` | `true` | When enabled, babysitter comments render the configured app name as a Markdown link to the oh-my-pr repo and append the `Posted by ...` footer. When disabled, comments reference the configured app name as plain text and omit the footer. |
 | `GitHub progress replies` | `false` | When enabled, the babysitter posts public status replies on accepted review feedback as it moves from queued to running, completed, and resolved. When disabled, it still posts the final follow-up reply without intermediate public progress updates. |
 
-These toggles are available in the dashboard settings page and as `includeRepositoryLinksInGitHubComments` plus `postGitHubProgressReplies` (booleans) in `GET /api/config`, `PATCH /api/config`, and the MCP `update_config` tool. Turning repository links off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.
+These settings are available in the dashboard settings page and as `githubCommentAppName` (string), `includeRepositoryLinksInGitHubComments` (boolean), and `postGitHubProgressReplies` (boolean) in `GET /api/config`, `PATCH /api/config`, and the MCP `update_config` tool. Turning repository links off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.
 
 ## CI Healing Settings
 

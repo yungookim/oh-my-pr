@@ -75,8 +75,7 @@ const CONFLICT_REPAIR_RETRY_BUDGET = 2;
 const CODE_OWNER_FALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
 const APP_NAME = "oh-my-pr";
 const APP_REPOSITORY_URL = "https://github.com/yungookim/oh-my-pr";
-const APP_REPOSITORY_LINK = `[${APP_NAME}](${APP_REPOSITORY_URL})`;
-export const APP_COMMENT_FOOTER = `Posted by ${APP_REPOSITORY_LINK}`;
+export const APP_COMMENT_FOOTER = formatAppCommentFooter(APP_NAME, true);
 const AUDIT_TOKEN_PATTERN = /\bcodefactory-feedback:[^\s<>()[\]{}"']+/g;
 
 export class TerminalBabysitterError extends Error {
@@ -966,14 +965,37 @@ function computeHealingImprovementScore(
   };
 }
 
-function formatAppName(includeRepositoryLinksInGitHubComments: boolean): string {
-  return includeRepositoryLinksInGitHubComments ? APP_REPOSITORY_LINK : APP_NAME;
+function formatAppName(githubCommentAppName: string, includeRepositoryLinksInGitHubComments: boolean): string {
+  const appName = githubCommentAppName.trim();
+  if (!appName) {
+    return "";
+  }
+
+  return includeRepositoryLinksInGitHubComments ? `[${appName}](${APP_REPOSITORY_URL})` : appName;
+}
+
+export function formatAppCommentFooter(
+  githubCommentAppName: string,
+  includeRepositoryLinksInGitHubComments: boolean,
+): string {
+  const appName = formatAppName(githubCommentAppName, includeRepositoryLinksInGitHubComments);
+  return appName ? `Posted by ${appName}` : "";
+}
+
+function formatIncludedAppCommentFooter(
+  includeRepositoryLinksInGitHubComments: boolean,
+  githubCommentAppName: string,
+): string {
+  return includeRepositoryLinksInGitHubComments
+    ? formatAppCommentFooter(githubCommentAppName, includeRepositoryLinksInGitHubComments)
+    : "";
 }
 
 function buildFeedbackFollowUpBody(
   headSha: string,
   item: FeedbackItem,
   includeRepositoryLinksInGitHubComments: boolean,
+  githubCommentAppName: string,
   agentSummary?: string,
 ): string {
   const shortSha = headSha.trim() ? headSha.trim().slice(0, 7) : "";
@@ -1001,8 +1023,12 @@ function buildFeedbackFollowUpBody(
   }
 
   parts.push("", `<!-- ${item.auditToken} -->`);
-  if (includeRepositoryLinksInGitHubComments) {
-    parts.push("", APP_COMMENT_FOOTER);
+  const footer = formatIncludedAppCommentFooter(
+    includeRepositoryLinksInGitHubComments,
+    githubCommentAppName,
+  );
+  if (footer) {
+    parts.push("", footer);
   }
 
   return parts.join("\n");
@@ -1026,15 +1052,23 @@ function isCodeFactoryComment(body: string): boolean {
   return body.includes(CODEFACTORY_COMMENT_MARKER);
 }
 
-function formatAgentCommandGitHubComment(
+export function formatAgentCommandGitHubComment(
   agent: CodingAgent,
   prompt: string,
   includeRepositoryLinksInGitHubComments: boolean,
+  githubCommentAppName: string,
 ): string {
   const fence = buildCodeFence(prompt);
+  const appName = formatAppName(githubCommentAppName, includeRepositoryLinksInGitHubComments);
+  const footer = formatIncludedAppCommentFooter(
+    includeRepositoryLinksInGitHubComments,
+    githubCommentAppName,
+  );
   return [
     CODEFACTORY_COMMENT_MARKER,
-    `\ud83e\udd16 **${formatAppName(includeRepositoryLinksInGitHubComments)}** dispatched \`${agent}\` with the following prompt:`,
+    appName
+      ? `\ud83e\udd16 **${appName}** dispatched \`${agent}\` with the following prompt:`
+      : `\ud83e\udd16 Dispatched \`${agent}\` with the following prompt:`,
     "",
     "<details>",
     "<summary>Agent prompt (click to expand)</summary>",
@@ -1044,37 +1078,67 @@ function formatAgentCommandGitHubComment(
     fence.close,
     "",
     "</details>",
-    ...(includeRepositoryLinksInGitHubComments ? ["", APP_COMMENT_FOOTER] : []),
+    ...(footer ? ["", footer] : []),
   ].join("\n");
 }
 
-function appendStatusLine(existingBody: string, line: string): string {
-  const { bodyWithoutFooter, hadFooter } = splitAppCommentFooter(existingBody);
+function appendStatusLine(
+  existingBody: string,
+  line: string,
+  includeRepositoryLinksInGitHubComments: boolean,
+  githubCommentAppName: string,
+): string {
+  const footer = formatIncludedAppCommentFooter(
+    includeRepositoryLinksInGitHubComments,
+    githubCommentAppName,
+  );
+  const { bodyWithoutFooter, hadFooter } = splitAppCommentFooter(existingBody, footer);
   const nextBody = bodyWithoutFooter ? `${bodyWithoutFooter}\n${line}` : line;
-  return hadFooter ? `${nextBody}\n\n${APP_COMMENT_FOOTER}` : nextBody;
+  return hadFooter && footer ? `${nextBody}\n\n${footer}` : nextBody;
 }
 
-function splitAppCommentFooter(body: string): { bodyWithoutFooter: string; hadFooter: boolean } {
+function splitAppCommentFooter(body: string, footer: string): { bodyWithoutFooter: string; hadFooter: boolean } {
   const trimmedBody = body.trimEnd();
-  if (trimmedBody === APP_COMMENT_FOOTER) {
-    return { bodyWithoutFooter: "", hadFooter: true };
+  const possibleFooters = [
+    footer,
+    APP_COMMENT_FOOTER,
+  ].filter((candidate, index, all) => candidate && all.indexOf(candidate) === index);
+
+  for (const possibleFooter of possibleFooters) {
+    if (trimmedBody === possibleFooter) {
+      return { bodyWithoutFooter: "", hadFooter: true };
+    }
+
+    const suffix = "\n\n" + possibleFooter;
+    if (trimmedBody.endsWith(suffix)) {
+      return { bodyWithoutFooter: trimmedBody.slice(0, -suffix.length), hadFooter: true };
+    }
   }
 
-  const suffix = "\n\n" + APP_COMMENT_FOOTER;
-  if (trimmedBody.endsWith(suffix)) {
-    return { bodyWithoutFooter: trimmedBody.slice(0, -suffix.length), hadFooter: true };
+  const linkedFooterPattern = /\n\nPosted by \[[^\]\n]+\]\(https:\/\/github\.com\/yungookim\/oh-my-pr\)$/;
+  const linkedFooterMatch = trimmedBody.match(linkedFooterPattern);
+  if (linkedFooterMatch?.index !== undefined) {
+    return { bodyWithoutFooter: trimmedBody.slice(0, linkedFooterMatch.index), hadFooter: true };
   }
 
   return { bodyWithoutFooter: body, hadFooter: false };
 }
 
-function withOptionalAppCommentFooter(body: string, includeRepositoryLinksInGitHubComments: boolean): string {
-  if (!includeRepositoryLinksInGitHubComments) {
+function withOptionalAppCommentFooter(
+  body: string,
+  includeRepositoryLinksInGitHubComments: boolean,
+  githubCommentAppName: string,
+): string {
+  const footer = formatIncludedAppCommentFooter(
+    includeRepositoryLinksInGitHubComments,
+    githubCommentAppName,
+  );
+  if (!footer) {
     return body;
   }
 
-  const { bodyWithoutFooter } = splitAppCommentFooter(body);
-  return bodyWithoutFooter ? `${bodyWithoutFooter}\n\n${APP_COMMENT_FOOTER}` : APP_COMMENT_FOOTER;
+  const { bodyWithoutFooter } = splitAppCommentFooter(body, footer);
+  return bodyWithoutFooter ? `${bodyWithoutFooter}\n\n${footer}` : footer;
 }
 
 function formatCommand(command: string, args: string[]): string {
@@ -2786,6 +2850,7 @@ export class PRBabysitter {
       }
 
       const includeRepositoryLinksInGitHubComments = config.includeRepositoryLinksInGitHubComments;
+      const githubCommentAppName = config.githubCommentAppName;
       const postGitHubProgressReplies = config.postGitHubProgressReplies;
       // Track status reply comments so we can update them with progress.
       const statusReplies = new Map<string, StatusReplyRef>(
@@ -2827,7 +2892,12 @@ export class PRBabysitter {
         const ref = await recoverStatusReplyRef(feedbackId);
         if (!ref) return;
         try {
-          const newBody = appendStatusLine(ref.body, line);
+          const newBody = appendStatusLine(
+            ref.body,
+            line,
+            includeRepositoryLinksInGitHubComments,
+            githubCommentAppName,
+          );
           await this.github.updateStatusReply(octokit, parsedPr, ref, newBody);
           await persistStatusReplyRef(feedbackId, ref);
         } catch (error) {
@@ -2835,7 +2905,12 @@ export class PRBabysitter {
           const recovered = item ? findStatusReplyRefForFeedback(item, pr.feedbackItems) : null;
           if (recovered && recovered.commentDatabaseId !== ref.commentDatabaseId) {
             try {
-              const newBody = appendStatusLine(recovered.body, line);
+              const newBody = appendStatusLine(
+                recovered.body,
+                line,
+                includeRepositoryLinksInGitHubComments,
+                githubCommentAppName,
+              );
               await this.github.updateStatusReply(octokit, parsedPr, recovered, newBody);
               statusReplies.set(feedbackId, recovered);
               await persistStatusReplyRef(feedbackId, recovered);
@@ -2865,7 +2940,12 @@ export class PRBabysitter {
           await this.github.postPRComment(
             octokit,
             parsedPr,
-            formatAgentCommandGitHubComment(agent, prompt, includeRepositoryLinksInGitHubComments),
+            formatAgentCommandGitHubComment(
+              agent,
+              prompt,
+              includeRepositoryLinksInGitHubComments,
+              githubCommentAppName,
+            ),
           );
         } catch (error) {
           await logBestEffortFailure(
@@ -3004,7 +3084,11 @@ export class PRBabysitter {
                 octokit,
                 parsedPr,
                 item,
-                withOptionalAppCommentFooter(STATUS_MESSAGES.accepted, includeRepositoryLinksInGitHubComments),
+                withOptionalAppCommentFooter(
+                  STATUS_MESSAGES.accepted,
+                  includeRepositoryLinksInGitHubComments,
+                  githubCommentAppName,
+                ),
               );
               if (ref) {
                 statusReplies.set(item.id, ref);
@@ -4076,6 +4160,7 @@ export class PRBabysitter {
             headShaForFollowUp,
             item,
             includeRepositoryLinksInGitHubComments,
+            githubCommentAppName,
             agentSummaries.get(item.auditToken),
           );
           await this.github.postFollowUpForFeedbackItem(octokit, parsedPr, item, body, { resolve: shouldResolveThread });
@@ -4177,15 +4262,20 @@ export class PRBabysitter {
 
           // Alert the user by posting a comment on the PR.
           try {
+            const appName = formatAppName(githubCommentAppName, includeRepositoryLinksInGitHubComments);
+            const footer = formatIncludedAppCommentFooter(
+              includeRepositoryLinksInGitHubComments,
+              githubCommentAppName,
+            );
             const alertBody = [
-              `## \u26a0\ufe0f ${formatAppName(includeRepositoryLinksInGitHubComments)} CI Alert`,
+              appName ? `## \u26a0\ufe0f ${appName} CI Alert` : "## \u26a0\ufe0f CI Alert",
               "",
               `The babysitter pushed changes (commit \`${headShaForFollowUp.slice(0, 7)}\`), but CI/CD checks are still failing:`,
               "",
               ...ciResult.failures.map((f) => `- **${f.context}**: ${f.description}${f.targetUrl ? ` ([details](${f.targetUrl}))` : ""}`),
               "",
               "Manual investigation may be required.",
-              ...(includeRepositoryLinksInGitHubComments ? ["", APP_COMMENT_FOOTER] : []),
+              ...(footer ? ["", footer] : []),
             ].join("\n");
             await this.github.postPRComment(octokit, parsedPr, alertBody);
           } catch (error) {

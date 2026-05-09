@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Config, RuntimeState } from "@shared/schema";
@@ -17,7 +17,13 @@ export default function Settings() {
 
   const [newGithubToken, setNewGithubToken] = useState("");
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const [githubCommentAppNameDraft, setGithubCommentAppNameDraft] = useState("oh-my-pr");
   const githubTokens = config?.githubTokens ?? (config?.githubToken ? [config.githubToken] : []);
+  const githubCommentAppName = config?.githubCommentAppName ?? "oh-my-pr";
+
+  useEffect(() => {
+    setGithubCommentAppNameDraft(githubCommentAppName);
+  }, [githubCommentAppName]);
 
   const updateGithubTokens = (tokens: string[]) => {
     updateConfigMutation.mutate({ githubTokens: tokens });
@@ -467,11 +473,40 @@ export default function Settings() {
                 ) : null}
               </div>
 
+              <div className="flex flex-col gap-2">
+                <label htmlFor="settings-github-comment-app-name" className="text-sm">
+                  GitHub reply signature
+                </label>
+                <div className="text-[11px] text-muted-foreground">
+                  Replace the app name shown in public GitHub replies. Leave blank to remove it.
+                </div>
+                <input
+                  id="settings-github-comment-app-name"
+                  type="text"
+                  value={githubCommentAppNameDraft}
+                  placeholder="leave blank to remove"
+                  onChange={(e) => setGithubCommentAppNameDraft(e.target.value)}
+                  onBlur={(e) => {
+                    const githubCommentAppName = e.target.value;
+                    if (githubCommentAppName !== (config?.githubCommentAppName ?? "oh-my-pr")) {
+                      updateConfigMutation.mutate({ githubCommentAppName });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  disabled={updateConfigMutation.isPending}
+                  className="w-full border border-border bg-transparent px-2 py-1 text-sm focus:border-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-50"
+                />
+              </div>
+
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm">Repository links in PR comments</div>
                   <div className="text-[11px] text-muted-foreground">
-                    Link oh-my-pr back to its repository in agent-authored GitHub PR comments and footers.
+                    Link the reply signature back to the project repository in agent-authored GitHub PR comments and footers.
                   </div>
                 </div>
                 <input

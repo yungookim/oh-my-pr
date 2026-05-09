@@ -29,6 +29,7 @@ describe("DEFAULT_CONFIG", () => {
       "autoCreateReleases",
       "autoUpdateDocs",
       "includeRepositoryLinksInGitHubComments",
+      "githubCommentAppName",
       "postGitHubProgressReplies",
       "autoHealCI",
       "maxHealingAttemptsPerSession",
@@ -126,6 +127,10 @@ describe("DEFAULT_CONFIG", () => {
 
   it("includes repository links in GitHub comments by default", () => {
     assert.equal(DEFAULT_CONFIG.includeRepositoryLinksInGitHubComments, true);
+  });
+
+  it("uses oh-my-pr as the default GitHub reply signature", () => {
+    assert.equal(DEFAULT_CONFIG.githubCommentAppName, "oh-my-pr");
   });
 
   it("does not post GitHub progress replies by default", () => {

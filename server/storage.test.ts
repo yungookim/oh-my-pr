@@ -80,6 +80,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     autoCreateReleases: false,
     autoUpdateDocs: false,
     includeRepositoryLinksInGitHubComments: false,
+    githubCommentAppName: "Review Bot",
     postGitHubProgressReplies: true,
     autoHealCI: true,
     maxHealingAttemptsPerSession: 5,
@@ -212,6 +213,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(config.autoCreateReleases, false);
   assert.equal(config.autoUpdateDocs, false);
   assert.equal(config.includeRepositoryLinksInGitHubComments, false);
+  assert.equal(config.githubCommentAppName, "Review Bot");
   assert.equal(config.postGitHubProgressReplies, true);
   assert.equal(config.autoHealCI, true);
   assert.equal(config.maxHealingAttemptsPerSession, 5);
@@ -309,6 +311,7 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
       autoCreateReleases: false,
       autoUpdateDocs: false,
       includeRepositoryLinksInGitHubComments: false,
+      githubCommentAppName: "Review Bot",
       autoHealCI: true,
       maxHealingAttemptsPerSession: 8,
       maxHealingAttemptsPerFingerprint: 7,

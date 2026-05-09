@@ -41,6 +41,7 @@ const config: Config = {
   autoCreateReleases: true,
   autoUpdateDocs: true,
   includeRepositoryLinksInGitHubComments: true,
+  githubCommentAppName: "oh-my-pr",
   postGitHubProgressReplies: false,
   autoHealCI: false,
   maxHealingAttemptsPerSession: 3,

@@ -449,6 +449,7 @@ export const configSchema = z.object({
   autoCreateReleases: z.boolean(),
   autoUpdateDocs: z.boolean(),
   includeRepositoryLinksInGitHubComments: z.boolean(),
+  githubCommentAppName: z.string(),
   postGitHubProgressReplies: z.boolean(),
   autoHealCI: z.boolean(),
   maxHealingAttemptsPerSession: z.number(),

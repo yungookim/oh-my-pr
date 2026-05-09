@@ -71,6 +71,7 @@ type ConfigRow = {
   auto_create_releases: number;
   auto_update_docs: number;
   include_repository_links_in_github_comments: number;
+  github_comment_app_name: string;
   post_github_progress_replies: number;
   auto_heal_ci: number;
   max_healing_attempts_per_session: number;
@@ -504,6 +505,7 @@ export class SqliteStorage implements IStorage {
         auto_create_releases INTEGER NOT NULL DEFAULT 0,
         auto_update_docs INTEGER NOT NULL DEFAULT 1,
         include_repository_links_in_github_comments INTEGER NOT NULL DEFAULT 1,
+        github_comment_app_name TEXT NOT NULL DEFAULT 'oh-my-pr',
         post_github_progress_replies INTEGER NOT NULL DEFAULT 0,
         auto_heal_ci INTEGER NOT NULL DEFAULT 0,
         max_healing_attempts_per_session INTEGER NOT NULL DEFAULT 3,
@@ -796,6 +798,7 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("config", "auto_create_releases", "INTEGER NOT NULL DEFAULT 0");
     this.ensureColumn("config", "auto_update_docs", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("config", "include_repository_links_in_github_comments", "INTEGER NOT NULL DEFAULT 1");
+    this.ensureColumn("config", "github_comment_app_name", "TEXT NOT NULL DEFAULT 'oh-my-pr'");
     this.ensureColumn("config", "post_github_progress_replies", "INTEGER NOT NULL DEFAULT 0");
     this.ensureColumn("config", "auto_heal_ci", "INTEGER NOT NULL DEFAULT 0");
     this.ensureColumn("config", "max_healing_attempts_per_session", "INTEGER NOT NULL DEFAULT 3");
@@ -867,6 +870,7 @@ export class SqliteStorage implements IStorage {
       includeRepositoryLinksInGitHubComments: Boolean(
         row.include_repository_links_in_github_comments ?? Number(DEFAULT_CONFIG.includeRepositoryLinksInGitHubComments),
       ),
+      githubCommentAppName: row.github_comment_app_name ?? DEFAULT_CONFIG.githubCommentAppName,
       postGitHubProgressReplies: Boolean(
         row.post_github_progress_replies ?? Number(DEFAULT_CONFIG.postGitHubProgressReplies),
       ),
@@ -910,6 +914,7 @@ export class SqliteStorage implements IStorage {
           auto_create_releases,
           auto_update_docs,
           include_repository_links_in_github_comments,
+          github_comment_app_name,
           post_github_progress_replies,
           auto_heal_ci,
           max_healing_attempts_per_session,
@@ -922,7 +927,7 @@ export class SqliteStorage implements IStorage {
           deployment_check_poll_interval_ms,
           trusted_reviewers_json,
           ignored_bots_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           github_token = excluded.github_token,
           github_tokens_json = excluded.github_tokens_json,
@@ -937,6 +942,7 @@ export class SqliteStorage implements IStorage {
           auto_create_releases = excluded.auto_create_releases,
           auto_update_docs = excluded.auto_update_docs,
           include_repository_links_in_github_comments = excluded.include_repository_links_in_github_comments,
+          github_comment_app_name = excluded.github_comment_app_name,
           post_github_progress_replies = excluded.post_github_progress_replies,
           auto_heal_ci = excluded.auto_heal_ci,
           max_healing_attempts_per_session = excluded.max_healing_attempts_per_session,
@@ -964,6 +970,7 @@ export class SqliteStorage implements IStorage {
         Number(config.autoCreateReleases),
         Number(config.autoUpdateDocs),
         Number(config.includeRepositoryLinksInGitHubComments),
+        config.githubCommentAppName,
         Number(config.postGitHubProgressReplies),
         Number(config.autoHealCI),
         config.maxHealingAttemptsPerSession,
@@ -1564,7 +1571,8 @@ export class SqliteStorage implements IStorage {
     const row = this.get<ConfigRow>(`
       SELECT github_token, github_tokens_json, coding_agent, fallback_to_next_coding_agent, model, max_turns, batch_window_ms,
              poll_interval_ms, max_changes_per_run, auto_resolve_merge_conflicts, auto_create_releases,
-             auto_update_docs, include_repository_links_in_github_comments, post_github_progress_replies,
+             auto_update_docs, include_repository_links_in_github_comments, github_comment_app_name,
+             post_github_progress_replies,
              auto_heal_ci, max_healing_attempts_per_session,
              max_healing_attempts_per_fingerprint, max_concurrent_healing_runs, healing_cooldown_ms,
              auto_heal_deployments, deployment_check_delay_ms, deployment_check_timeout_ms,

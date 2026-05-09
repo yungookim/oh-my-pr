@@ -396,7 +396,7 @@ export function buildFeedbackAuditToken(feedbackId: string): string {
   return `codefactory-feedback:${feedbackId}`;
 }
 
-const APP_COMMENT_FOOTER_PATTERN = /Posted by \[oh-my-pr\]\(https:\/\/github\.com\/yungookim\/oh-my-pr\)/i;
+const APP_COMMENT_FOOTER_PATTERN = /Posted by \[[^\]]+\]\(https:\/\/github\.com\/yungookim\/oh-my-pr\)/i;
 const AGENT_COMMAND_COMMENT_MARKER = "<!-- codefactory-agent-command -->";
 const AUDIT_TRAIL_COMMENT_PATTERN = /<!--\s*codefactory-feedback:[^>]+-->/i;
 export const APP_STATUS_COMMENT_PATTERN = /\*\*(?:Accepted|Agent running|Agent failed|Agent completed|Resolved)\*\*\s*(?:[—-]|$)/i;
