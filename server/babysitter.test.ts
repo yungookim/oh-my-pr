@@ -796,7 +796,7 @@ test("syncAndBabysitTrackedRepos skips same-head dependency preflight failures",
     branch: "feature/example",
     author: "octocat",
     url: "https://github.com/octo/example/pull/42",
-    status: "error",
+    status: "watching",
     feedbackItems: [],
     accepted: 0,
     rejected: 0,
@@ -861,14 +861,27 @@ test("syncAndBabysitTrackedRepos skips same-head dependency preflight failures",
   };
 
   await babysitter.syncAndBabysitTrackedRepos();
+  await babysitter.syncAndBabysitTrackedRepos();
 
   const jobs = await storage.listBackgroundJobs({
     kind: "babysit_pr",
     targetId: pr.id,
   });
+  const updated = await storage.getPR(pr.id);
   const logs = await storage.getLogs(pr.id);
+  const skipLogs = logs.filter((log) =>
+    log.phase === "watcher"
+    && log.message.includes("Dependency preflight previously failed")
+  );
   assert.equal(jobs.length, 0);
-  assert.ok(logs.some((log) => log.message.includes("Dependency preflight previously failed")));
+  assert.equal(updated?.status, "error");
+  assert.equal(skipLogs.length, 1);
+  assert.deepEqual(skipLogs[0]?.metadata, {
+    repo: "octo/example",
+    headSha: "head-same",
+    reason: "node_modules missing",
+    count: 1,
+  });
 });
 
 test("syncAndBabysitTrackedRepos skips terminal conflict repair failures for the same head and base", async () => {
@@ -4911,6 +4924,77 @@ test("resumeInterruptedRuns enqueues babysit_pr jobs when a background scheduler
   assert.equal(jobs[0].payload.preferredAgent, "codex");
 });
 
+test("babysitPR logs metadata when skipping a duplicate in-progress run", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ autoUpdateDocs: false });
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Busy PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/busy",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+  let releaseFetch!: () => void;
+  let markFetchStarted!: () => void;
+  const fetchStarted = new Promise<void>((resolve) => {
+    markFetchStarted = resolve;
+  });
+  const fetchReleased = new Promise<void>((resolve) => {
+    releaseFetch = resolve;
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchPullSummary: async () => {
+        markFetchStarted();
+        await fetchReleased;
+        return makePullSummary(pr);
+      },
+      listFailingStatuses: async () => [],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({
+        needsFix: false,
+        reason: "No code change needed",
+      }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: makeGitRunCommand(),
+    },
+  );
+
+  const firstRun = babysitter.babysitPR(pr.id, "codex");
+  await fetchStarted;
+  await babysitter.babysitPR(pr.id, "codex");
+  releaseFetch();
+  await firstRun;
+
+  const logs = await storage.getLogs(pr.id);
+  const skipLog = logs.find((log) =>
+    log.phase === "run"
+    && log.message.includes("another run is already in progress")
+  );
+
+  assert.equal(skipLog?.level, "warn");
+  assert.equal(skipLog?.metadata?.reason, "in_progress");
+  assert.equal(skipLog?.metadata?.activePreferredAgent, "codex");
+  assert.equal(skipLog?.metadata?.requestedPreferredAgent, "codex");
+  assert.equal(typeof skipLog?.metadata?.activeRunId, "string");
+  assert.equal(typeof skipLog?.metadata?.activeStartedAt, "string");
+  assert.equal(typeof skipLog?.metadata?.activeAgeMs, "number");
+});
+
 test("runQueuedBabysitPR rejects when evaluation auth fails after recording the run failure", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem();
@@ -5910,7 +5994,7 @@ test("babysitPR skips conflict resolution when PR is mergeable", async () => {
       }),
       applyFixesWithAgent: async ({ onStdoutChunk, onStderrChunk }) => {
         onStdoutChunk?.("applied fix\n");
-        onStderrChunk?.("");
+        onStderrChunk?.(Array.from({ length: 125 }, (_, index) => `stderr line ${index + 1}`).join("\n") + "\n");
         return { code: 0, stdout: "applied fix\n", stderr: "" };
       },
       runCommand: async (command: string, args: string[], opts?: Record<string, unknown>) => {
@@ -5930,6 +6014,17 @@ test("babysitPR skips conflict resolution when PR is mergeable", async () => {
   assert.equal(mergeAttempted, false, "Should not attempt merge when PR is mergeable");
   assert.equal(updated?.status, "watching");
   assert.ok(!logs.some((log) => log.phase === "conflict"));
+  const stderrLogs = logs.filter((log) => log.phase === "agent" && log.metadata?.stream === "stderr");
+  assert.ok(stderrLogs.length > 0);
+  assert.ok(stderrLogs.every((log) => log.level === "info"));
+  assert.ok(stderrLogs.some((log) => log.message === "[stderr] stderr line 1"));
+  assert.ok(logs.some((log) =>
+    log.level === "info"
+    && log.phase === "agent"
+    && log.message.includes("output truncated after")
+    && log.metadata?.truncated === true
+  ));
+  assert.ok(!logs.some((log) => log.message.includes("stderr line 121")));
 
   delete process.env.CODEFACTORY_HOME;
 });

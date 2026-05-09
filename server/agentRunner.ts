@@ -47,6 +47,7 @@ const AGENT_HEALTH_ACTIONABLE_PATTERNS = [
   "failed",
   "error:",
 ];
+const STDIN_PRELUDE_PATTERN = /^reading additional input from stdin/i;
 
 const AGENT_CLI_MISSING_PATTERNS = [
   "cli is not installed",
@@ -208,7 +209,7 @@ export async function evaluateFixNecessityWithAgent(params: {
       );
 
       if (result.code !== 0) {
-        throw new Error(`codex evaluation failed (${result.code}): ${result.stderr || result.stdout}`);
+        throw new Error(`codex evaluation failed (${result.code}): ${summarizeAgentCommandFailure(result)}`);
       }
 
       let raw: string;
@@ -216,7 +217,7 @@ export async function evaluateFixNecessityWithAgent(params: {
         raw = await readFile(outputFile, "utf8");
       } catch (error) {
         if (isMissingFileError(error)) {
-          const suffix = result.stderr ? `: ${result.stderr}` : "";
+          const suffix = result.stderr || result.stdout ? `: ${summarizeAgentCommandFailure(result)}` : "";
           throw new Error(
             `codex evaluation completed without writing expected output file ${outputFile}${suffix}`,
             { cause: error },
@@ -346,15 +347,20 @@ function firstOutputLine(output: string): string | null {
 }
 
 function summarizeHealthFailure(result: CommandResult): string {
+  return summarizeAgentCommandFailure(result);
+}
+
+export function summarizeAgentCommandFailure(result: CommandResult): string {
   const lines = (result.stderr.trim() || result.stdout.trim() || "no output")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const actionable = lines.findLast((line) =>
     includesAnyPattern(line.toLowerCase(), AGENT_HEALTH_ACTIONABLE_PATTERNS)
-      && !/^reading additional input from stdin/i.test(line)
+      && !STDIN_PRELUDE_PATTERN.test(line)
   );
-  const raw = actionable ?? lines[0] ?? "no output";
+  const fallback = lines.find((line) => !STDIN_PRELUDE_PATTERN.test(line));
+  const raw = actionable ?? fallback ?? lines[0] ?? "no output";
   return raw.length > 220 ? `${raw.slice(0, 217).trimEnd()}...` : raw;
 }
 

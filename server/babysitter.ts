@@ -73,6 +73,7 @@ const DEPENDENCY_PREFLIGHT_FAILURE_KIND = "dependency_preflight";
 const CONFLICT_REPAIR_FAILURE_KIND = "merge_conflict_repair";
 const CONFLICT_REPAIR_RETRY_BUDGET = 2;
 const CODE_OWNER_FALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
+const AGENT_STREAM_LOG_LINE_LIMIT = 120;
 const APP_NAME = "oh-my-pr";
 const APP_REPOSITORY_URL = "https://github.com/yungookim/oh-my-pr";
 export const APP_COMMENT_FOOTER = formatAppCommentFooter(APP_NAME, true);
@@ -1176,7 +1177,7 @@ function formatConciseFailureReason(message: string): string {
   const firstLine = detail
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line.length > 0)
+    .find((line) => line.length > 0 && !/^Reading additional input from stdin/i.test(line))
     ?? "No failure details were reported";
   const singleLine = firstLine.replace(/\s+/g, " ");
   const capped = singleLine.length > 180 ? `${singleLine.slice(0, 177).trimEnd()}...` : singleLine;
@@ -1279,7 +1280,11 @@ function wait(ms: number): Promise<void> {
 
 export class PRBabysitter {
   private readonly storage: IStorage;
-  private readonly inProgress = new Set<string>();
+  private readonly inProgress = new Map<string, {
+    preferredAgent: CodingAgent;
+    runId: string;
+    startedAt: string;
+  }>();
   private readonly feedbackMutationLocks = new Map<string, Promise<void>>();
   private readonly github: GitHubService;
   private readonly runtime: BabysitterRuntime;
@@ -2040,15 +2045,24 @@ export class PRBabysitter {
           ? await this.findLatestDependencyPreflightFailure(local.id, pull.headSha)
           : null;
         if (priorDependencyFailure) {
-          await this.storage.addLog(local.id, "warn", "Dependency preflight previously failed for this PR head; skipping automatic babysitter run until the head changes", {
-            phase: "watcher",
-            metadata: {
-              repo: repoSlug,
-              headSha: pull.headSha,
-              reason: priorDependencyFailure.reason,
-              count: priorDependencyFailure.count,
-            },
-          });
+          const lastChecked = this.now().toISOString();
+          if (local.status !== "error") {
+            await this.storage.updatePR(local.id, {
+              status: "error",
+              lastChecked,
+            });
+            await this.storage.addLog(local.id, "warn", "Dependency preflight previously failed for this PR head; skipping automatic babysitter run until the head changes", {
+              phase: "watcher",
+              metadata: {
+                repo: repoSlug,
+                headSha: pull.headSha,
+                reason: priorDependencyFailure.reason,
+                count: priorDependencyFailure.count,
+              },
+            });
+          } else {
+            await this.storage.updatePR(local.id, { lastChecked });
+          }
           continue;
         }
 
@@ -2164,6 +2178,10 @@ export class PRBabysitter {
         phase: "verify.ci",
       });
     }
+    await queueLog(prId, "warn", `CI status did not settle after ${MAX_ATTEMPTS} poll attempt(s)`, {
+      phase: "verify.ci",
+      metadata: { attempts: MAX_ATTEMPTS, headSha },
+    });
     return { status: "timeout", failures: [] };
   }
 
@@ -2180,6 +2198,7 @@ export class PRBabysitter {
       rethrowOnFailure?: boolean;
     },
   ): Promise<void> {
+    const runId = options?.runId || randomUUID();
     const runtimeState = await this.storage.getRuntimeState();
     if (runtimeState.drainMode && !options?.allowDuringDrain) {
       const pr = await this.storage.getPR(prId);
@@ -2191,18 +2210,34 @@ export class PRBabysitter {
       return;
     }
 
-    if (this.inProgress.has(prId)) {
+    const activeRun = this.inProgress.get(prId);
+    if (activeRun) {
       const pr = await this.storage.getPR(prId);
       if (pr) {
+        const activeStartedAtMs = Date.parse(activeRun.startedAt);
+        const activeAgeMs = Number.isNaN(activeStartedAtMs)
+          ? null
+          : Math.max(0, this.now().getTime() - activeStartedAtMs);
         await this.storage.addLog(pr.id, "warn", "Babysitter run skipped because another run is already in progress", {
           phase: "run",
+          metadata: {
+            reason: "in_progress",
+            activeRunId: activeRun.runId,
+            activePreferredAgent: activeRun.preferredAgent,
+            activeStartedAt: activeRun.startedAt,
+            activeAgeMs,
+            requestedPreferredAgent: preferredAgent,
+          },
         });
       }
       return;
     }
 
-    this.inProgress.add(prId);
-    const runId = options?.runId || randomUUID();
+    this.inProgress.set(prId, {
+      runId,
+      preferredAgent,
+      startedAt: this.now().toISOString(),
+    });
     const auditWindowStartMs = Math.floor(Date.now() / 1000) * 1000 - 1000;
     let logQueue = Promise.resolve();
     const runCreatedAt = new Date().toISOString();
@@ -2533,8 +2568,8 @@ export class PRBabysitter {
         }
 
         const cwd = worktreePath;
-        const stdoutLogger = createChunkLogger(pr.id, "code-owner-fallback", "stdout", "info");
-        const stderrLogger = createChunkLogger(pr.id, "code-owner-fallback", "stderr", "warn");
+        const stdoutLogger = createChunkLogger(pr.id, "code-owner-fallback", "stdout", "info", AGENT_STREAM_LOG_LINE_LIMIT);
+        const stderrLogger = createChunkLogger(pr.id, "code-owner-fallback", "stderr", "info", AGENT_STREAM_LOG_LINE_LIMIT);
 
         try {
           await queueLog(pr.id, "info", `Launching ${agent} code-owner fallback after default run failure`, {
@@ -2543,7 +2578,7 @@ export class PRBabysitter {
               agent,
               cwd,
               timeoutMs: CODE_OWNER_FALLBACK_TIMEOUT_MS,
-              prompt,
+              promptChars: prompt.length,
             },
           });
 
@@ -3648,8 +3683,8 @@ export class PRBabysitter {
                 throw new TerminalBabysitterError(reason);
               }
 
-              const conflictStdout = createChunkLogger(pr.id, "conflict.agent", "stdout", "info");
-              const conflictStderr = createChunkLogger(pr.id, "conflict.agent", "stderr", "warn");
+              const conflictStdout = createChunkLogger(pr.id, "conflict.agent", "stdout", "info", AGENT_STREAM_LOG_LINE_LIMIT);
+              const conflictStderr = createChunkLogger(pr.id, "conflict.agent", "stderr", "info", AGENT_STREAM_LOG_LINE_LIMIT);
               const githubTokenForConflict = await this.github.resolveGitHubAuthToken(config);
               const conflictAgentEnv = githubTokenForConflict
                 ? {
@@ -3668,7 +3703,7 @@ export class PRBabysitter {
 
               await queueLog(pr.id, "info", `Launching ${agent} to resolve merge conflicts`, {
                 phase: "conflict.agent",
-                metadata: { agent, prompt: conflictPrompt },
+                metadata: { agent, promptChars: conflictPrompt.length },
               });
 
               await postAgentCommandComment(agent, conflictPrompt);
@@ -3784,8 +3819,8 @@ export class PRBabysitter {
           }
 
           if (shouldRunForcedReplay || effectiveCommentTasks.length > 0 || statusTasks.length > 0 || hasDocsTask) {
-            const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info");
-            const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "warn");
+            const agentStdout = createChunkLogger(pr.id, "agent", "stdout", "info", AGENT_STREAM_LOG_LINE_LIMIT);
+            const agentStderr = createChunkLogger(pr.id, "agent", "stderr", "info", AGENT_STREAM_LOG_LINE_LIMIT);
             const githubToken = await this.github.resolveGitHubAuthToken(config);
             const agentEnv = githubToken
               ? {
@@ -3812,7 +3847,7 @@ export class PRBabysitter {
 
             await queueLog(pr.id, "info", `Launching ${agent} in autonomous mode`, {
               phase: "agent",
-              metadata: { githubAuth: Boolean(githubToken), prompt: fixPrompt },
+              metadata: { githubAuth: Boolean(githubToken), promptChars: fixPrompt.length },
             });
             await updateRunRecord({
               phase: "run.agent-running",
