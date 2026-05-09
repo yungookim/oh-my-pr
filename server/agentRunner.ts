@@ -47,7 +47,7 @@ const AGENT_HEALTH_ACTIONABLE_PATTERNS = [
   "failed",
   "error:",
 ];
-const STDIN_PRELUDE_PATTERN = /^reading additional input from stdin/i;
+export const STDIN_PRELUDE_PATTERN = /^reading additional input from stdin/i;
 
 const AGENT_CLI_MISSING_PATTERNS = [
   "cli is not installed",

@@ -11,6 +11,7 @@ import {
   isAgentUnavailableError,
   resolveAgent,
   runCommand,
+  STDIN_PRELUDE_PATTERN,
   summarizeCommandResult,
   type AgentHealthResult,
   type CodingAgent,
@@ -1177,7 +1178,7 @@ function formatConciseFailureReason(message: string): string {
   const firstLine = detail
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => line.length > 0 && !/^Reading additional input from stdin/i.test(line))
+    .find((line) => line.length > 0 && !STDIN_PRELUDE_PATTERN.test(line))
     ?? "No failure details were reported";
   const singleLine = firstLine.replace(/\s+/g, " ");
   const capped = singleLine.length > 180 ? `${singleLine.slice(0, 177).trimEnd()}...` : singleLine;
