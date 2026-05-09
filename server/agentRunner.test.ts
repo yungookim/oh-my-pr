@@ -3,7 +3,7 @@ import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { applyFixesWithAgent, checkAgentHealth, detectAgentUnavailability, evaluateFixNecessityWithAgent, resolveAgent, resolveCommandPath, runCommand } from "./agentRunner";
+import { applyFixesWithAgent, checkAgentHealth, detectAgentUnavailability, evaluateFixNecessityWithAgent, resolveAgent, resolveCommandPath, runCommand, summarizeAgentCommandFailure } from "./agentRunner";
 
 test("runCommand reports a timeout even when the child exits 0 after SIGTERM", async () => {
   const result = await runCommand(
@@ -153,11 +153,27 @@ test("checkAgentHealth reports codex timeouts instead of stdin prelude", async (
     if (!result.ok) {
       assert.match(result.reason, /timed out after 30000ms/i);
       assert.doesNotMatch(result.reason, /Reading additional input from stdin/);
+      assert.equal(detectAgentUnavailability(result.reason), null);
     }
   } finally {
     process.env.PATH = originalPath;
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("summarizeAgentCommandFailure skips codex stdin prelude", () => {
+  const summary = summarizeAgentCommandFailure({
+    code: 124,
+    stdout: "",
+    stderr: [
+      "Reading additional input from stdin...",
+      "OpenAI Codex v0.128.0 (research preview)",
+      "Command timed out after 900000ms",
+    ].join("\n"),
+    timedOut: true,
+  });
+
+  assert.equal(summary, "Command timed out after 900000ms");
 });
 
 test("applyFixesWithAgent runs codex without deprecated full-auto flag", async () => {
