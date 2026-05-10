@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AppUpdateStatus } from "@shared/schema";
 import {
+  APP_UPDATE_INSTALL_COMMAND,
   formatAppVersionLabel,
   getAppUpdateDismissKey,
+  getAppUpdateInstructionSteps,
   shouldShowAppUpdateBanner,
 } from "./updateAlert";
 
@@ -35,4 +37,13 @@ test("shouldShowAppUpdateBanner stays hidden when no update is available", () =>
     }, null),
     false,
   );
+});
+
+test("getAppUpdateInstructionSteps describes the npm update flow", () => {
+  assert.equal(APP_UPDATE_INSTALL_COMMAND, "npm install -g oh-my-pr@latest");
+  assert.deepEqual(getAppUpdateInstructionSteps(), [
+    { text: "Stop the running oh-my-pr process." },
+    { text: "Run", command: "npm install -g oh-my-pr@latest" },
+    { text: "Start oh-my-pr again." },
+  ]);
 });
