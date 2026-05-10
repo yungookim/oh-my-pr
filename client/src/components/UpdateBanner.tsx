@@ -5,6 +5,7 @@ import {
   APP_UPDATE_SESSION_STORAGE_KEY,
   formatAppVersionLabel,
   getAppUpdateDismissKey,
+  getAppUpdateInstructionSteps,
   shouldShowAppUpdateBanner,
 } from "@/lib/updateAlert";
 
@@ -30,17 +31,34 @@ export function UpdateBanner() {
     return null;
   }
 
+  const updateInstructionSteps = getAppUpdateInstructionSteps();
+
   return (
     <div className="shrink-0 border-b border-warning-border bg-warning-muted">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-3 text-[12px]">
-          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
-          <span className="font-medium uppercase tracking-wider text-warning-foreground">
-            Update available
-          </span>
-          <span className="text-foreground/75">
-            {`oh-my-pr ${formatAppVersionLabel(status.latestVersion)} is available. You're on ${formatAppVersionLabel(status.currentVersion)}.`}
-          </span>
+      <div className="grid gap-2 px-4 py-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-3 text-[12px]">
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+            <span className="font-medium uppercase tracking-wider text-warning-foreground">
+              Update available
+            </span>
+            <span className="text-foreground/75">
+              {`oh-my-pr ${formatAppVersionLabel(status.latestVersion)} is available. You're on ${formatAppVersionLabel(status.currentVersion)}.`}
+            </span>
+          </div>
+          <ol className="list-decimal space-y-1 pl-5 text-[11px] text-foreground/70">
+            {updateInstructionSteps.map((step) => (
+              <li key={`${step.text}:${step.command ?? ""}`} className="pl-0.5">
+                {step.command ? (
+                  <>
+                    {step.text} <code className="font-mono text-foreground">{step.command}</code>.
+                  </>
+                ) : (
+                  step.text
+                )}
+              </li>
+            ))}
+          </ol>
         </div>
         <div className="flex items-center gap-3 text-[11px]">
           <a

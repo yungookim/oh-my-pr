@@ -295,7 +295,13 @@ oh-my-pr --no-log-file
 <p>On builds where <code>APP_VERSION</code> is a stable semver string, the dashboard calls
 <code>GET /api/app-update</code> and compares the running version to the latest stable
 GitHub release for <code>yungookim/oh-my-pr</code>. When a newer release exists, the
-dashboard shows an update banner with a link to the matching release page.</p>
+dashboard shows an update banner with a link to the matching release page and
+step-by-step npm update instructions:</p>
+<ol>
+<li>Stop the running <code>oh-my-pr</code> process.</li>
+<li>Run <code>npm install -g oh-my-pr@latest</code>.</li>
+<li>Start <code>oh-my-pr</code> again.</li>
+</ol>
 <p>Selecting <code>dismiss for now</code> stores a release-scoped key in browser
 <code>sessionStorage</code>, so the banner stays hidden only for the current browser
 session and only for that specific <code>latestVersion</code>. Opening a new browser

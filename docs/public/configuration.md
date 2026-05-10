@@ -104,7 +104,12 @@ Runtime drain mode also blocks manual release creation and release retries until
 On builds where `APP_VERSION` is a stable semver string, the dashboard calls
 `GET /api/app-update` and compares the running version to the latest stable
 GitHub release for `yungookim/oh-my-pr`. When a newer release exists, the
-dashboard shows an update banner with a link to the matching release page.
+dashboard shows an update banner with a link to the matching release page and
+step-by-step npm update instructions:
+
+1. Stop the running `oh-my-pr` process.
+2. Run `npm install -g oh-my-pr@latest`.
+3. Start `oh-my-pr` again.
 
 Selecting `dismiss for now` stores a release-scoped key in browser
 `sessionStorage`, so the banner stays hidden only for the current browser
