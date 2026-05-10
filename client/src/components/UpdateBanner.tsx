@@ -46,9 +46,9 @@ export function UpdateBanner() {
               {`oh-my-pr ${formatAppVersionLabel(status.latestVersion)} is available. You're on ${formatAppVersionLabel(status.currentVersion)}.`}
             </span>
           </div>
-          <ol className="flex flex-wrap gap-x-4 gap-y-1 pl-4 text-[11px] text-foreground/70">
+          <ol className="list-decimal space-y-1 pl-5 text-[11px] text-foreground/70">
             {updateInstructionSteps.map((step) => (
-              <li key={`${step.text}:${step.command ?? ""}`} className="list-decimal pl-0.5">
+              <li key={`${step.text}:${step.command ?? ""}`} className="pl-0.5">
                 {step.command ? (
                   <>
                     {step.text} <code className="font-mono text-foreground">{step.command}</code>.
