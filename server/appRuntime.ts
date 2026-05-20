@@ -645,8 +645,10 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
     watcherIntervalMs = interval;
     watcherTimer = setInterval(() => {
+      log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat");
       void runWatcher();
     }, interval);
+    log.info({ pollIntervalMs: interval }, "Repository watcher started");
   };
 
   const queueBabysitWithAgent = async (pr: PR, preferredAgent: Config["codingAgent"]) => {
@@ -727,6 +729,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       if (watcherTimer) {
         clearInterval(watcherTimer);
         watcherTimer = null;
+        log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher stopped");
       }
     },
 

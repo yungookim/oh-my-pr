@@ -127,6 +127,37 @@ test("runtime setDrainMode logs enable and disable transitions", async () => {
   assert.match(ring, /Drain mode disabled/);
 });
 
+test("runtime logs watcher lifecycle when background watcher starts and stops", async () => {
+  const storage = new MemStorage();
+  let watcherRuns = 0;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: true,
+    watcherScheduler: {
+      run: () => {
+        watcherRuns += 1;
+      },
+      runAndReportErrors: async () => {
+        watcherRuns += 1;
+      },
+    },
+  });
+
+  _resetRingBufferForTests();
+
+  await runtime.start();
+  runtime.stop();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setTimeout(resolve, 30));
+
+  const ring = readRingBuffer().join("\n");
+  assert.equal(watcherRuns, 1);
+  assert.match(ring, /Repository watcher started/);
+  assert.match(ring, /pollIntervalMs/);
+  assert.match(ring, /Repository watcher stopped/);
+});
+
 test("runtime askQuestion persists the question and enqueues a durable job", async () => {
   const storage = new MemStorage();
   const runtime = createAppRuntime({

@@ -72,6 +72,7 @@ const AGENT_HEALTH_CACHE_TTL_MS = 60_000;
 const DEPENDENCY_PREFLIGHT_FAILURE_PREFIX = "Dependency preflight failed:";
 const DEPENDENCY_PREFLIGHT_FAILURE_KIND = "dependency_preflight";
 const CONFLICT_REPAIR_FAILURE_KIND = "merge_conflict_repair";
+const NO_OP_CHECK_KIND = "no_op_check";
 const CONFLICT_REPAIR_RETRY_BUDGET = 2;
 const CODE_OWNER_FALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
 const AGENT_STREAM_LOG_LINE_LIMIT = 120;
@@ -125,6 +126,12 @@ type ConflictRepairFailureMarker = {
   firstSeenAt: string;
   lastSeenAt: string;
   count: number;
+};
+
+type NoOpCheckMarker = {
+  kind: typeof NO_OP_CHECK_KIND;
+  headSha: string;
+  checkedAt: string;
 };
 
 type BabysitterRuntime = {
@@ -762,6 +769,23 @@ function readConflictRepairFailure(metadata: AgentRun["metadata"]): ConflictRepa
   };
 }
 
+function readNoOpCheck(metadata: AgentRun["metadata"]): NoOpCheckMarker | null {
+  const marker = metadata?.noOpCheck;
+  if (isRecord(marker)
+    && marker.kind === NO_OP_CHECK_KIND
+    && typeof marker.headSha === "string"
+    && typeof marker.checkedAt === "string"
+  ) {
+    return {
+      kind: NO_OP_CHECK_KIND,
+      headSha: marker.headSha,
+      checkedAt: marker.checkedAt,
+    };
+  }
+
+  return null;
+}
+
 function isDependencyPreflightFailureMessage(message: string): boolean {
   return message.trim().startsWith(DEPENDENCY_PREFLIGHT_FAILURE_PREFIX);
 }
@@ -885,6 +909,25 @@ function snapshotIdentity(snapshot: CheckSnapshot): string {
     snapshot.description,
     snapshot.targetUrl || "",
   ].join("|");
+}
+
+function summarizePendingChecks(snapshots: CheckSnapshot[]): Array<{
+  context: string;
+  status: string;
+  conclusion: string | null;
+  description: string;
+  targetUrl: string | null;
+}> {
+  return snapshots
+    .filter((snapshot) => snapshot.status !== "completed" || snapshot.conclusion === null)
+    .map((snapshot) => ({
+      context: snapshot.context,
+      status: snapshot.status,
+      conclusion: snapshot.conclusion,
+      description: snapshot.description,
+      targetUrl: snapshot.targetUrl,
+    }))
+    .sort((a, b) => a.context.localeCompare(b.context));
 }
 
 async function persistCheckSnapshotsIfMissing(storage: IStorage, snapshots: CheckSnapshot[]): Promise<void> {
@@ -1418,6 +1461,23 @@ export class PRBabysitter {
           count,
         };
       }
+    }
+
+    return null;
+  }
+
+  private async findLatestNoOpCheck(prId: string, headSha: string): Promise<NoOpCheckMarker | null> {
+    const completedRuns = (await this.storage.listAgentRuns({ prId, status: "completed" }))
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+
+    for (const run of completedRuns) {
+      const marker = readNoOpCheck(run.metadata);
+      const runHeadSha = marker?.headSha ?? run.initialHeadSha;
+      if (runHeadSha !== headSha) {
+        continue;
+      }
+
+      return marker?.kind === NO_OP_CHECK_KIND ? marker : null;
     }
 
     return null;
@@ -2102,6 +2162,52 @@ export class PRBabysitter {
           continue;
         }
 
+        const priorNoOpCheck = pull.headSha
+          ? await this.findLatestNoOpCheck(local.id, pull.headSha)
+          : null;
+        if (priorNoOpCheck) {
+          let syncedLocal: typeof local;
+          try {
+            syncedLocal = await this.syncFeedbackForPR(local.id, {
+              phase: "watcher",
+            });
+          } catch (error) {
+            await this.storage.addLog(local.id, "warn", `Could not sync GitHub feedback before no-op suppression: ${summarizeUnknownError(error)}`, {
+              phase: "watcher",
+            });
+            syncedLocal = await this.storage.getPR(local.id) ?? local;
+          }
+
+          let failingStatuses: GitHubStatusFailure[] | null = null;
+          try {
+            failingStatuses = await this.github.listFailingStatuses(octokit, repo, pull.headSha);
+          } catch (error) {
+            await this.storage.addLog(local.id, "warn", `Could not check CI status before no-op suppression: ${summarizeUnknownError(error)}`, {
+              phase: "watcher",
+            });
+          }
+
+          const hasPendingFeedback = syncedLocal.feedbackItems.some((item) =>
+            item.status === "pending" || item.status === "queued" || item.status === "in_progress"
+          );
+          if (!hasPendingFeedback && failingStatuses && failingStatuses.length === 0) {
+            const lastChecked = this.now().toISOString();
+            await this.storage.updatePR(local.id, {
+              status: "watching",
+              lastChecked,
+            });
+            await this.storage.addLog(local.id, "info", "Skipping babysitter run because the same PR head was already checked with no necessary fixes", {
+              phase: "watcher",
+              metadata: {
+                repo: repoSlug,
+                headSha: pull.headSha,
+                checkedAt: priorNoOpCheck.checkedAt,
+              },
+            });
+            continue;
+          }
+        }
+
         await this.storage.addLog(local.id, "info", "Watcher queued autonomous babysitter run", {
           phase: "watcher",
           metadata: { repo: repoSlug },
@@ -2179,9 +2285,25 @@ export class PRBabysitter {
         phase: "verify.ci",
       });
     }
-    await queueLog(prId, "warn", `CI status did not settle after ${MAX_ATTEMPTS} poll attempt(s)`, {
+
+    let pendingChecks: ReturnType<typeof summarizePendingChecks> = [];
+    if (this.github.fetchCheckSnapshotsForRef) {
+      try {
+        pendingChecks = summarizePendingChecks(
+          await this.github.fetchCheckSnapshotsForRef(octokit, repo, prId, headSha),
+        );
+      } catch (error) {
+        await queueLog(prId, "warn", `Could not fetch pending CI check details after timeout: ${summarizeUnknownError(error)}`, {
+          phase: "verify.ci",
+        });
+      }
+    }
+    const pendingSummary = pendingChecks.length > 0
+      ? ` Pending: ${pendingChecks.map((check) => `${check.context} (${check.status}${check.conclusion ? `/${check.conclusion}` : ""})`).join("; ")}`
+      : "";
+    await queueLog(prId, "warn", `CI status did not settle after ${MAX_ATTEMPTS} poll attempt(s).${pendingSummary}`, {
       phase: "verify.ci",
-      metadata: { attempts: MAX_ATTEMPTS, headSha },
+      metadata: { attempts: MAX_ATTEMPTS, headSha, pendingChecks },
     });
     return { status: "timeout", failures: [] };
   }
@@ -2379,7 +2501,7 @@ export class PRBabysitter {
       });
 
       const stdoutLogger = createChunkLogger(currentPrId, phase, "stdout", "info", maxOutputLogLines);
-      const stderrLogger = createChunkLogger(currentPrId, phase, "stderr", "warn", maxOutputLogLines);
+      const stderrLogger = createChunkLogger(currentPrId, phase, "stderr", "info", maxOutputLogLines);
 
       const result = await this.runtime.runCommand(command, args, {
         cwd,
@@ -3308,6 +3430,14 @@ export class PRBabysitter {
         await updateRunRecord({
           status: "completed",
           phase: "run.completed",
+          metadata: {
+            ...(runRecord.metadata ?? {}),
+            noOpCheck: {
+              kind: NO_OP_CHECK_KIND,
+              headSha: pullSummary.headSha,
+              checkedAt: this.now().toISOString(),
+            },
+          },
           lastError: null,
         });
         return;
