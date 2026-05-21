@@ -707,16 +707,31 @@ export class MemStorage implements IStorage {
     return run ? { ...run } : undefined;
   }
 
-  async listAgentRuns(filters?: { status?: AgentRunStatus; prId?: string }): Promise<AgentRun[]> {
+  async listAgentRuns(filters?: {
+    status?: AgentRunStatus;
+    prId?: string;
+    initialHeadSha?: string;
+    orderBy?: "createdAt" | "updatedAt";
+    order?: "asc" | "desc";
+    limit?: number;
+  }): Promise<AgentRun[]> {
+    const orderBy = filters?.orderBy ?? "createdAt";
+    const direction = filters?.order ?? "asc";
     const runs = Array.from(this.agentRuns.values())
       .filter((run) => {
         if (filters?.status && run.status !== filters.status) return false;
         if (filters?.prId && run.prId !== filters.prId) return false;
+        if (filters?.initialHeadSha && run.initialHeadSha !== filters.initialHeadSha) return false;
         return true;
       })
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      .sort((a, b) => {
+        const aTime = new Date(orderBy === "updatedAt" ? a.updatedAt : a.createdAt).getTime();
+        const bTime = new Date(orderBy === "updatedAt" ? b.updatedAt : b.createdAt).getTime();
+        return direction === "desc" ? bTime - aTime : aTime - bTime;
+      });
 
-    return runs.map((run) => ({ ...run }));
+    const limited = filters?.limit !== undefined ? runs.slice(0, filters.limit) : runs;
+    return limited.map((run) => ({ ...run }));
   }
 
   async upsertAgentRun(run: AgentRun): Promise<AgentRun> {

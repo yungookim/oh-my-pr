@@ -14,6 +14,7 @@ import {
   STDIN_PRELUDE_PATTERN,
   summarizeCommandResult,
   type AgentHealthResult,
+  type AgentUnavailabilityKind,
   type CodingAgent,
 } from "./agentRunner";
 import {
@@ -1209,6 +1210,23 @@ function summarizeUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function classifyFeedbackSyncError(error: unknown): "auth" | "rate_limit" | "network" | "not_found" | "unknown" {
+  const message = summarizeUnknownError(error).toLowerCase();
+  if (/\b(401|unauthor|forbidden|bad credentials|authentication|token)\b/.test(message)) {
+    return "auth";
+  }
+  if (/\b(rate limit|abuse detection|secondary rate|429)\b/.test(message)) {
+    return "rate_limit";
+  }
+  if (/\b(404|not found)\b/.test(message)) {
+    return "not_found";
+  }
+  if (/\b(econnreset|enotfound|eai_again|network|timeout|timed out|fetch failed|socket hang up)\b/.test(message)) {
+    return "network";
+  }
+  return "unknown";
+}
+
 function getNextCodingAgent(agent: CodingAgent): CodingAgent {
   return agent === "claude" ? "codex" : "claude";
 }
@@ -1467,20 +1485,22 @@ export class PRBabysitter {
   }
 
   private async findLatestNoOpCheck(prId: string, headSha: string): Promise<NoOpCheckMarker | null> {
-    const completedRuns = (await this.storage.listAgentRuns({ prId, status: "completed" }))
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    const matchingRuns = await this.storage.listAgentRuns({
+      prId,
+      status: "completed",
+      initialHeadSha: headSha,
+      orderBy: "updatedAt",
+      order: "desc",
+      limit: 1,
+    });
 
-    for (const run of completedRuns) {
-      const marker = readNoOpCheck(run.metadata);
-      const runHeadSha = marker?.headSha ?? run.initialHeadSha;
-      if (runHeadSha !== headSha) {
-        continue;
-      }
-
-      return marker?.kind === NO_OP_CHECK_KIND ? marker : null;
+    const latest = matchingRuns[0];
+    if (!latest) {
+      return null;
     }
 
-    return null;
+    const marker = readNoOpCheck(latest.metadata);
+    return marker?.kind === NO_OP_CHECK_KIND ? marker : null;
   }
 
   private async readAgentHealth(agent: CodingAgent): Promise<AgentHealthResult> {
@@ -1497,7 +1517,12 @@ export class PRBabysitter {
     return result;
   }
 
-  private async pauseAutomationForAgentFailure(agent: CodingAgent, reason: string, prIds: string[]): Promise<void> {
+  private async pauseAutomationForAgentFailure(
+    agent: CodingAgent,
+    reason: string,
+    prIds: string[],
+    classification: AgentUnavailabilityKind,
+  ): Promise<void> {
     const message = `Agent health check failed for ${agent}: ${reason}`;
     await this.storage.updateRuntimeState({
       drainMode: true,
@@ -1526,6 +1551,7 @@ export class PRBabysitter {
 
       await this.storage.addLog(prId, "error", `Automation paused: ${message}`, {
         phase: "agent.health",
+        metadata: { agent, classification },
       });
     }));
   }
@@ -1537,12 +1563,14 @@ export class PRBabysitter {
     }
 
     const message = `Agent health check failed for ${agent}: ${health.reason}`;
-    if (detectAgentUnavailability(health.reason) !== null) {
-      await this.pauseAutomationForAgentFailure(agent, health.reason, prIds);
+    const classification = detectAgentUnavailability(health.reason);
+    if (classification !== null) {
+      await this.pauseAutomationForAgentFailure(agent, health.reason, prIds, classification);
     } else {
       await Promise.all(prIds.map(async (prId) => {
         await this.storage.addLog(prId, "warn", `Automation skipped: ${message}`, {
           phase: "agent.health",
+          metadata: { agent, classification: null },
         });
       }));
     }
@@ -2166,7 +2194,7 @@ export class PRBabysitter {
           ? await this.findLatestNoOpCheck(local.id, pull.headSha)
           : null;
         if (priorNoOpCheck) {
-          let syncedLocal: typeof local;
+          let syncedLocal: typeof local | null = null;
           try {
             syncedLocal = await this.syncFeedbackForPR(local.id, {
               phase: "watcher",
@@ -2174,23 +2202,33 @@ export class PRBabysitter {
           } catch (error) {
             await this.storage.addLog(local.id, "warn", `Could not sync GitHub feedback before no-op suppression: ${summarizeUnknownError(error)}`, {
               phase: "watcher",
+              metadata: {
+                repo: repoSlug,
+                headSha: pull.headSha,
+                errorClass: classifyFeedbackSyncError(error),
+              },
             });
-            syncedLocal = await this.storage.getPR(local.id) ?? local;
           }
 
           let failingStatuses: GitHubStatusFailure[] | null = null;
-          try {
-            failingStatuses = await this.github.listFailingStatuses(octokit, repo, pull.headSha);
-          } catch (error) {
-            await this.storage.addLog(local.id, "warn", `Could not check CI status before no-op suppression: ${summarizeUnknownError(error)}`, {
-              phase: "watcher",
-            });
+          if (syncedLocal) {
+            try {
+              failingStatuses = await this.github.listFailingStatuses(octokit, repo, pull.headSha);
+            } catch (error) {
+              await this.storage.addLog(local.id, "warn", `Could not check CI status before no-op suppression: ${summarizeUnknownError(error)}`, {
+                phase: "watcher",
+                metadata: {
+                  repo: repoSlug,
+                  headSha: pull.headSha,
+                },
+              });
+            }
           }
 
-          const hasPendingFeedback = syncedLocal.feedbackItems.some((item) =>
+          const hasPendingFeedback = syncedLocal?.feedbackItems.some((item) =>
             item.status === "pending" || item.status === "queued" || item.status === "in_progress"
-          );
-          if (!hasPendingFeedback && failingStatuses && failingStatuses.length === 0) {
+          ) ?? false;
+          if (syncedLocal && !hasPendingFeedback && failingStatuses && failingStatuses.length === 0) {
             const lastChecked = this.now().toISOString();
             await this.storage.updatePR(local.id, {
               status: "watching",
@@ -2442,8 +2480,10 @@ export class PRBabysitter {
       let buffer = "";
       let loggedLines = 0;
       let loggedTruncation = false;
+      const capturedLines: string[] = [];
 
       const enqueueLine = (trimmed: string) => {
+        capturedLines.push(trimmed);
         if (maxLines !== undefined && loggedLines >= maxLines) {
           if (!loggedTruncation) {
             loggedTruncation = true;
@@ -2481,6 +2521,7 @@ export class PRBabysitter {
           }
           await logQueue;
         },
+        getCapturedLines: () => capturedLines.slice(),
       };
     };
 
@@ -2519,6 +2560,13 @@ export class PRBabysitter {
           metadata: { command: formatCommand(command, args), code: result.code },
         });
       } else {
+        const capturedStderrLines = stderrLogger.getCapturedLines();
+        for (const line of capturedStderrLines) {
+          await queueLog(currentPrId, "warn", `[stderr] ${line}`, {
+            phase,
+            metadata: { stream: "stderr", reemittedFor: "failure" },
+          });
+        }
         await queueLog(currentPrId, "error", `${formatCommand(command, args)} failed (${result.code})`, {
           phase,
           metadata: {

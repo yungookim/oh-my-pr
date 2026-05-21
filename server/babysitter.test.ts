@@ -754,6 +754,86 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   ));
 });
 
+test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fails before no-op suppression", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+  await storage.updateConfig({ autoUpdateDocs: false });
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Already checked",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: true,
+  });
+
+  const openPull = {
+    number: 42,
+    title: "Already checked",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    headSha: "same-head",
+    baseRef: "main",
+    baseSha: "base123",
+  };
+  let failFeedbackSync = false;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchFeedbackItemsForPR: async () => {
+        if (failFeedbackSync) {
+          throw new Error("GitHub authentication failed while loading feedback");
+        }
+        return [];
+      },
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "same-head" }),
+      listFailingStatuses: async () => [],
+      listOpenPullsForRepo: async () => [openPull],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => backgroundJobQueue.enqueue(...args),
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+  failFeedbackSync = true;
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const jobs = await storage.listBackgroundJobs({
+    kind: "babysit_pr",
+    targetId: pr.id,
+  });
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(jobs.length, 1);
+  assert.ok(logs.some((log) =>
+    log.phase === "watcher"
+    && log.level === "warn"
+    && log.message.includes("Could not sync GitHub feedback before no-op suppression")
+  ));
+  assert.ok(!logs.some((log) =>
+    log.phase === "watcher"
+    && log.message.includes("Skipping babysitter run because the same PR head was already checked with no necessary fixes")
+  ));
+});
+
 test("syncAndBabysitTrackedRepos refreshes repository status during drain without queueing babysits", async () => {
   const storage = new MemStorage();
   const backgroundJobQueue = new BackgroundJobQueue(storage);
@@ -1618,7 +1698,10 @@ test("syncAndBabysitTrackedRepos pauses automation when the selected agent is un
   assert.equal(updated?.feedbackItems[1]?.status, "failed");
   assert.match(updated?.feedbackItems[1]?.statusReason ?? "", /Claude authentication failed/);
   assert.deepEqual(scheduled, []);
-  assert.ok(logs.some((log) => log.message.includes("Automation paused")));
+  const pauseLog = logs.find((log) => log.message.includes("Automation paused"));
+  assert.ok(pauseLog);
+  assert.equal(pauseLog.metadata?.agent, "claude");
+  assert.equal(pauseLog.metadata?.classification, "auth");
 });
 
 test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent health timeouts", async () => {
@@ -1683,7 +1766,10 @@ test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent h
   assert.equal(runtimeState.drainReason, null);
   assert.equal(updated?.feedbackItems[0]?.status, "queued");
   assert.equal(updated?.feedbackItems[1]?.status, "in_progress");
-  assert.ok(logs.some((log) => log.message.includes("Automation skipped")));
+  const skipLog = logs.find((log) => log.message.includes("Automation skipped"));
+  assert.ok(skipLog);
+  assert.equal(skipLog.metadata?.agent, "codex");
+  assert.equal(skipLog.metadata?.classification, null);
   assert.ok(logs.some((log) => log.message.includes("Command timed out after 30000ms")));
   assert.ok(logs.every((log) => !log.message.includes("Automation paused")));
 });
@@ -4441,6 +4527,80 @@ test("babysitPR logs successful git stderr as info during docs assessment", asyn
     const stderrLogs = logs.filter((log) => log.message.includes("[stderr] From https://github.com/alex-morgan-o/lolodex"));
     assert.ok(stderrLogs.length >= 1);
     assert.ok(stderrLogs.every((log) => log.level === "info"));
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR replays failed git stderr as warn during docs assessment", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs stderr failure",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+  const baseRunCommand = makeGitRunCommand({ localHeadSha: "abc123", remoteHeadSha: "abc123" });
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "Docs are still accurate" }),
+        applyFixesWithAgent: async () => {
+          throw new Error("Should not run the agent when docs assessment cannot fetch base");
+        },
+        runCommand: async (command, args, options) => {
+          if (command === "git" && args[0] === "fetch" && args[1] === "origin") {
+            const stderr = "fatal: could not read Username\n";
+            options?.onStderrChunk?.(stderr);
+            return { code: 1, stdout: "", stderr };
+          }
+
+          const result = await baseRunCommand(command, args);
+          options?.onStdoutChunk?.(result.stdout);
+          options?.onStderrChunk?.(result.stderr);
+          return result;
+        },
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const logs = await storage.getLogs(pr.id);
+    assert.ok(logs.some((log) =>
+      log.phase === "evaluate.docs"
+      && log.level === "warn"
+      && log.message === "[stderr] fatal: could not read Username"
+    ));
   } finally {
     delete process.env.CODEFACTORY_HOME;
   }

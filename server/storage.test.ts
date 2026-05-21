@@ -517,6 +517,83 @@ test("SqliteStorage upsertAgentRun preserves the original createdAt", async () =
   storage.close();
 });
 
+test("SqliteStorage listAgentRuns orders, limits, and filters by initialHeadSha", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+
+  const pr = await storage.addPR({
+    number: 60,
+    title: "Filter runs",
+    repo: "yungookim/oh-my-pr",
+    branch: "claude/typescript-data-model-k3zAW",
+    author: "claude",
+    url: "https://github.com/yungookim/oh-my-pr/pull/60",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  await storage.upsertAgentRun({
+    id: "old-match",
+    prId: pr.id,
+    preferredAgent: "claude",
+    resolvedAgent: "claude",
+    status: "completed",
+    phase: "run.done",
+    prompt: null,
+    initialHeadSha: "same-head",
+    metadata: null,
+    lastError: null,
+    createdAt: "2026-03-18T10:01:00.000Z",
+    updatedAt: "2026-03-18T10:01:00.000Z",
+  });
+  await storage.upsertAgentRun({
+    id: "new-other-head",
+    prId: pr.id,
+    preferredAgent: "claude",
+    resolvedAgent: "claude",
+    status: "completed",
+    phase: "run.done",
+    prompt: null,
+    initialHeadSha: "other-head",
+    metadata: null,
+    lastError: null,
+    createdAt: "2026-03-18T10:02:00.000Z",
+    updatedAt: "2026-03-18T10:05:00.000Z",
+  });
+  await storage.upsertAgentRun({
+    id: "new-match",
+    prId: pr.id,
+    preferredAgent: "claude",
+    resolvedAgent: "claude",
+    status: "completed",
+    phase: "run.done",
+    prompt: null,
+    initialHeadSha: "same-head",
+    metadata: null,
+    lastError: null,
+    createdAt: "2026-03-18T10:03:00.000Z",
+    updatedAt: "2026-03-18T10:03:00.000Z",
+  });
+
+  const runs = await storage.listAgentRuns({
+    prId: pr.id,
+    status: "completed",
+    initialHeadSha: "same-head",
+    orderBy: "updatedAt",
+    order: "desc",
+    limit: 1,
+  });
+
+  assert.deepEqual(runs.map((run) => run.id), ["new-match"]);
+  storage.close();
+});
+
 test("SqliteStorage persists background jobs and requeues expired leases", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
   const first = new SqliteStorage(root);
