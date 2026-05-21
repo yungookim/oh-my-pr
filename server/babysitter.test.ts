@@ -301,6 +301,103 @@ test("pollForCICompletion returns timeout when status API keeps failing, includi
   assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("Final CI status check after timeout failed")));
 });
 
+test("pollForCICompletion includes pending check details when checks never settle", async () => {
+  const storage = new MemStorage();
+  const logs: Array<{
+    level: "info" | "warn" | "error";
+    message: string;
+    metadata?: Record<string, unknown> | null;
+  }> = [];
+
+  const babysitter = new PRBabysitter(
+    storage,
+    {
+      buildOctokit: async () => ({}) as never,
+      fetchFeedbackItemsForPR: async () => [],
+      fetchPullSummary: async () => {
+        throw new Error("unused");
+      },
+      listFailingStatuses: async () => [],
+      checkCISettled: async () => false,
+      fetchCheckSnapshotsForRef: async (_octokit: unknown, _repo: unknown, prId: string, headSha: string) => [
+        makeCheckSnapshot({
+          id: "build",
+          prId,
+          sha: headSha,
+          context: "Backend Build",
+          status: "queued",
+          conclusion: null,
+          description: "Waiting for a runner",
+          targetUrl: "https://github.com/octo/example/actions/runs/1",
+        }),
+        makeCheckSnapshot({
+          id: "e2e",
+          prId,
+          sha: headSha,
+          context: "Playwright E2E",
+          status: "in_progress",
+          conclusion: null,
+          description: "Still running",
+          targetUrl: "https://github.com/octo/example/actions/runs/2",
+        }),
+      ],
+      listOpenPullsForRepo: async () => [],
+      postFollowUpForFeedbackItem: async () => undefined,
+      resolveReviewThread: async () => undefined,
+      resolveGitHubAuthToken: async () => undefined,
+      addReactionToComment: async () => undefined,
+      postStatusReplyForFeedbackItem: async () => null,
+      updateStatusReply: async () => undefined,
+      postPRComment: async () => undefined,
+    },
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async (
+      _prId: string,
+      level: "info" | "warn" | "error",
+      message: string,
+      opts?: { metadata?: Record<string, unknown> | null },
+    ) => {
+      logs.push({ level, message, metadata: opts?.metadata ?? null });
+    },
+  );
+
+  assert.deepEqual(result, { status: "timeout", failures: [] });
+  const timeoutLog = logs.find((log) => log.message.includes("CI status did not settle"));
+  assert.equal(timeoutLog?.level, "warn");
+  assert.match(timeoutLog?.message ?? "", /Backend Build/);
+  assert.match(timeoutLog?.message ?? "", /Playwright E2E/);
+  assert.deepEqual(timeoutLog?.metadata?.pendingChecks, [
+    {
+      context: "Backend Build",
+      status: "queued",
+      conclusion: null,
+      description: "Waiting for a runner",
+      targetUrl: "https://github.com/octo/example/actions/runs/1",
+    },
+    {
+      context: "Playwright E2E",
+      status: "in_progress",
+      conclusion: null,
+      description: "Still running",
+      targetUrl: "https://github.com/octo/example/actions/runs/2",
+    },
+  ]);
+});
+
 test("syncFeedbackForPR logs completion even when no new feedback items arrive", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem();
@@ -577,6 +674,164 @@ test("syncAndBabysitTrackedRepos enqueues babysit_pr jobs when a background sche
   assert.equal(jobs[0].payload.activityLabel, "Babysitting PR #42");
   assert.equal(jobs[0].payload.activityDetail, "octo/example - Example PR");
   assert.equal(jobs[0].payload.activityTargetUrl, pr.url);
+});
+
+test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitter run", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+  await storage.updateConfig({ autoUpdateDocs: false });
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Already checked",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: true,
+  });
+
+  const openPull = {
+    number: 42,
+    title: "Already checked",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    headSha: "same-head",
+    baseRef: "main",
+    baseSha: "base123",
+  };
+  let feedbackFetches = 0;
+  let failingStatusFetches = 0;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchFeedbackItemsForPR: async () => {
+        feedbackFetches += 1;
+        return [];
+      },
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "same-head" }),
+      listFailingStatuses: async () => {
+        failingStatusFetches += 1;
+        return [];
+      },
+      listOpenPullsForRepo: async () => [openPull],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => backgroundJobQueue.enqueue(...args),
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const jobs = await storage.listBackgroundJobs({
+    kind: "babysit_pr",
+    targetId: pr.id,
+  });
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(jobs.length, 0);
+  assert.ok(feedbackFetches >= 2);
+  assert.ok(failingStatusFetches >= 2);
+  assert.ok(logs.some((log) =>
+    log.phase === "watcher"
+    && log.message.includes("Skipping babysitter run because the same PR head was already checked with no necessary fixes")
+  ));
+});
+
+test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fails before no-op suppression", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+  await storage.updateConfig({ autoUpdateDocs: false });
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Already checked",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: true,
+  });
+
+  const openPull = {
+    number: 42,
+    title: "Already checked",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    headSha: "same-head",
+    baseRef: "main",
+    baseSha: "base123",
+  };
+  let failFeedbackSync = false;
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchFeedbackItemsForPR: async () => {
+        if (failFeedbackSync) {
+          throw new Error("GitHub authentication failed while loading feedback");
+        }
+        return [];
+      },
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "same-head" }),
+      listFailingStatuses: async () => [],
+      listOpenPullsForRepo: async () => [openPull],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => backgroundJobQueue.enqueue(...args),
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+  failFeedbackSync = true;
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const jobs = await storage.listBackgroundJobs({
+    kind: "babysit_pr",
+    targetId: pr.id,
+  });
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(jobs.length, 1);
+  assert.ok(logs.some((log) =>
+    log.phase === "watcher"
+    && log.level === "warn"
+    && log.message.includes("Could not sync GitHub feedback before no-op suppression")
+  ));
+  assert.ok(!logs.some((log) =>
+    log.phase === "watcher"
+    && log.message.includes("Skipping babysitter run because the same PR head was already checked with no necessary fixes")
+  ));
 });
 
 test("syncAndBabysitTrackedRepos refreshes repository status during drain without queueing babysits", async () => {
@@ -1443,7 +1698,10 @@ test("syncAndBabysitTrackedRepos pauses automation when the selected agent is un
   assert.equal(updated?.feedbackItems[1]?.status, "failed");
   assert.match(updated?.feedbackItems[1]?.statusReason ?? "", /Claude authentication failed/);
   assert.deepEqual(scheduled, []);
-  assert.ok(logs.some((log) => log.message.includes("Automation paused")));
+  const pauseLog = logs.find((log) => log.message.includes("Automation paused"));
+  assert.ok(pauseLog);
+  assert.equal(pauseLog.metadata?.agent, "claude");
+  assert.equal(pauseLog.metadata?.classification, "auth");
 });
 
 test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent health timeouts", async () => {
@@ -1508,7 +1766,10 @@ test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent h
   assert.equal(runtimeState.drainReason, null);
   assert.equal(updated?.feedbackItems[0]?.status, "queued");
   assert.equal(updated?.feedbackItems[1]?.status, "in_progress");
-  assert.ok(logs.some((log) => log.message.includes("Automation skipped")));
+  const skipLog = logs.find((log) => log.message.includes("Automation skipped"));
+  assert.ok(skipLog);
+  assert.equal(skipLog.metadata?.agent, "codex");
+  assert.equal(skipLog.metadata?.classification, null);
   assert.ok(logs.some((log) => log.message.includes("Command timed out after 30000ms")));
   assert.ok(logs.every((log) => !log.message.includes("Automation paused")));
 });
@@ -4182,6 +4443,165 @@ test("babysitPR caps verbose diff preview logs during docs assessment", async ()
     assert.equal(previewLogs.length, 20);
     assert.ok(logs.some((log) => log.phase === "evaluate.docs" && log.message.includes("[stdout] output truncated after 20 line(s)")));
     assert.match(capturedDocsPrompt, /\+changed implementation line 120/);
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR logs successful git stderr as info during docs assessment", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs stderr",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+  const baseRunCommand = makeGitRunCommand({ localHeadSha: "abc123", remoteHeadSha: "abc123" });
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "Docs are still accurate" }),
+        applyFixesWithAgent: async () => {
+          throw new Error("Should not run the agent when docs assessment says no fix is needed");
+        },
+        runCommand: async (command, args, options) => {
+          if (command === "git" && args[0] === "-C" && args[2] === "fetch") {
+            const stderr = "From https://github.com/alex-morgan-o/lolodex\n";
+            options?.onStderrChunk?.(stderr);
+            return { code: 0, stdout: "", stderr };
+          }
+
+          if (command === "git" && args[0] === "diff" && args[1] === "--name-only") {
+            return { code: 0, stdout: "README.md\n", stderr: "" };
+          }
+
+          if (command === "git" && args[0] === "diff" && args[1] === "--stat") {
+            return { code: 0, stdout: "README.md | 1 +\n", stderr: "" };
+          }
+
+          if (command === "git" && args[0] === "diff" && args[1] === "--no-color") {
+            return { code: 0, stdout: "+docs line\n", stderr: "" };
+          }
+
+          const result = await baseRunCommand(command, args);
+          options?.onStdoutChunk?.(result.stdout);
+          options?.onStderrChunk?.(result.stderr);
+          return result;
+        },
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const logs = await storage.getLogs(pr.id);
+    const stderrLogs = logs.filter((log) => log.message.includes("[stderr] From https://github.com/alex-morgan-o/lolodex"));
+    assert.ok(stderrLogs.length >= 1);
+    assert.ok(stderrLogs.every((log) => log.level === "info"));
+  } finally {
+    delete process.env.CODEFACTORY_HOME;
+  }
+});
+
+test("babysitPR replays failed git stderr as warn during docs assessment", async () => {
+  const storage = new MemStorage();
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Docs stderr failure",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+  const baseRunCommand = makeGitRunCommand({ localHeadSha: "abc123", remoteHeadSha: "abc123" });
+  const worktreeRoot = await mkdtemp(path.join(os.tmpdir(), "codefactory-home-"));
+  process.env.CODEFACTORY_HOME = worktreeRoot;
+
+  try {
+    const babysitter = new PRBabysitter(
+      storage,
+      {
+        buildOctokit: async () => ({}) as never,
+        fetchFeedbackItemsForPR: async () => [],
+        fetchPullSummary: async () => makePullSummary(pr, { headSha: "abc123" }),
+        listFailingStatuses: async () => [],
+        checkCISettled: async () => true,
+        listOpenPullsForRepo: async () => [],
+        postFollowUpForFeedbackItem: async () => undefined,
+        resolveReviewThread: async () => undefined,
+        resolveGitHubAuthToken: async () => "test-token",
+        addReactionToComment: async () => {},
+        postStatusReplyForFeedbackItem: async () => null,
+        updateStatusReply: async () => {},
+      },
+      {
+        resolveAgent: async () => "codex",
+        ciPollIntervalMs: 0,
+        evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "Docs are still accurate" }),
+        applyFixesWithAgent: async () => {
+          throw new Error("Should not run the agent when docs assessment cannot fetch base");
+        },
+        runCommand: async (command, args, options) => {
+          if (command === "git" && args[0] === "fetch" && args[1] === "origin") {
+            const stderr = "fatal: could not read Username\n";
+            options?.onStderrChunk?.(stderr);
+            return { code: 1, stdout: "", stderr };
+          }
+
+          const result = await baseRunCommand(command, args);
+          options?.onStdoutChunk?.(result.stdout);
+          options?.onStderrChunk?.(result.stderr);
+          return result;
+        },
+      },
+    );
+
+    await babysitter.babysitPR(pr.id, "codex");
+
+    const logs = await storage.getLogs(pr.id);
+    const stderrLogs = logs.filter((log) =>
+      log.phase === "evaluate.docs"
+      && log.message === "[stderr] fatal: could not read Username"
+    );
+    assert.equal(stderrLogs.length, 1);
+    assert.equal(stderrLogs[0]?.level, "warn");
   } finally {
     delete process.env.CODEFACTORY_HOME;
   }

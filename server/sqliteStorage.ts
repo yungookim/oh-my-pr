@@ -2344,9 +2344,16 @@ export class SqliteStorage implements IStorage {
     return this.parseAgentRunRow(row);
   }
 
-  async listAgentRuns(filters?: { status?: AgentRunStatus; prId?: string }): Promise<AgentRun[]> {
+  async listAgentRuns(filters?: {
+    status?: AgentRunStatus;
+    prId?: string;
+    initialHeadSha?: string;
+    orderBy?: "createdAt" | "updatedAt";
+    order?: "asc" | "desc";
+    limit?: number;
+  }): Promise<AgentRun[]> {
     const clauses: string[] = [];
-    const values: string[] = [];
+    const values: (string | number)[] = [];
 
     if (filters?.status) {
       clauses.push("status = ?");
@@ -2358,14 +2365,23 @@ export class SqliteStorage implements IStorage {
       values.push(filters.prId);
     }
 
+    if (filters?.initialHeadSha) {
+      clauses.push("initial_head_sha = ?");
+      values.push(filters.initialHeadSha);
+    }
+
     const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const orderColumn = filters?.orderBy === "updatedAt" ? "updated_at" : "created_at";
+    const direction = filters?.order === "desc" ? "DESC" : "ASC";
+    const limitClause = filters?.limit !== undefined ? `LIMIT ${Math.max(0, Math.floor(filters.limit))}` : "";
 
     const rows = this.all<AgentRunRow>(`
       SELECT id, pr_id, preferred_agent, resolved_agent, status, phase, prompt, initial_head_sha,
              metadata_json, last_error, created_at, updated_at
       FROM agent_runs
       ${whereClause}
-      ORDER BY datetime(created_at) ASC
+      ORDER BY datetime(${orderColumn}) ${direction}
+      ${limitClause}
     `, ...values);
 
     return rows.map((row) => this.parseAgentRunRow(row));

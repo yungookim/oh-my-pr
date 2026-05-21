@@ -1022,6 +1022,37 @@ describe("MemStorage", () => {
       assert.equal(runs[0].prId, "pr-1");
     });
 
+    it("orders, limits, and filters by initialHeadSha", async () => {
+      await storage.upsertAgentRun(makeAgentRun({
+        id: "old-match",
+        status: "completed",
+        initialHeadSha: "same-head",
+        updatedAt: "2026-03-18T10:01:00.000Z",
+      }));
+      await storage.upsertAgentRun(makeAgentRun({
+        id: "new-other-head",
+        status: "completed",
+        initialHeadSha: "other-head",
+        updatedAt: "2026-03-18T10:05:00.000Z",
+      }));
+      await storage.upsertAgentRun(makeAgentRun({
+        id: "new-match",
+        status: "completed",
+        initialHeadSha: "same-head",
+        updatedAt: "2026-03-18T10:03:00.000Z",
+      }));
+
+      const runs = await storage.listAgentRuns({
+        status: "completed",
+        initialHeadSha: "same-head",
+        orderBy: "updatedAt",
+        order: "desc",
+        limit: 1,
+      });
+
+      assert.deepEqual(runs.map((run) => run.id), ["new-match"]);
+    });
+
     it("returns copies (not references)", async () => {
       await storage.upsertAgentRun(makeAgentRun({ id: "r1" }));
 

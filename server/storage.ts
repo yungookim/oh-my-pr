@@ -151,6 +151,10 @@ export interface IStorage {
   listAgentRuns(filters?: {
     status?: AgentRunStatus;
     prId?: string;
+    initialHeadSha?: string;
+    orderBy?: "createdAt" | "updatedAt";
+    order?: "asc" | "desc";
+    limit?: number;
   }): Promise<AgentRun[]>;
   upsertAgentRun(run: AgentRun): Promise<AgentRun>;
 
