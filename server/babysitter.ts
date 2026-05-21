@@ -2476,6 +2476,7 @@ export class PRBabysitter {
       stream: "stdout" | "stderr",
       level: "info" | "warn",
       maxLines?: number,
+      options?: { logLines?: boolean },
     ) => {
       let buffer = "";
       let loggedLines = 0;
@@ -2484,6 +2485,10 @@ export class PRBabysitter {
 
       const enqueueLine = (trimmed: string) => {
         capturedLines.push(trimmed);
+        if (options?.logLines === false) {
+          return logQueue;
+        }
+
         if (maxLines !== undefined && loggedLines >= maxLines) {
           if (!loggedTruncation) {
             loggedTruncation = true;
@@ -2525,6 +2530,35 @@ export class PRBabysitter {
       };
     };
 
+    const emitCapturedStreamLines = async (
+      currentPrId: string,
+      phase: string,
+      stream: "stdout" | "stderr",
+      level: "info" | "warn",
+      lines: string[],
+      maxLines?: number,
+      metadata?: Record<string, unknown>,
+    ) => {
+      let loggedLines = 0;
+      for (const line of lines) {
+        if (maxLines !== undefined && loggedLines >= maxLines) {
+          await queueLog(currentPrId, level, `[${stream}] output truncated after ${maxLines} line(s)`, {
+            phase,
+            metadata: metadata ? { stream, truncated: true, maxLines, ...metadata } : { stream, truncated: true, maxLines },
+          });
+          return;
+        }
+
+        loggedLines += 1;
+        await queueLog(currentPrId, level, `[${stream}] ${line}`, {
+          phase,
+          metadata: metadata ? { stream, ...metadata } : { stream },
+        });
+      }
+
+      await logQueue;
+    };
+
     const runLoggedCommand = async (params: {
       currentPrId: string;
       command: string;
@@ -2542,7 +2576,9 @@ export class PRBabysitter {
       });
 
       const stdoutLogger = createChunkLogger(currentPrId, phase, "stdout", "info", maxOutputLogLines);
-      const stderrLogger = createChunkLogger(currentPrId, phase, "stderr", "info", maxOutputLogLines);
+      const stderrLogger = createChunkLogger(currentPrId, phase, "stderr", "info", maxOutputLogLines, {
+        logLines: false,
+      });
 
       const result = await this.runtime.runCommand(command, args, {
         cwd,
@@ -2555,18 +2591,15 @@ export class PRBabysitter {
       await stderrLogger.flush();
 
       if (result.code === 0) {
+        await emitCapturedStreamLines(currentPrId, phase, "stderr", "info", stderrLogger.getCapturedLines(), maxOutputLogLines);
         await queueLog(currentPrId, "info", successMessage, {
           phase,
           metadata: { command: formatCommand(command, args), code: result.code },
         });
       } else {
-        const capturedStderrLines = stderrLogger.getCapturedLines();
-        for (const line of capturedStderrLines) {
-          await queueLog(currentPrId, "warn", `[stderr] ${line}`, {
-            phase,
-            metadata: { stream: "stderr", reemittedFor: "failure" },
-          });
-        }
+        await emitCapturedStreamLines(currentPrId, phase, "stderr", "warn", stderrLogger.getCapturedLines(), maxOutputLogLines, {
+          reemittedFor: "failure",
+        });
         await queueLog(currentPrId, "error", `${formatCommand(command, args)} failed (${result.code})`, {
           phase,
           metadata: {

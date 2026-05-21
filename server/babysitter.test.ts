@@ -4596,11 +4596,12 @@ test("babysitPR replays failed git stderr as warn during docs assessment", async
     await babysitter.babysitPR(pr.id, "codex");
 
     const logs = await storage.getLogs(pr.id);
-    assert.ok(logs.some((log) =>
+    const stderrLogs = logs.filter((log) =>
       log.phase === "evaluate.docs"
-      && log.level === "warn"
       && log.message === "[stderr] fatal: could not read Username"
-    ));
+    );
+    assert.equal(stderrLogs.length, 1);
+    assert.equal(stderrLogs[0]?.level, "warn");
   } finally {
     delete process.env.CODEFACTORY_HOME;
   }
