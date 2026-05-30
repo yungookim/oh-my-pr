@@ -19,10 +19,15 @@ import { toast } from "@/hooks/use-toast";
 import {
   formatFeedbackStatusLabel,
   getFeedbackStatusBadgeClass,
-  isFeedbackCollapsedByDefault,
   countActiveFeedbackStatuses,
   isPRReadyToMerge,
 } from "@/lib/feedbackStatus";
+import {
+  formatFeedbackOverview,
+  getFeedbackGroupSections,
+  getFeedbackPreview,
+  type FeedbackGroupSection as FeedbackGroupSectionView,
+} from "@/lib/feedbackDisplay";
 import {
   getHealingSessionView,
   selectRelevantHealingSession,
@@ -145,6 +150,39 @@ function FeedbackStatusTag({ status }: { status: FeedbackItem["status"] }) {
       {formatFeedbackStatusLabel(status)}
     </span>
   );
+}
+
+const FEEDBACK_DECISIONS = ["accept", "reject", "flag"] as const;
+type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
+
+function formatFeedbackLocation(item: FeedbackItem): string {
+  if (item.file) {
+    return `${item.file}${item.line ? `:${item.line}` : ""}`;
+  }
+
+  if (item.type === "general_comment") {
+    return "General comment";
+  }
+
+  if (item.type === "review") {
+    return "Review";
+  }
+
+  return "Review comment";
+}
+
+function formatFeedbackMeta(item: FeedbackItem, createdAt: string | null): string {
+  const parts = [item.author];
+
+  if (createdAt) {
+    parts.push(createdAt);
+  }
+
+  if (item.decision) {
+    parts.push(`decision: ${item.decision}`);
+  }
+
+  return parts.join(" · ");
 }
 
 function WatchPausedIndicator() {
@@ -611,8 +649,9 @@ function FeedbackRow({
   readOnly?: boolean;
   globalDrainMode?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const overrideMutation = useMutation({
-    mutationFn: async (decision: string) => {
+    mutationFn: async (decision: FeedbackDecision) => {
       const res = await apiRequest("PATCH", `/api/prs/${prId}/feedback/${item.id}`, { decision });
       return res.json();
     },
@@ -639,34 +678,40 @@ function FeedbackRow({
   });
 
   const createdAt = formatClock(item.createdAt);
-  const collapsedByDefault = isFeedbackCollapsedByDefault(item.status);
+  const location = formatFeedbackLocation(item);
+  const preview = getFeedbackPreview(item);
+  const meta = formatFeedbackMeta(item, createdAt);
   const prominentStatusReason = (item.status === "failed" || item.status === "warning") && item.statusReason
     ? item.statusReason
     : null;
+  const prominentStatusLabel = item.status === "warning" ? "Warning" : "Blocked";
 
   return (
-    <Collapsible.Root defaultOpen={!collapsedByDefault} className="border-b border-border">
-      <div className="px-4 py-3">
-        {/* Header row - always visible */}
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="border-b border-border/80">
+      <div className="px-4 py-2.5">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
             <FeedbackStatusTag status={item.status} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="font-medium">{item.author}</span>
-              {item.file && (
-                <span className="text-[11px] text-muted-foreground">
-                  {item.file}{item.line ? `:${item.line}` : ""}
-                </span>
-              )}
-              <span className="text-[11px] text-muted-foreground">{item.type.replace("_", " ")}</span>
-              {createdAt && <span className="text-[11px] text-muted-foreground">{createdAt}</span>}
+            <div className="flex min-w-0 flex-col gap-0.5 lg:flex-row lg:items-baseline lg:gap-2">
+              <span className="min-w-0 truncate text-[12px] font-medium text-foreground/85 lg:max-w-[42%] lg:shrink-0">
+                {location}
+              </span>
+              <span className="min-w-0 truncate text-[12px] text-foreground/75" title={preview}>
+                "{preview}"
+              </span>
+            </div>
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground" title={meta}>
+              {meta}
             </div>
             {prominentStatusReason && (
-              <div className="mt-1 whitespace-pre-wrap break-words border border-destructive/30 bg-destructive/10 px-2 py-1 text-[11px] leading-4 text-destructive">
-                <span className="font-medium uppercase tracking-wider">Failure reason:</span>{" "}
-                {prominentStatusReason}
+              <div
+                className="mt-1 flex min-w-0 items-center gap-1 border border-destructive/25 bg-destructive/10 px-2 py-1 text-[11px] leading-4 text-destructive"
+                title={prominentStatusReason}
+              >
+                <span className="shrink-0 font-medium uppercase tracking-wider">{prominentStatusLabel}:</span>
+                <span className="min-w-0 truncate">{prominentStatusReason}</span>
               </div>
             )}
           </div>
@@ -688,32 +733,18 @@ function FeedbackRow({
               <button
                 type="button"
                 data-testid={`toggle-${item.id}`}
-                aria-label={`${collapsedByDefault ? "Show" : "Hide"} feedback details from ${item.author}`}
+                aria-label={`${open ? "Hide" : "Show"} feedback details from ${item.author}`}
                 title="Toggle feedback details"
                 className="border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
               >
-                Details
+                {open ? "Hide" : "Open"}
               </button>
             </Collapsible.Trigger>
-            {!readOnly && ["accept", "reject", "flag"].map((decision) => (
-              <button
-                type="button"
-                key={decision}
-                onClick={() => overrideMutation.mutate(decision)}
-                data-testid={`override-${decision}-${item.id}`}
-                aria-label={`${decision} feedback from ${item.author}`}
-                className={`px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
-                  item.decision === decision ? "bg-foreground text-background" : "border border-border text-muted-foreground"
-                }`}
-              >
-                {decision}
-              </button>
-            ))}
           </div>
         </div>
       </div>
       <Collapsible.Content>
-        <div className="px-4 pb-3">
+        <div className="px-4 pb-3 pl-[calc(1rem+4.5rem)]">
           {item.bodyHtml ? (
             <div
               className="feedback-markdown text-[12px] leading-relaxed"
@@ -734,9 +765,115 @@ function FeedbackRow({
               {item.decisionReason}
             </p>
           )}
+          {!readOnly && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-2">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Manual decision
+              </span>
+              <div className="flex flex-wrap items-center gap-1">
+                {FEEDBACK_DECISIONS.map((decision) => (
+                  <button
+                    type="button"
+                    key={decision}
+                    onClick={() => overrideMutation.mutate(decision)}
+                    disabled={overrideMutation.isPending}
+                    data-testid={`override-${decision}-${item.id}`}
+                    aria-label={`${decision} feedback from ${item.author}`}
+                    className={`px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-30 ${
+                      item.decision === decision ? "bg-foreground text-background" : "border border-border text-muted-foreground"
+                    }`}
+                  >
+                    {decision}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Collapsible.Content>
     </Collapsible.Root>
+  );
+}
+
+function FeedbackGroupSection({
+  section,
+  prId,
+  readOnly,
+  globalDrainMode,
+}: {
+  section: FeedbackGroupSectionView;
+  prId: string;
+  readOnly?: boolean;
+  globalDrainMode: boolean;
+}) {
+  const [open, setOpen] = useState(section.defaultOpen);
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen} className="border-b border-border last:border-b-0">
+      <div className="sticky top-0 z-[1] border-b border-border/80 bg-background/95 px-4 py-2">
+        <Collapsible.Trigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            aria-label={`${open ? "Collapse" : "Expand"} ${section.label.toLowerCase()} feedback`}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span aria-hidden="true" className="w-3 text-[10px] text-muted-foreground">
+                {open ? "▾" : "▸"}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider text-foreground/80">
+                {section.label}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {section.items.length}
+              </span>
+            </span>
+            {section.summary && (
+              <span className="truncate text-[11px] text-muted-foreground">
+                {section.summary}
+              </span>
+            )}
+          </button>
+        </Collapsible.Trigger>
+      </div>
+      <Collapsible.Content>
+        {section.items.map((item) => (
+          <FeedbackRow
+            key={item.id}
+            item={item}
+            prId={prId}
+            readOnly={readOnly}
+            globalDrainMode={globalDrainMode}
+          />
+        ))}
+      </Collapsible.Content>
+    </Collapsible.Root>
+  );
+}
+
+function FeedbackGroups({
+  items,
+  prId,
+  readOnly,
+  globalDrainMode,
+}: {
+  items: FeedbackItem[];
+  prId: string;
+  readOnly?: boolean;
+  globalDrainMode: boolean;
+}) {
+  return (
+    <>
+      {getFeedbackGroupSections(items).map((section) => (
+        <FeedbackGroupSection
+          key={section.key}
+          section={section}
+          prId={prId}
+          readOnly={readOnly}
+          globalDrainMode={globalDrainMode}
+        />
+      ))}
+    </>
   );
 }
 
@@ -1700,18 +1837,7 @@ export default function Dashboard() {
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                       <span>status: {formatStatusLabel(selectedPR.status)}</span>
                       {!selectedPRWatchEnabled && <WatchPausedIndicator />}
-                      <span>{selectedPR.feedbackItems.length} items</span>
-                      {selectedPR.feedbackItems.length > 0 && (() => {
-                        const counts = countActiveFeedbackStatuses(selectedPR.feedbackItems);
-                        return (
-                          <>
-                            {counts.queued > 0 && <span>{counts.queued} queued</span>}
-                            {counts.inProgress > 0 && <span>{counts.inProgress} in progress</span>}
-                            {counts.failed > 0 && <span>{counts.failed} failed</span>}
-                            {counts.warning > 0 && <span>{counts.warning} warnings</span>}
-                          </>
-                        );
-                      })()}
+                      <span>feedback: {formatFeedbackOverview(selectedPR.feedbackItems)}</span>
                       {selectedPR.testsPassed !== null && (
                         <span>tests: {selectedPR.testsPassed ? "pass" : "fail"}</span>
                       )}
@@ -1784,15 +1910,12 @@ export default function Dashboard() {
                       : "No feedback yet. Background watch is paused for this PR."}
                   </div>
                 ) : (
-                  selectedPR.feedbackItems.map((item) => (
-                    <FeedbackRow
-                      key={item.id}
-                      item={item}
-                      prId={selectedPR.id}
-                      readOnly={isArchived}
-                      globalDrainMode={globalDrainMode}
-                    />
-                  ))
+                  <FeedbackGroups
+                    items={selectedPR.feedbackItems}
+                    prId={selectedPR.id}
+                    readOnly={isArchived}
+                    globalDrainMode={globalDrainMode}
+                  />
                 )}
               </div>
             </>
