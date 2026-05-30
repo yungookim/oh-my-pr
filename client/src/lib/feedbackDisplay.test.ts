@@ -61,6 +61,28 @@ test("getFeedbackPreview strips inline HTML badges from bot comments", () => {
   );
 });
 
+test("getFeedbackPreview strips known HTML tags without corrupting angle brackets", () => {
+  const item = makeItem({
+    body: "<span>Medium</span>\nUse List<String> when x < y and y > z.",
+  });
+
+  assert.equal(
+    getFeedbackPreview(item),
+    "Use List<String> when x < y and y > z.",
+  );
+});
+
+test("getFeedbackPreview decodes HTML entities only once", () => {
+  const item = makeItem({
+    body: '<a href=""><img alt="&amp;lt;P2&amp;gt;" src="https://example.com/p2.svg"></a> Keep &amp;lt;script&amp;gt; escaped.',
+  });
+
+  assert.equal(
+    getFeedbackPreview(item),
+    "&lt;P2&gt; Keep &lt;script&gt; escaped.",
+  );
+});
+
 test("getFeedbackGroupSections groups attention, running, and done feedback in priority order", () => {
   const sections = getFeedbackGroupSections([
     makeItem({ id: "resolved", status: "resolved" }),

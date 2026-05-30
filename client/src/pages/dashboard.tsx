@@ -866,7 +866,7 @@ function FeedbackGroups({
     <>
       {getFeedbackGroupSections(items).map((section) => (
         <FeedbackGroupSection
-          key={section.key}
+          key={`${prId}-${section.key}`}
           section={section}
           prId={prId}
           readOnly={readOnly}

@@ -39,6 +39,15 @@ const GENERIC_REVIEW_LINES = new Set([
   "low",
 ]);
 
+const PREVIEW_HTML_TAG_PATTERN = /<\/?(?:a|span|div|p|br|img)\b[^>]*>/gi;
+const PREVIEW_ENTITY_LABELS: Record<string, string> = {
+  quot: "\"",
+  "#39": "'",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+};
+
 function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -71,19 +80,23 @@ function formatStatusParts(items: FeedbackItem[]): string {
   return parts.join(" · ");
 }
 
+function decodePreviewEntities(value: string): string {
+  return value.replace(/&(quot|#39|amp|lt|gt);/g, (entity, label: string) => (
+    PREVIEW_ENTITY_LABELS[label] ?? entity
+  ));
+}
+
 function cleanPreviewLine(line: string): string {
-  return line
+  const withoutHtml = line
     .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gi, " $2 ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(PREVIEW_HTML_TAG_PATTERN, " ");
+
+  return decodePreviewEntities(withoutHtml)
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/[*_~>#]/g, "")
+    .replace(/^\s*>+\s?/, "")
+    .replace(/[*_~#]/g, "")
     .replace(/^\s*[-+*]\s+/, "")
     .replace(/\s+/g, " ")
     .trim();
