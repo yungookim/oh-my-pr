@@ -77,7 +77,9 @@ export function handleTauriExternalLinkClick(
   }
 
   event.preventDefault();
-  void Promise.resolve(openExternal(href)).catch(() => {});
+  void Promise.resolve(openExternal(href)).catch((error: unknown) => {
+    console.warn("Failed to open external link in Tauri", error);
+  });
   return true;
 }
 

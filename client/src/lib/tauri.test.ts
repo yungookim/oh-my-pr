@@ -62,6 +62,36 @@ test("handleTauriExternalLinkClick opens external links through the provided ope
   assert.deepEqual(opened, ["https://github.com/yungookim/oh-my-pr/pull/1"]);
 });
 
+test("handleTauriExternalLinkClick logs rejected external open attempts", async (t) => {
+  const click = createClickEvent();
+  const warnings: unknown[][] = [];
+  const error = new Error("shell open failed");
+  const originalWarn = console.warn;
+  t.after(() => {
+    console.warn = originalWarn;
+  });
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  const handled = handleTauriExternalLinkClick(
+    click.event,
+    () => Promise.reject(error),
+    {
+      currentHref: "http://localhost:5001/#/",
+      findAnchor: () => ({
+        href: "https://github.com/yungookim/oh-my-pr/pull/1",
+        hasAttribute: () => false,
+      }),
+    },
+  );
+  await Promise.resolve();
+
+  assert.equal(handled, true);
+  assert.equal(click.prevented, true);
+  assert.deepEqual(warnings, [["Failed to open external link in Tauri", error]]);
+});
+
 test("handleTauriExternalLinkClick leaves internal links alone", () => {
   const click = createClickEvent();
   const opened: string[] = [];
