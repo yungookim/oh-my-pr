@@ -661,12 +661,14 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       void runWatcher();
     }, interval);
     const startedAt = new Date().toISOString();
-    await storage.updateRuntimeState({
+    void storage.updateRuntimeState({
       watcherStartedAt: startedAt,
       watcherHeartbeatAt: startedAt,
       watcherCompletedAt: null,
       watcherLastError: null,
       watcherIntervalMs: interval,
+    }).catch((err) => {
+      log.error({ err }, "Failed to update runtime state on watcher start");
     });
     log.info({ pollIntervalMs: interval }, "Repository watcher started");
   };

@@ -198,6 +198,10 @@ test("runtime logs watcher runtime state write failures", async () => {
   let enqueueFailures = 0;
 
   storage.updateRuntimeState = async (updates) => {
+    if (typeof updates.watcherStartedAt === "string") {
+      throw new Error("start write failed");
+    }
+
     if (typeof updates.watcherLastError === "string") {
       throw new Error("last error write failed");
     }
@@ -250,6 +254,7 @@ test("runtime logs watcher runtime state write failures", async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 30));
 
     const ring = readRingBuffer().join("\n");
+    assert.match(ring, /Failed to update runtime state on watcher start/);
     assert.match(ring, /Failed to update runtime state with watcher error/);
     assert.match(ring, /Failed to update runtime state heartbeat/);
     assert.match(ring, /Failed to update runtime state on watcher stop/);
