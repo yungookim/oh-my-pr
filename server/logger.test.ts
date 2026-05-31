@@ -16,7 +16,13 @@ const { logger, sanitizeString, readRingBuffer, _resetRingBufferForTests, _write
 function flushAndRead(expected?: RegExp): Promise<string> {
   return new Promise((resolve) => {
     let attempts = 0;
-    const read = () => fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, "utf8") : "";
+    const read = () => {
+      try {
+        return fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, "utf8") : "";
+      } catch {
+        return "";
+      }
+    };
     const poll = () => {
       attempts += 1;
       const content = read();

@@ -6,6 +6,46 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 
+type CargoLockPackage = {
+  name?: string;
+  version?: string;
+};
+
+function parseCargoLockToml(content: string): { package: CargoLockPackage[] } {
+  const packages: CargoLockPackage[] = [];
+  let currentPackage: CargoLockPackage | undefined;
+
+  for (const rawLine of content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")) {
+    const line = rawLine.trim();
+    if (line === "[[package]]") {
+      currentPackage = {};
+      packages.push(currentPackage);
+      continue;
+    }
+
+    if (line.startsWith("[") && line.endsWith("]")) {
+      currentPackage = undefined;
+      continue;
+    }
+
+    if (!currentPackage || !line.includes("=")) continue;
+
+    const separator = line.indexOf("=");
+    const key = line.slice(0, separator).trim();
+    if (key !== "name" && key !== "version") continue;
+
+    const value = line.slice(separator + 1).trim();
+    if (!value.startsWith("\"") || !value.endsWith("\"")) continue;
+
+    const parsed = JSON.parse(value);
+    if (typeof parsed === "string") {
+      currentPackage[key] = parsed;
+    }
+  }
+
+  return { package: packages };
+}
+
 test("Tauri release workflow uploads desktop assets to the published GitHub release", () => {
   const workflow = readFileSync(path.join(repoRoot, ".github/workflows/tauri-build.yml"), "utf8");
 
@@ -29,9 +69,10 @@ test("README links users to desktop release downloads and names the macOS signin
 test("Tauri JavaScript and Rust packages stay on the same minor version", () => {
   const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
   const cargoLock = readFileSync(path.join(repoRoot, "src-tauri/Cargo.lock"), "utf8");
+  const cargo = parseCargoLockToml(cargoLock);
   const apiVersion = packageJson.dependencies["@tauri-apps/api"];
   const cliVersion = packageJson.devDependencies["@tauri-apps/cli"];
-  const tauriVersion = cargoLock.match(/name = "tauri"\nversion = "([^"]+)"/)?.[1];
+  const tauriVersion = cargo.package.find((pkg) => pkg.name === "tauri")?.version;
 
   assert.ok(tauriVersion, "Cargo.lock must include the tauri crate");
 
