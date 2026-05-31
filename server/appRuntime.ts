@@ -415,6 +415,8 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
     (error) => {
       void storage.updateRuntimeState({
         watcherLastError: error instanceof Error ? error.message : String(error),
+      }).catch((err) => {
+        log.error({ err }, "Failed to update runtime state with watcher error");
       });
       log.warn(
         { err: error instanceof Error ? error.message : String(error) },
@@ -652,6 +654,8 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       void storage.updateRuntimeState({
         watcherHeartbeatAt: heartbeatAt,
         watcherIntervalMs,
+      }).catch((err) => {
+        log.error({ err }, "Failed to update runtime state heartbeat");
       });
       log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat");
       void runWatcher();
@@ -747,6 +751,8 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
         watcherTimer = null;
         void storage.updateRuntimeState({
           watcherCompletedAt: new Date().toISOString(),
+        }).catch((err) => {
+          log.error({ err }, "Failed to update runtime state on watcher stop");
         });
         log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher stopped");
       }
