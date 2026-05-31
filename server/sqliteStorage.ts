@@ -94,6 +94,11 @@ const DEFAULT_RUNTIME_STATE: RuntimeState = {
   drainMode: false,
   drainRequestedAt: null,
   drainReason: null,
+  watcherStartedAt: null,
+  watcherHeartbeatAt: null,
+  watcherCompletedAt: null,
+  watcherLastError: null,
+  watcherIntervalMs: null,
 };
 
 function parseStringArrayJson(value: string | undefined): string[] {
@@ -188,6 +193,11 @@ type RuntimeStateRow = {
   drain_mode: number;
   drain_requested_at: string | null;
   drain_reason: string | null;
+  watcher_started_at: string | null;
+  watcher_heartbeat_at: string | null;
+  watcher_completed_at: string | null;
+  watcher_last_error: string | null;
+  watcher_interval_ms: number | null;
 };
 
 type AgentRunRow = {
@@ -584,7 +594,12 @@ export class SqliteStorage implements IStorage {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         drain_mode INTEGER NOT NULL DEFAULT 0,
         drain_requested_at TEXT,
-        drain_reason TEXT
+        drain_reason TEXT,
+        watcher_started_at TEXT,
+        watcher_heartbeat_at TEXT,
+        watcher_completed_at TEXT,
+        watcher_last_error TEXT,
+        watcher_interval_ms INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS agent_runs (
@@ -765,6 +780,7 @@ export class SqliteStorage implements IStorage {
 
       CREATE INDEX IF NOT EXISTS idx_feedback_items_pr_id ON feedback_items(pr_id);
       CREATE INDEX IF NOT EXISTS idx_logs_pr_id_timestamp ON logs(pr_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
       CREATE INDEX IF NOT EXISTS idx_agent_runs_status_updated_at ON agent_runs(status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_background_jobs_status_available_at ON background_jobs(status, available_at, priority, created_at);
       CREATE INDEX IF NOT EXISTS idx_background_jobs_lease_expires_at ON background_jobs(status, lease_expires_at);
@@ -814,6 +830,11 @@ export class SqliteStorage implements IStorage {
     this.ensureColumn("release_runs", "source", "TEXT NOT NULL DEFAULT 'automatic'");
     this.ensureColumn("prs", "watch_enabled", "INTEGER NOT NULL DEFAULT 1");
     this.ensureColumn("prs", "docs_assessment_json", "TEXT");
+    this.ensureColumn("runtime_state", "watcher_started_at", "TEXT");
+    this.ensureColumn("runtime_state", "watcher_heartbeat_at", "TEXT");
+    this.ensureColumn("runtime_state", "watcher_completed_at", "TEXT");
+    this.ensureColumn("runtime_state", "watcher_last_error", "TEXT");
+    this.ensureColumn("runtime_state", "watcher_interval_ms", "INTEGER");
 
     const configExists = this.get<{ present: number }>("SELECT 1 AS present FROM config WHERE id = 1");
     if (!configExists) {
@@ -1062,6 +1083,11 @@ export class SqliteStorage implements IStorage {
       drainMode: Boolean(row.drain_mode),
       drainRequestedAt: row.drain_requested_at,
       drainReason: row.drain_reason,
+      watcherStartedAt: row.watcher_started_at,
+      watcherHeartbeatAt: row.watcher_heartbeat_at,
+      watcherCompletedAt: row.watcher_completed_at,
+      watcherLastError: row.watcher_last_error,
+      watcherIntervalMs: row.watcher_interval_ms,
     };
   }
 
@@ -1963,7 +1989,9 @@ export class SqliteStorage implements IStorage {
 
   async getRuntimeState(): Promise<RuntimeState> {
     const row = this.get<RuntimeStateRow>(`
-      SELECT drain_mode, drain_requested_at, drain_reason
+      SELECT drain_mode, drain_requested_at, drain_reason,
+             watcher_started_at, watcher_heartbeat_at, watcher_completed_at,
+             watcher_last_error, watcher_interval_ms
       FROM runtime_state
       WHERE id = 1
     `);
@@ -1979,16 +2007,30 @@ export class SqliteStorage implements IStorage {
     };
 
     this.run(`
-      INSERT INTO runtime_state (id, drain_mode, drain_requested_at, drain_reason)
-      VALUES (1, ?, ?, ?)
+      INSERT INTO runtime_state (
+        id, drain_mode, drain_requested_at, drain_reason,
+        watcher_started_at, watcher_heartbeat_at, watcher_completed_at,
+        watcher_last_error, watcher_interval_ms
+      )
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         drain_mode = excluded.drain_mode,
         drain_requested_at = excluded.drain_requested_at,
-        drain_reason = excluded.drain_reason
+        drain_reason = excluded.drain_reason,
+        watcher_started_at = excluded.watcher_started_at,
+        watcher_heartbeat_at = excluded.watcher_heartbeat_at,
+        watcher_completed_at = excluded.watcher_completed_at,
+        watcher_last_error = excluded.watcher_last_error,
+        watcher_interval_ms = excluded.watcher_interval_ms
     `,
       Number(next.drainMode),
       next.drainRequestedAt,
       next.drainReason,
+      next.watcherStartedAt,
+      next.watcherHeartbeatAt,
+      next.watcherCompletedAt,
+      next.watcherLastError,
+      next.watcherIntervalMs,
     );
 
     return next;

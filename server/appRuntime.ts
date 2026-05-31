@@ -413,6 +413,9 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       );
     },
     (error) => {
+      void storage.updateRuntimeState({
+        watcherLastError: error instanceof Error ? error.message : String(error),
+      });
       log.warn(
         { err: error instanceof Error ? error.message : String(error) },
         "Repository babysitter watcher failed",
@@ -645,9 +648,22 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
     watcherIntervalMs = interval;
     watcherTimer = setInterval(() => {
+      const heartbeatAt = new Date().toISOString();
+      void storage.updateRuntimeState({
+        watcherHeartbeatAt: heartbeatAt,
+        watcherIntervalMs,
+      });
       log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat");
       void runWatcher();
     }, interval);
+    const startedAt = new Date().toISOString();
+    await storage.updateRuntimeState({
+      watcherStartedAt: startedAt,
+      watcherHeartbeatAt: startedAt,
+      watcherCompletedAt: null,
+      watcherLastError: null,
+      watcherIntervalMs: interval,
+    });
     log.info({ pollIntervalMs: interval }, "Repository watcher started");
   };
 
@@ -729,6 +745,9 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       if (watcherTimer) {
         clearInterval(watcherTimer);
         watcherTimer = null;
+        void storage.updateRuntimeState({
+          watcherCompletedAt: new Date().toISOString(),
+        });
         log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher stopped");
       }
     },

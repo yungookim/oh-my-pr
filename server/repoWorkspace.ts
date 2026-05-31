@@ -34,6 +34,34 @@ type RemovePrWorktreeParams = {
 const repoMutationLocks = new Map<string, Promise<void>>();
 const activeRepoWorkspaceCounts = new Map<string, number>();
 
+export class RepoCacheRecloneBlockedError extends Error {
+  readonly reason: "active_workspaces" | "registered_worktrees";
+  readonly repoCacheDir: string;
+  readonly activeWorkspaceCount: number;
+  readonly registeredWorktreeCount: number;
+
+  constructor(params: {
+    reason: "active_workspaces" | "registered_worktrees";
+    repoCacheDir: string;
+    activeWorkspaceCount: number;
+    registeredWorktreeCount: number;
+  }) {
+    const count = params.reason === "active_workspaces"
+      ? params.activeWorkspaceCount
+      : params.registeredWorktreeCount;
+    const label = params.reason === "active_workspaces"
+      ? "active workspace(s) still depend on it"
+      : "registered worktree(s) still exist";
+
+    super(`Refusing to reclone repo cache while ${count} ${label}`);
+    this.name = "RepoCacheRecloneBlockedError";
+    this.reason = params.reason;
+    this.repoCacheDir = params.repoCacheDir;
+    this.activeWorkspaceCount = params.activeWorkspaceCount;
+    this.registeredWorktreeCount = params.registeredWorktreeCount;
+  }
+}
+
 function summarizeCommandFailure(result: CommandResult): string {
   return result.stderr.trim() || result.stdout.trim() || "no output";
 }
@@ -143,18 +171,24 @@ async function countRegisteredWorktrees(repoCacheDir: string): Promise<number> {
 async function assertRepoCacheCanBeRecloned(repoCacheDir: string, run: GitRunner): Promise<void> {
   const activeWorkspaceCount = activeRepoWorkspaceCounts.get(repoCacheDir) ?? 0;
   if (activeWorkspaceCount > 0) {
-    throw new Error(
-      `Refusing to reclone repo cache while ${activeWorkspaceCount} active workspace(s) still depend on it`,
-    );
+    throw new RepoCacheRecloneBlockedError({
+      reason: "active_workspaces",
+      repoCacheDir,
+      activeWorkspaceCount,
+      registeredWorktreeCount: 0,
+    });
   }
 
   await pruneRegisteredWorktrees(repoCacheDir, run);
 
   const registeredWorktreeCount = await countRegisteredWorktrees(repoCacheDir);
   if (registeredWorktreeCount > 0) {
-    throw new Error(
-      `Refusing to reclone repo cache while ${registeredWorktreeCount} registered worktree(s) still exist`,
-    );
+    throw new RepoCacheRecloneBlockedError({
+      reason: "registered_worktrees",
+      repoCacheDir,
+      activeWorkspaceCount,
+      registeredWorktreeCount,
+    });
   }
 }
 

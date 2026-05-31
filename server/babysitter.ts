@@ -52,7 +52,7 @@ import { childLogger } from "./logger";
 import { getCodeFactoryPaths } from "./paths";
 
 const log = childLogger("babysitter");
-import { ensureRepoCache, preparePrWorktree, removePrWorktree } from "./repoWorkspace";
+import { ensureRepoCache, preparePrWorktree, removePrWorktree, RepoCacheRecloneBlockedError } from "./repoWorkspace";
 import { buildBackgroundJobDedupeKey, type ScheduleBackgroundJob } from "./backgroundJobQueue";
 import { buildActivityPayload } from "./activityPayload";
 import type { DeploymentHealingManager } from "./deploymentHealingManager";
@@ -127,6 +127,15 @@ type ConflictRepairFailureMarker = {
   firstSeenAt: string;
   lastSeenAt: string;
   count: number;
+};
+
+type CIFailureSummary = {
+  totalFailures: number;
+  contexts: Array<{
+    context: string;
+    count: number;
+    targetUrls: string[];
+  }>;
 };
 
 type NoOpCheckMarker = {
@@ -929,6 +938,44 @@ function summarizePendingChecks(snapshots: CheckSnapshot[]): Array<{
       targetUrl: snapshot.targetUrl,
     }))
     .sort((a, b) => a.context.localeCompare(b.context));
+}
+
+function summarizeCIFailures(failures: GitHubStatusFailure[]): CIFailureSummary {
+  const byContext = new Map<string, { count: number; targetUrls: Set<string> }>();
+
+  for (const failure of failures) {
+    const current = byContext.get(failure.context) ?? { count: 0, targetUrls: new Set<string>() };
+    current.count += 1;
+    if (failure.targetUrl) {
+      current.targetUrls.add(failure.targetUrl);
+    }
+    byContext.set(failure.context, current);
+  }
+
+  return {
+    totalFailures: failures.length,
+    contexts: Array.from(byContext.entries())
+      .map(([context, summary]) => ({
+        context,
+        count: summary.count,
+        targetUrls: Array.from(summary.targetUrls).sort(),
+      }))
+      .sort((a, b) => a.context.localeCompare(b.context)),
+  };
+}
+
+function repoCacheTelemetry(error: unknown): Record<string, unknown> | null {
+  if (!(error instanceof RepoCacheRecloneBlockedError)) {
+    return null;
+  }
+
+  return {
+    kind: "repo_cache_reclone_blocked",
+    reason: error.reason,
+    repoCacheDir: error.repoCacheDir,
+    activeWorkspaceCount: error.activeWorkspaceCount,
+    registeredWorktreeCount: error.registeredWorktreeCount,
+  };
 }
 
 async function persistCheckSnapshotsIfMissing(storage: IStorage, snapshots: CheckSnapshot[]): Promise<void> {
@@ -2283,7 +2330,7 @@ export class PRBabysitter {
     headSha: string,
     prId: string,
     queueLog: (prId: string, level: "info" | "warn" | "error", message: string, opts?: { phase?: string | null; metadata?: Record<string, unknown> | null }) => Promise<void>,
-  ): Promise<{ status: "success" | "failure" | "timeout"; failures: GitHubStatusFailure[] }> {
+  ): Promise<{ status: "success" | "failure" | "timeout"; failures: GitHubStatusFailure[]; failureSummary?: CIFailureSummary }> {
     const MAX_ATTEMPTS = 10;
     const pollIntervalMs = this.runtime.ciPollIntervalMs ?? 30_000;
 
@@ -2301,7 +2348,7 @@ export class PRBabysitter {
 
         if (settled) {
           return failures.length > 0
-            ? { status: "failure", failures }
+            ? { status: "failure", failures, failureSummary: summarizeCIFailures(failures) }
             : { status: "success", failures: [] };
         }
       } catch (error) {
@@ -2482,6 +2529,7 @@ export class PRBabysitter {
       let loggedLines = 0;
       let loggedTruncation = false;
       const capturedLines: string[] = [];
+      const kind = stream === "stderr" ? "subprocess_stderr" : "subprocess_stdout";
 
       const enqueueLine = (trimmed: string) => {
         capturedLines.push(trimmed);
@@ -2494,7 +2542,12 @@ export class PRBabysitter {
             loggedTruncation = true;
             return queueLog(currentPrId, level, `[${stream}] output truncated after ${maxLines} line(s)`, {
               phase,
-              metadata: { stream, truncated: true, maxLines },
+              metadata: {
+                stream,
+                kind,
+                truncated: true,
+                maxLines,
+              },
             });
           }
           return logQueue;
@@ -2503,7 +2556,7 @@ export class PRBabysitter {
         loggedLines += 1;
         return queueLog(currentPrId, level, `[${stream}] ${trimmed}`, {
           phase,
-          metadata: { stream },
+          metadata: { stream, kind },
         });
       };
 
@@ -2540,11 +2593,18 @@ export class PRBabysitter {
       metadata?: Record<string, unknown>,
     ) => {
       let loggedLines = 0;
+      const kind = stream === "stderr" ? "subprocess_stderr" : "subprocess_stdout";
       for (const line of lines) {
         if (maxLines !== undefined && loggedLines >= maxLines) {
           await queueLog(currentPrId, level, `[${stream}] output truncated after ${maxLines} line(s)`, {
             phase,
-            metadata: metadata ? { stream, truncated: true, maxLines, ...metadata } : { stream, truncated: true, maxLines },
+            metadata: {
+              stream,
+              kind,
+              truncated: true,
+              maxLines,
+              ...metadata,
+            },
           });
           return;
         }
@@ -2552,7 +2612,7 @@ export class PRBabysitter {
         loggedLines += 1;
         await queueLog(currentPrId, level, `[${stream}] ${line}`, {
           phase,
-          metadata: metadata ? { stream, ...metadata } : { stream },
+          metadata: { stream, kind, ...metadata },
         });
       }
 
@@ -4504,7 +4564,11 @@ export class PRBabysitter {
           const failureDetails = ciResult.failures.map((f) => `${f.context}: ${f.description}`).join("; ");
           await queueLog(pr.id, "warn", `CI/CD still failing after agent fix: ${failureDetails}`, {
             phase: "verify.ci",
-            metadata: { failures: ciResult.failures },
+            metadata: {
+              failures: ciResult.failures,
+              failureSummary: ciResult.failureSummary ?? summarizeCIFailures(ciResult.failures),
+              headSha: headShaForFollowUp,
+            },
           });
 
           // Alert the user by posting a comment on the PR.
@@ -4666,9 +4730,11 @@ export class PRBabysitter {
         // app successfully pushed code are warnings, not failures.
         const logLevel = isNonCritical ? "warn" : "error";
         const logPrefix = isNonCritical ? "Babysitter warning" : "Babysitter error";
+        const errorMetadata = repoCacheTelemetry(error);
 
         await queueLog(currentPr.id, logLevel, `${logPrefix}: ${message}`, {
           phase: "run",
+          metadata: errorMetadata,
         });
 
         const shouldRunCodeOwnerFallback = Boolean(

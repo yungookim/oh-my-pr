@@ -158,6 +158,35 @@ test("runtime logs watcher lifecycle when background watcher starts and stops", 
   assert.match(ring, /Repository watcher stopped/);
 });
 
+test("runtime persists watcher lifecycle freshness in runtime state", async () => {
+  const storage = new MemStorage();
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: true,
+    watcherScheduler: {
+      run: () => {},
+      runAndReportErrors: async () => {},
+    },
+  });
+
+  try {
+    await runtime.start();
+
+    const started = await storage.getRuntimeState();
+    assert.equal(started.watcherIntervalMs, 120000);
+    assert.ok(started.watcherStartedAt);
+    assert.ok(started.watcherHeartbeatAt);
+    assert.equal(started.watcherCompletedAt, null);
+    assert.equal(started.watcherLastError, null);
+  } finally {
+    runtime.stop();
+  }
+
+  const stopped = await storage.getRuntimeState();
+  assert.ok(stopped.watcherCompletedAt);
+});
+
 test("runtime askQuestion persists the question and enqueues a durable job", async () => {
   const storage = new MemStorage();
   const runtime = createAppRuntime({

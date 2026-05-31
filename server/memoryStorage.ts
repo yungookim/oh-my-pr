@@ -59,6 +59,11 @@ export class MemStorage implements IStorage {
     drainMode: false,
     drainRequestedAt: null,
     drainReason: null,
+    watcherStartedAt: null,
+    watcherHeartbeatAt: null,
+    watcherCompletedAt: null,
+    watcherLastError: null,
+    watcherIntervalMs: null,
   };
   private healingSessions: Map<string, HealingSession> = new Map();
   private healingAttempts: Map<string, HealingAttempt> = new Map();

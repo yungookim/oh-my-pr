@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from "fs/promises";
 import os from "os";
 import path from "path";
 import test from "node:test";
-import { ensureRepoCache, preparePrWorktree, removePrWorktree } from "./repoWorkspace";
+import { ensureRepoCache, preparePrWorktree, removePrWorktree, RepoCacheRecloneBlockedError } from "./repoWorkspace";
 
 test("preparePrWorktree reuses the watched-repo cache and fetches fork heads on demand", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "codefactory-workspace-"));
@@ -288,7 +288,14 @@ test("ensureRepoCache refuses to reclone when registered worktrees still exist o
         return { code: 0, stdout: "", stderr: "" };
       },
     }),
-    /registered worktree/,
+    (error) => {
+      assert.ok(error instanceof RepoCacheRecloneBlockedError);
+      assert.equal(error.reason, "registered_worktrees");
+      assert.equal(error.registeredWorktreeCount, 1);
+      assert.equal(error.activeWorkspaceCount, 0);
+      assert.equal(error.repoCacheDir, repoCacheDir);
+      return true;
+    },
   );
 
   assert.equal(cloneCount, 0);
