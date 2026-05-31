@@ -40,6 +40,23 @@
     "resources": {
       "../dist": "dist/"
     },
+    "macOS": {
+      "dmg": {
+        "background": "assets/dmg-background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 190,
+          "y": 235
+        },
+        "applicationFolderPosition": {
+          "x": 470,
+          "y": 235
+        }
+      }
+    },
     "externalBin": []
   },
   "plugins": {
