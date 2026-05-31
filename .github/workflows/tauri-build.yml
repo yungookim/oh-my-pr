@@ -62,6 +62,14 @@ jobs:
 
       - run: npm ci
 
+      - name: Remove stale macOS Apple Silicon DMG artifacts
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          dmg_dir="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          if [ -d "$dmg_dir" ]; then
+            find "$dmg_dir" -name '*.dmg' -type f -exec rm -f {} +
+          fi
+
       - name: Build and upload Tauri release assets
         uses: tauri-apps/tauri-action@v0
         env:
@@ -69,7 +77,7 @@ jobs:
         with:
           releaseId: ${{ github.event.release.id }}
           tagName: ${{ github.event.release.tag_name }}
-          assetNamePattern: "oh-my-pr-[version]-[platform]-[arch][setup].[ext]"
+          releaseAssetNamePattern: "oh-my-pr-[version]-[platform]-[arch][setup].[ext]"
           args: --target ${{ matrix.target }}
 
       - name: Upload stable macOS Apple Silicon DMG link
@@ -78,7 +86,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p stable-assets
-          dmg_path="$(find src-tauri/target -path '*/bundle/dmg/*.dmg' -print -quit)"
+          dmg_dir="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          dmg_path="$(find "$dmg_dir" -name '*.dmg' -type f -print -quit)"
           test -n "$dmg_path"
           cp "$dmg_path" stable-assets/oh-my-pr-macos-arm64.dmg
           gh release upload "${{ github.event.release.tag_name }}" stable-assets/oh-my-pr-macos-arm64.dmg --clobber
