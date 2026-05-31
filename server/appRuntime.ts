@@ -413,6 +413,11 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       );
     },
     (error) => {
+      void storage.updateRuntimeState({
+        watcherLastError: error instanceof Error ? error.message : String(error),
+      }).catch((err) => {
+        log.error({ err }, "Failed to update runtime state with watcher error");
+      });
       log.warn(
         { err: error instanceof Error ? error.message : String(error) },
         "Repository babysitter watcher failed",
@@ -645,9 +650,26 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
     watcherIntervalMs = interval;
     watcherTimer = setInterval(() => {
+      const heartbeatAt = new Date().toISOString();
+      void storage.updateRuntimeState({
+        watcherHeartbeatAt: heartbeatAt,
+        watcherIntervalMs,
+      }).catch((err) => {
+        log.error({ err }, "Failed to update runtime state heartbeat");
+      });
       log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat");
       void runWatcher();
     }, interval);
+    const startedAt = new Date().toISOString();
+    void storage.updateRuntimeState({
+      watcherStartedAt: startedAt,
+      watcherHeartbeatAt: startedAt,
+      watcherCompletedAt: null,
+      watcherLastError: null,
+      watcherIntervalMs: interval,
+    }).catch((err) => {
+      log.error({ err }, "Failed to update runtime state on watcher start");
+    });
     log.info({ pollIntervalMs: interval }, "Repository watcher started");
   };
 
@@ -729,6 +751,11 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       if (watcherTimer) {
         clearInterval(watcherTimer);
         watcherTimer = null;
+        void storage.updateRuntimeState({
+          watcherCompletedAt: new Date().toISOString(),
+        }).catch((err) => {
+          log.error({ err }, "Failed to update runtime state on watcher stop");
+        });
         log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher stopped");
       }
     },

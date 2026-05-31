@@ -398,6 +398,61 @@ test("pollForCICompletion includes pending check details when checks never settl
   ]);
 });
 
+test("pollForCICompletion aggregates failure contexts for post-fix CI telemetry", async () => {
+  const storage = new MemStorage();
+  const babysitter = new PRBabysitter(storage, {
+    buildOctokit: async () => ({}) as never,
+    fetchFeedbackItemsForPR: async () => [],
+    fetchPullSummary: async () => {
+      throw new Error("not used");
+    },
+    listFailingStatuses: async () => [
+      {
+        context: "claude-review",
+        description: "Check run failure",
+        targetUrl: "https://github.com/octo/example/actions/runs/1",
+      },
+      {
+        context: "claude-review",
+        description: "Check run failure",
+        targetUrl: "https://github.com/octo/example/actions/runs/2",
+      },
+    ],
+    checkCISettled: async () => true,
+    listOpenPullsForRepo: async () => [],
+    postFollowUpForFeedbackItem: async () => undefined,
+    resolveReviewThread: async () => undefined,
+    resolveGitHubAuthToken: async () => undefined,
+    addReactionToComment: async () => {},
+    postStatusReplyForFeedbackItem: async () => null,
+    updateStatusReply: async () => {},
+  }, { ciPollIntervalMs: 0 });
+
+  const result = await (babysitter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>).pollForCICompletion(
+    {} as never,
+    { owner: "octo", repo: "example" },
+    { owner: "octo", repo: "example", number: 42 },
+    "abc123",
+    "pr-1",
+    async () => {},
+  ) as { status: string; failureSummary?: Record<string, unknown> };
+
+  assert.equal(result.status, "failure");
+  assert.deepEqual(result.failureSummary, {
+    totalFailures: 2,
+    contexts: [
+      {
+        context: "claude-review",
+        count: 2,
+        targetUrls: [
+          "https://github.com/octo/example/actions/runs/1",
+          "https://github.com/octo/example/actions/runs/2",
+        ],
+      },
+    ],
+  });
+});
+
 test("syncFeedbackForPR logs completion even when no new feedback items arrive", async () => {
   const storage = new MemStorage();
   const existingItem = makeFeedbackItem();
@@ -4527,6 +4582,7 @@ test("babysitPR logs successful git stderr as info during docs assessment", asyn
     const stderrLogs = logs.filter((log) => log.message.includes("[stderr] From https://github.com/alex-morgan-o/lolodex"));
     assert.ok(stderrLogs.length >= 1);
     assert.ok(stderrLogs.every((log) => log.level === "info"));
+    assert.ok(stderrLogs.every((log) => log.metadata?.kind === "subprocess_stderr"));
   } finally {
     delete process.env.CODEFACTORY_HOME;
   }
@@ -4602,6 +4658,8 @@ test("babysitPR replays failed git stderr as warn during docs assessment", async
     );
     assert.equal(stderrLogs.length, 1);
     assert.equal(stderrLogs[0]?.level, "warn");
+    assert.equal(stderrLogs[0]?.metadata?.kind, "subprocess_stderr");
+    assert.equal(stderrLogs[0]?.metadata?.reemittedFor, "failure");
   } finally {
     delete process.env.CODEFACTORY_HOME;
   }

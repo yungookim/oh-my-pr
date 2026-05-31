@@ -341,7 +341,56 @@ test("SqliteStorage returns defaults when singleton rows are missing", async () 
       drainMode: false,
       drainRequestedAt: null,
       drainReason: null,
+      watcherStartedAt: null,
+      watcherHeartbeatAt: null,
+      watcherCompletedAt: null,
+      watcherLastError: null,
+      watcherIntervalMs: null,
     });
+  } finally {
+    db.close();
+    storage.close();
+  }
+});
+
+test("SqliteStorage persists watcher runtime freshness fields", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const first = new SqliteStorage(root);
+
+  try {
+    await first.updateRuntimeState({
+      watcherStartedAt: "2026-05-31T12:00:00.000Z",
+      watcherHeartbeatAt: "2026-05-31T12:02:00.000Z",
+      watcherCompletedAt: "2026-05-31T12:04:00.000Z",
+      watcherLastError: "network unavailable",
+      watcherIntervalMs: 120000,
+    });
+  } finally {
+    first.close();
+  }
+
+  const second = new SqliteStorage(root);
+  try {
+    const runtime = await second.getRuntimeState();
+
+    assert.equal(runtime.watcherStartedAt, "2026-05-31T12:00:00.000Z");
+    assert.equal(runtime.watcherHeartbeatAt, "2026-05-31T12:02:00.000Z");
+    assert.equal(runtime.watcherCompletedAt, "2026-05-31T12:04:00.000Z");
+    assert.equal(runtime.watcherLastError, "network unavailable");
+    assert.equal(runtime.watcherIntervalMs, 120000);
+  } finally {
+    second.close();
+  }
+});
+
+test("SqliteStorage creates timestamp-only log index for daily scans", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "codefactory-storage-"));
+  const storage = new SqliteStorage(root);
+  const db = createRawDatabase(root);
+
+  try {
+    const indexes = db.prepare("PRAGMA index_list(logs)").all() as Array<{ name: string }>;
+    assert.ok(indexes.some((index) => index.name === "idx_logs_timestamp"));
   } finally {
     db.close();
     storage.close();

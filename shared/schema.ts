@@ -123,6 +123,11 @@ export const runtimeStateSchema = z.object({
   drainMode: z.boolean(),
   drainRequestedAt: z.string().nullable(),
   drainReason: z.string().nullable(),
+  watcherStartedAt: z.string().nullable(),
+  watcherHeartbeatAt: z.string().nullable(),
+  watcherCompletedAt: z.string().nullable(),
+  watcherLastError: z.string().nullable(),
+  watcherIntervalMs: z.number().nullable(),
 });
 export type RuntimeState = z.infer<typeof runtimeStateSchema>;
 

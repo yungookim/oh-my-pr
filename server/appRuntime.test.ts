@@ -158,6 +158,114 @@ test("runtime logs watcher lifecycle when background watcher starts and stops", 
   assert.match(ring, /Repository watcher stopped/);
 });
 
+test("runtime persists watcher lifecycle freshness in runtime state", async () => {
+  const storage = new MemStorage();
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: true,
+    watcherScheduler: {
+      run: () => {},
+      runAndReportErrors: async () => {},
+    },
+  });
+
+  try {
+    await runtime.start();
+
+    const started = await storage.getRuntimeState();
+    assert.equal(started.watcherIntervalMs, 120000);
+    assert.ok(started.watcherStartedAt);
+    assert.ok(started.watcherHeartbeatAt);
+    assert.equal(started.watcherCompletedAt, null);
+    assert.equal(started.watcherLastError, null);
+  } finally {
+    runtime.stop();
+  }
+
+  const stopped = await storage.getRuntimeState();
+  assert.ok(stopped.watcherCompletedAt);
+});
+
+test("runtime logs watcher runtime state write failures", async () => {
+  const storage = new MemStorage();
+  const originalUpdateRuntimeState = storage.updateRuntimeState.bind(storage);
+  const originalEnqueueBackgroundJob = storage.enqueueBackgroundJob.bind(storage);
+  let heartbeat: (() => void) | null = null;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const fakeTimer = {} as ReturnType<typeof globalThis.setInterval>;
+  let enqueueFailures = 0;
+
+  storage.updateRuntimeState = async (updates) => {
+    if (typeof updates.watcherStartedAt === "string") {
+      throw new Error("start write failed");
+    }
+
+    if (typeof updates.watcherLastError === "string") {
+      throw new Error("last error write failed");
+    }
+
+    if (
+      updates.watcherHeartbeatAt
+      && updates.watcherIntervalMs
+      && updates.watcherStartedAt === undefined
+    ) {
+      throw new Error("heartbeat write failed");
+    }
+
+    if (
+      typeof updates.watcherCompletedAt === "string"
+      && Object.keys(updates).length === 1
+    ) {
+      throw new Error("stop write failed");
+    }
+
+    return originalUpdateRuntimeState(updates);
+  };
+  storage.enqueueBackgroundJob = async (...args) => {
+    if (enqueueFailures === 0) {
+      enqueueFailures += 1;
+      throw new Error("watcher job failed");
+    }
+
+    return originalEnqueueBackgroundJob(...args);
+  };
+  globalThis.setInterval = ((callback: (...args: unknown[]) => void) => {
+    heartbeat = () => callback();
+    return fakeTimer;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = (() => undefined) as typeof globalThis.clearInterval;
+
+  _resetRingBufferForTests();
+
+  try {
+    const runtime = createAppRuntime({
+      storage,
+      startBackgroundServices: false,
+      startWatcher: true,
+    });
+
+    await runtime.start();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    heartbeat?.();
+    runtime.stop();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+
+    const ring = readRingBuffer().join("\n");
+    assert.match(ring, /Failed to update runtime state on watcher start/);
+    assert.match(ring, /Failed to update runtime state with watcher error/);
+    assert.match(ring, /Failed to update runtime state heartbeat/);
+    assert.match(ring, /Failed to update runtime state on watcher stop/);
+  } finally {
+    storage.updateRuntimeState = originalUpdateRuntimeState;
+    storage.enqueueBackgroundJob = originalEnqueueBackgroundJob;
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
 test("runtime askQuestion persists the question and enqueues a durable job", async () => {
   const storage = new MemStorage();
   const runtime = createAppRuntime({

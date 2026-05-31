@@ -10,6 +10,11 @@ const activeRuntimeState: RuntimeState = {
   drainMode: false,
   drainRequestedAt: null,
   drainReason: null,
+  watcherStartedAt: null,
+  watcherHeartbeatAt: null,
+  watcherCompletedAt: null,
+  watcherLastError: null,
+  watcherIntervalMs: null,
 };
 
 test("getDrainStatusView shows loading before runtime state is available", () => {
