@@ -38,6 +38,14 @@ You need:
 - GitHub auth via `gh auth login` or `GITHUB_TOKEN`
 - either the `codex` CLI or `claude` CLI installed and authenticated locally
 
+Download the desktop app:
+
+- [Download for macOS Apple Silicon](https://github.com/yungookim/oh-my-pr/releases/latest/download/oh-my-pr-macos-arm64.dmg)
+
+The macOS desktop build is currently not notarized. If macOS blocks the first
+launch, use Control-click or right-click, choose Open, and confirm the app in
+Privacy & Security.
+
 Install and launch:
 
 ```bash
@@ -97,7 +105,7 @@ oh-my-pr can be used in a few ways:
 - server logs page: `http://localhost:5001/logs`
 - MCP server: `oh-my-pr mcp`
 - local REST API: see [LOCAL_API.md](LOCAL_API.md)
-- optional Tauri desktop shell
+- desktop app downloads: [macOS Apple Silicon DMG](https://github.com/yungookim/oh-my-pr/releases/latest/download/oh-my-pr-macos-arm64.dmg)
 
 Local browser and API access work without a dashboard login. To use the web
 dashboard from another machine, set remote web credentials before starting the

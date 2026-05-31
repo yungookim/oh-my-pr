@@ -1,5 +1,16 @@
 # Lessons Learned
 
+## 2026-05-31 - Design DMG backgrounds around Finder-rendered labels
+- Pattern: I created a dark DMG installer background and aligned the decorative targets without accounting for Finder drawing the icon labels in black over the background, making the labels hard to read and exposing alignment issues only after the user opened the DMG.
+- Rule: When creating macOS DMG backgrounds, treat app and Applications labels as Finder-owned overlay text and design legible label areas plus target positions around the actual rendered icon centers.
+- Prevention checklist:
+  - Add light or high-contrast backing behind the expected Finder icon label positions when the background is dark.
+  - Avoid precision target shapes behind Finder icons unless verified in the opened DMG; broad visual zones are more resilient than circles or boxes that reveal small Finder placement differences.
+  - If a user reports repeated alignment issues, remove decorative alignment guides entirely and keep only non-positional instructions plus resilient label contrast.
+  - Prefer one continuous high-contrast drag area over separate backing shapes when Finder icons and aliases render at slightly different visual heights.
+  - Rebuild and mount the DMG, then inspect the opened Finder layout before claiming the installer visual is complete.
+  - Keep the background artwork synchronized with `appPosition` and `applicationFolderPosition` instead of aligning only the static PNG.
+
 ## 2026-05-02 - Create requested QA plans before running QA gates
 - Pattern: I started the `/qa` clean-tree gate and asked how to handle uncommitted files before honoring the user's requested sequencing to create a full test plan document under `docs/plans` first.
 - Rule: When the user corrects QA workflow order or asks for a planning artifact "first", pause browser execution and fix-loop setup, create the requested plan in the requested location, then resume only after the plan is complete.
