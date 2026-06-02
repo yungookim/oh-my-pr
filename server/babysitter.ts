@@ -75,6 +75,7 @@ const DEPENDENCY_PREFLIGHT_FAILURE_KIND = "dependency_preflight";
 const CONFLICT_REPAIR_FAILURE_KIND = "merge_conflict_repair";
 const NO_OP_CHECK_KIND = "no_op_check";
 const CONFLICT_REPAIR_RETRY_BUDGET = 2;
+const NO_OP_SUPPRESSION_COOLDOWN_MS = 5 * 60_000;
 const CODE_OWNER_FALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
 const AGENT_STREAM_LOG_LINE_LIMIT = 120;
 const APP_NAME = "oh-my-pr";
@@ -142,6 +143,12 @@ type NoOpCheckMarker = {
   kind: typeof NO_OP_CHECK_KIND;
   headSha: string;
   checkedAt: string;
+};
+
+type AgentHealthSelection = {
+  agent: CodingAgent;
+  fallbackFromAgent?: CodingAgent;
+  fallbackReason?: string;
 };
 
 type BabysitterRuntime = {
@@ -1603,13 +1610,35 @@ export class PRBabysitter {
     }));
   }
 
-  private async ensureAgentHealthy(agent: CodingAgent, prIds: string[]): Promise<void> {
+  private async ensureAgentHealthy(
+    agent: CodingAgent,
+    prIds: string[],
+    options: { allowFallback?: boolean } = {},
+  ): Promise<AgentHealthSelection> {
     const health = await this.readAgentHealth(agent);
     if (health.ok) {
-      return;
+      return { agent };
     }
 
     const message = `Agent health check failed for ${agent}: ${health.reason}`;
+    if (options.allowFallback) {
+      const fallbackAgent = getNextCodingAgent(agent);
+      const fallbackHealth = await this.readAgentHealth(fallbackAgent);
+      if (fallbackHealth.ok) {
+        await Promise.all(prIds.map(async (prId) => {
+          await this.storage.addLog(prId, "warn", `Falling back from ${agent} to ${fallbackAgent} because ${agent} is not healthy: ${health.reason}`, {
+            phase: "agent.health",
+            metadata: {
+              failedAgent: agent,
+              fallbackAgent,
+              fallbackReason: health.reason,
+            },
+          });
+        }));
+        return { agent: fallbackAgent, fallbackFromAgent: agent, fallbackReason: health.reason };
+      }
+    }
+
     const classification = detectAgentUnavailability(health.reason);
     if (classification !== null) {
       await this.pauseAutomationForAgentFailure(agent, health.reason, prIds, classification);
@@ -1921,12 +1950,15 @@ export class PRBabysitter {
       ...config.watchedRepos,
     ]);
     const selectedAgent = config.codingAgent as CodingAgent;
+    let watcherAgent = selectedAgent;
     const watchedPrIds = tracked
       .filter((pr) => pr.watchEnabled !== false && pr.status !== "archived")
       .map((pr) => pr.id);
     if (!automationBlocked && repoCandidates.size > 0) {
       try {
-        await this.ensureAgentHealthy(selectedAgent, watchedPrIds);
+        watcherAgent = (await this.ensureAgentHealthy(selectedAgent, watchedPrIds, {
+          allowFallback: config.fallbackToNextCodingAgent,
+        })).agent;
       } catch {
         return;
       }
@@ -2241,6 +2273,31 @@ export class PRBabysitter {
           ? await this.findLatestNoOpCheck(local.id, pull.headSha)
           : null;
         if (priorNoOpCheck) {
+          const lastCheckedMs = local.lastChecked ? Date.parse(local.lastChecked) : Number.NaN;
+          const nowMs = this.now().getTime();
+          const priorCheckedMs = Date.parse(priorNoOpCheck.checkedAt);
+          if (
+            Number.isFinite(lastCheckedMs)
+            && Number.isFinite(priorCheckedMs)
+            && lastCheckedMs > priorCheckedMs
+            && nowMs - lastCheckedMs < NO_OP_SUPPRESSION_COOLDOWN_MS
+          ) {
+            await this.storage.updatePR(local.id, {
+              status: "watching",
+            });
+            await this.storage.addLog(local.id, "info", "Skipping unchanged clean PR head during no-op cooldown", {
+              phase: "watcher",
+              metadata: {
+                repo: repoSlug,
+                headSha: pull.headSha,
+                checkedAt: priorNoOpCheck.checkedAt,
+                lastChecked: local.lastChecked,
+                cooldownMs: NO_OP_SUPPRESSION_COOLDOWN_MS,
+              },
+            });
+            continue;
+          }
+
           let syncedLocal: typeof local | null = null;
           try {
             syncedLocal = await this.syncFeedbackForPR(local.id, {
@@ -2303,7 +2360,7 @@ export class PRBabysitter {
             local.id,
             buildBackgroundJobDedupeKey("babysit_pr", local.id),
             {
-              preferredAgent: config.codingAgent as CodingAgent,
+              preferredAgent: watcherAgent,
               ...buildActivityPayload({
                 label: `Babysitting PR #${local.number}`,
                 detail: `${local.repo} - ${local.title}`,
@@ -2312,7 +2369,7 @@ export class PRBabysitter {
             },
           );
         } else {
-          await this.babysitPR(local.id, config.codingAgent as CodingAgent);
+          await this.babysitPR(local.id, watcherAgent);
         }
       }
     }
@@ -2333,6 +2390,7 @@ export class PRBabysitter {
   ): Promise<{ status: "success" | "failure" | "timeout"; failures: GitHubStatusFailure[]; failureSummary?: CIFailureSummary }> {
     const MAX_ATTEMPTS = 10;
     const pollIntervalMs = this.runtime.ciPollIntervalMs ?? 30_000;
+    const startedAtMs = this.now().getTime();
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await wait(pollIntervalMs);
@@ -2386,9 +2444,10 @@ export class PRBabysitter {
     const pendingSummary = pendingChecks.length > 0
       ? ` Pending: ${pendingChecks.map((check) => `${check.context} (${check.status}${check.conclusion ? `/${check.conclusion}` : ""})`).join("; ")}`
       : "";
+    const elapsedMs = Math.max(0, this.now().getTime() - startedAtMs);
     await queueLog(prId, "warn", `CI status did not settle after ${MAX_ATTEMPTS} poll attempt(s).${pendingSummary}`, {
       phase: "verify.ci",
-      metadata: { attempts: MAX_ATTEMPTS, headSha, pendingChecks },
+      metadata: { attempts: MAX_ATTEMPTS, pollIntervalMs, elapsedMs, headSha, pendingChecks },
     });
     return { status: "timeout", failures: [] };
   }
@@ -2915,7 +2974,7 @@ export class PRBabysitter {
 
       await this.storage.updatePR(prId, {
         status: "processing",
-        lastChecked: new Date().toISOString(),
+        lastChecked: this.now().toISOString(),
       });
       await queueLog(prId, "info", `Babysitter run started using preferred agent ${preferredAgent}${recoveryMode ? " (recovery)" : ""}`, {
         phase: "run",
@@ -2924,7 +2983,9 @@ export class PRBabysitter {
 
       const config = await this.storage.getConfig();
       const selectedAgent = forcedResolvedAgent || preferredAgent;
-      await this.ensureAgentHealthy(selectedAgent, [prId]);
+      const healthSelection = await this.ensureAgentHealthy(selectedAgent, [prId], {
+        allowFallback: !forcedResolvedAgent && config.fallbackToNextCodingAgent,
+      });
 
       await updateRunRecord({ phase: "run.sync" });
 
@@ -2933,10 +2994,13 @@ export class PRBabysitter {
         logStart: true,
         phase: "sync",
       });
-      let agent = forcedResolvedAgent || (await this.runtime.resolveAgent(preferredAgent, {
-        allowFallback: config.fallbackToNextCodingAgent,
-      }));
-      if (agent !== selectedAgent) {
+      let agent = forcedResolvedAgent || healthSelection.agent;
+      if (!forcedResolvedAgent && healthSelection.agent === selectedAgent) {
+        agent = await this.runtime.resolveAgent(preferredAgent, {
+          allowFallback: config.fallbackToNextCodingAgent,
+        });
+      }
+      if (agent !== healthSelection.agent) {
         await this.ensureAgentHealthy(agent, [pr.id]);
       }
       await updateRunRecord({
@@ -2955,7 +3019,8 @@ export class PRBabysitter {
       let agentFallbackUsed = false;
       if (!forcedResolvedAgent && config.fallbackToNextCodingAgent && agent !== preferredAgent) {
         agentFallbackUsed = true;
-        const reason = `Configured coding agent ${preferredAgent} CLI is not installed`;
+        const reason = healthSelection.fallbackReason
+          ?? `Configured coding agent ${preferredAgent} CLI is not installed`;
         await queueLog(pr.id, "warn", `Falling back from ${preferredAgent} to ${agent} because ${preferredAgent} is not working: ${reason}`, {
           phase: "run",
           metadata: {
@@ -3566,7 +3631,7 @@ export class PRBabysitter {
         });
         await this.storage.updatePR(pr.id, {
           status: "watching",
-          lastChecked: new Date().toISOString(),
+          lastChecked: this.now().toISOString(),
         });
         await updateRunRecord({
           status: "completed",

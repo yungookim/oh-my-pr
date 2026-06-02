@@ -380,6 +380,9 @@ test("pollForCICompletion includes pending check details when checks never settl
   assert.equal(timeoutLog?.level, "warn");
   assert.match(timeoutLog?.message ?? "", /Backend Build/);
   assert.match(timeoutLog?.message ?? "", /Playwright E2E/);
+  assert.equal(timeoutLog?.metadata?.attempts, 10);
+  assert.equal(timeoutLog?.metadata?.pollIntervalMs, 0);
+  assert.equal(typeof timeoutLog?.metadata?.elapsedMs, "number");
   assert.deepEqual(timeoutLog?.metadata?.pendingChecks, [
     {
       context: "Backend Build",
@@ -886,6 +889,89 @@ test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fa
   assert.ok(!logs.some((log) =>
     log.phase === "watcher"
     && log.message.includes("Skipping babysitter run because the same PR head was already checked with no necessary fixes")
+  ));
+});
+
+test("syncAndBabysitTrackedRepos cools down unchanged clean-head suppression checks", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+  await storage.updateConfig({ autoUpdateDocs: false, pollIntervalMs: 120000 });
+
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Already checked",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+    watchEnabled: true,
+  });
+
+  const openPull = {
+    number: 42,
+    title: "Already checked",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    headSha: "same-head",
+    baseRef: "main",
+    baseSha: "base123",
+  };
+  let feedbackFetches = 0;
+  let failingStatusFetches = 0;
+  let nowMs = Date.parse("2026-06-02T10:00:00.000Z");
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchFeedbackItemsForPR: async () => {
+        feedbackFetches += 1;
+        return [];
+      },
+      fetchPullSummary: async () => makePullSummary(pr, { headSha: "same-head" }),
+      listFailingStatuses: async () => {
+        failingStatusFetches += 1;
+        return [];
+      },
+      listOpenPullsForRepo: async () => [openPull],
+    }),
+    {
+      resolveAgent: async () => "codex",
+      now: () => new Date(nowMs),
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => backgroundJobQueue.enqueue(...args),
+  );
+
+  await babysitter.babysitPR(pr.id, "codex");
+  nowMs = Date.parse("2026-06-02T10:10:00.000Z");
+  await babysitter.syncAndBabysitTrackedRepos();
+  nowMs = Date.parse("2026-06-02T10:11:00.000Z");
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const jobs = await storage.listBackgroundJobs({
+    kind: "babysit_pr",
+    targetId: pr.id,
+  });
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(jobs.length, 0);
+  assert.equal(feedbackFetches, 2);
+  assert.equal(failingStatusFetches, 2);
+  assert.ok(logs.some((log) =>
+    log.phase === "watcher"
+    && log.message.includes("Skipping unchanged clean PR head during no-op cooldown")
   ));
 });
 
@@ -1827,6 +1913,82 @@ test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent h
   assert.equal(skipLog.metadata?.classification, null);
   assert.ok(logs.some((log) => log.message.includes("Command timed out after 30000ms")));
   assert.ok(logs.every((log) => !log.message.includes("Automation paused")));
+});
+
+test("syncAndBabysitTrackedRepos falls back when selected agent health is transiently unhealthy", async () => {
+  const storage = new MemStorage();
+  const backgroundJobQueue = new BackgroundJobQueue(storage);
+  const pr = await storage.addPR({
+    number: 42,
+    title: "Needs watching",
+    repo: "octo/example",
+    branch: "feature/example",
+    author: "octocat",
+    url: "https://github.com/octo/example/pull/42",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+  await storage.updateConfig({
+    watchedRepos: ["octo/example"],
+    codingAgent: "codex",
+    fallbackToNextCodingAgent: true,
+  });
+
+  const healthChecks: string[] = [];
+  const scheduledAgents: unknown[] = [];
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => [{
+        number: 42,
+        title: "Needs watching",
+        branch: "feature/example",
+        author: "octocat",
+        url: "https://github.com/octo/example/pull/42",
+        headSha: "new-head",
+        baseRef: "main",
+        baseSha: "base123",
+      }],
+    }),
+    {
+      resolveAgent: async () => "claude",
+      checkAgentHealth: async (agent) => {
+        healthChecks.push(agent);
+        return agent === "codex"
+          ? { ok: false, reason: "codex health check failed: Command timed out after 30000ms" }
+          : { ok: true };
+      },
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+    undefined,
+    async (...args) => {
+      scheduledAgents.push(args[3]?.preferredAgent);
+      return backgroundJobQueue.enqueue(...args);
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const runtimeState = await storage.getRuntimeState();
+  const logs = await storage.getLogs(pr.id);
+  assert.equal(runtimeState.drainMode, false);
+  assert.deepEqual(healthChecks, ["codex", "claude"]);
+  assert.deepEqual(scheduledAgents, ["claude"]);
+  assert.ok(logs.some((log) =>
+    log.phase === "agent.health"
+    && log.message.includes("Falling back from codex to claude")
+    && log.metadata?.failedAgent === "codex"
+    && log.metadata?.fallbackAgent === "claude"
+  ));
+  assert.ok(logs.every((log) => !log.message.includes("Automation skipped")));
 });
 
 test("syncAndBabysitTrackedRepos does not queue release evaluation for closed-unmerged PRs", async () => {

@@ -2,6 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Config, FeedbackItem } from "@shared/schema";
 import {
+  _resetRingBufferForTests,
+  readLogRecords,
+  subscribeToLogs,
+  type LogRecord,
+  type LogLevel,
+} from "./logger";
+import {
   buildGitHubCloneUrl,
   buildOctokit,
   GitHubIntegrationError,
@@ -722,6 +729,51 @@ test("listOpenPullsForRepo retries transient GitHub connection resets", async ()
   assert.equal(attempts, 2);
   assert.equal(pulls[0]?.number, 42);
   assert.equal(pulls[0]?.baseSha, "base123");
+});
+
+test("listOpenPullsForRepo logs transient GitHub retry recovery", async () => {
+  _resetRingBufferForTests();
+  const observedLogs: LogRecord[] = [];
+  const unsubscribe = subscribeToLogs((record) => {
+    observedLogs.push(record);
+  });
+  let attempts = 0;
+  const octokit = {
+    paginate: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error("GitHub service unavailable") as Error & { status?: number };
+        error.status = 500;
+        throw error;
+      }
+
+      return [];
+    },
+    pulls: {
+      list: Symbol("list"),
+    },
+  };
+
+  try {
+    const pulls = await listOpenPullsForRepo(octokit as never, { owner: "owner", repo: "repo" });
+
+    assert.deepEqual(pulls, []);
+    assert.equal(attempts, 2);
+    const retryLog = observedLogs.find((record) =>
+      record.source === "github"
+      && record.level === ("warn" satisfies LogLevel)
+      && record.msg.includes("Retrying transient GitHub request failure")
+    );
+    assert.equal(retryLog?.fields.context, "open pull requests");
+    assert.equal(retryLog?.fields.target, "owner/repo");
+    assert.equal(retryLog?.fields.attempt, 1);
+    assert.equal(retryLog?.fields.nextAttempt, 2);
+    assert.equal(retryLog?.fields.status, 500);
+    assert.ok(readLogRecords({ source: "github", search: "Retrying transient GitHub request failure" }).length >= 1);
+  } finally {
+    unsubscribe();
+    _resetRingBufferForTests();
+  }
 });
 
 test("fetchFeedbackItemsForPR keeps review bots that are not explicitly ignored", async () => {
