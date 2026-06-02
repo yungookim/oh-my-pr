@@ -2279,7 +2279,7 @@ export class PRBabysitter {
           if (
             Number.isFinite(lastCheckedMs)
             && Number.isFinite(priorCheckedMs)
-            && lastCheckedMs > priorCheckedMs
+            && lastCheckedMs >= priorCheckedMs
             && nowMs - lastCheckedMs < NO_OP_SUPPRESSION_COOLDOWN_MS
           ) {
             await this.storage.updatePR(local.id, {
@@ -3021,13 +3021,15 @@ export class PRBabysitter {
         agentFallbackUsed = true;
         const reason = healthSelection.fallbackReason
           ?? `Configured coding agent ${preferredAgent} CLI is not installed`;
-        await queueLog(pr.id, "warn", `Falling back from ${preferredAgent} to ${agent} because ${preferredAgent} is not working: ${reason}`, {
-          phase: "run",
-          metadata: {
-            failedAgent: preferredAgent,
-            fallbackAgent: agent,
-          },
-        });
+        if (!healthSelection.fallbackFromAgent) {
+          await queueLog(pr.id, "warn", `Falling back from ${preferredAgent} to ${agent} because ${preferredAgent} is not working: ${reason}`, {
+            phase: "run",
+            metadata: {
+              failedAgent: preferredAgent,
+              fallbackAgent: agent,
+            },
+          });
+        }
         await updateRunRecord({
           metadata: {
             ...(runRecord.metadata ?? {}),

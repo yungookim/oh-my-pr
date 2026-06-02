@@ -769,6 +769,7 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   };
   let feedbackFetches = 0;
   let failingStatusFetches = 0;
+  const nowMs = Date.parse("2026-06-02T10:00:00.000Z");
 
   const babysitter = new PRBabysitter(
     storage,
@@ -786,6 +787,7 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
     }),
     {
       resolveAgent: async () => "codex",
+      now: () => new Date(nowMs),
       ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
@@ -804,11 +806,11 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   });
   const logs = await storage.getLogs(pr.id);
   assert.equal(jobs.length, 0);
-  assert.ok(feedbackFetches >= 2);
-  assert.ok(failingStatusFetches >= 2);
+  assert.equal(feedbackFetches, 1);
+  assert.equal(failingStatusFetches, 1);
   assert.ok(logs.some((log) =>
     log.phase === "watcher"
-    && log.message.includes("Skipping babysitter run because the same PR head was already checked with no necessary fixes")
+    && log.message.includes("Skipping unchanged clean PR head during no-op cooldown")
   ));
 });
 
@@ -5750,6 +5752,63 @@ test("runQueuedBabysitPR falls back to the next coding agent when enabled", asyn
 
   const logs = await storage.getLogs(pr.id);
   assert.ok(logs.some((log) => log.level === "warn" && log.message.includes("Falling back from claude to codex")));
+});
+
+test("runQueuedBabysitPR does not duplicate health fallback logs", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    fallbackToNextCodingAgent: true,
+    autoUpdateDocs: false,
+  });
+  const pr = await storage.addPR({
+    number: 106,
+    title: "Verbose PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/verbose",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      fetchPullSummary: async () => makePullSummary(pr),
+      listFailingStatuses: async () => [],
+    }),
+    {
+      resolveAgent: async (agent) => agent,
+      checkAgentHealth: async (agent) => agent === "claude"
+        ? { ok: false, reason: "claude health check failed: Command timed out after 30000ms" }
+        : { ok: true },
+      ciPollIntervalMs: 0,
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: makeGitRunCommand(),
+    },
+  );
+
+  await babysitter.runQueuedBabysitPR(pr.id, "claude");
+
+  const [run] = await storage.listAgentRuns({ prId: pr.id });
+  assert.equal(run?.resolvedAgent, "codex");
+  assert.equal(run?.metadata?.fallbackFromAgent, "claude");
+  assert.match(String(run?.metadata?.fallbackReason ?? ""), /Command timed out/);
+
+  const logs = await storage.getLogs(pr.id);
+  const fallbackLogs = logs.filter((log) =>
+    log.level === "warn"
+    && log.message.includes("Falling back from claude to codex")
+  );
+  assert.equal(fallbackLogs.length, 1);
+  assert.equal(fallbackLogs[0]?.phase, "agent.health");
 });
 
 test("runQueuedBabysitPR falls back during agent apply when enabled", async () => {
