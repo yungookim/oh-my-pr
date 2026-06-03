@@ -667,6 +667,7 @@ Partially update the configuration.  Only the provided fields are changed.
 {
   "githubTokens": ["ghp_xxxxxxxxxxxx", "github_pat_yyyyyyyyyyyy"],
   "codingAgent": "claude",
+  "fallbackToNextCodingAgent": false,
   "maxTurns": 15,
   "batchWindowMs": 300000,
   "pollIntervalMs": 120000,
@@ -768,9 +769,14 @@ babysitter or release work before reporting success.
 
 oh-my-pr may also enable drain mode automatically when an agent health check
 reports deterministic unavailability, such as a missing CLI, auth failure, or
-unsupported agent setting. Transient health-check failures, including command
-timeouts, skip the affected automation cycle with an `Automation skipped` log
-instead of setting `drainMode`.
+unsupported agent setting, and no enabled fallback agent can continue the run.
+When `fallbackToNextCodingAgent` is `true`, oh-my-pr checks the alternate local
+CLI before draining or skipping. If that fallback agent is healthy, the affected
+run continues with it and logs an `agent.health` record with `failedAgent`,
+`fallbackAgent`, and `fallbackReason` metadata. Transient health-check failures,
+including command timeouts, skip the affected automation cycle with an
+`Automation skipped` log instead of setting `drainMode` only when fallback is
+disabled or the fallback agent is also unhealthy.
 
 Manual agent-triggering endpoints return `409` instead of storing new work
 while drain mode is active. This includes dashboard **Run now**
@@ -1006,6 +1012,7 @@ Install the oh-my-pr code-review GitHub Actions workflow on a repository.
   githubTokens: string[];      // Ordered and redacted to "***xxxx" in GET responses
   githubToken?: string;        // Legacy single-token field, redacted when present
   codingAgent: "claude" | "codex";
+  fallbackToNextCodingAgent: boolean;
   maxTurns: number;
   batchWindowMs: number;
   pollIntervalMs: number;

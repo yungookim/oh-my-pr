@@ -246,19 +246,20 @@ oh-my-pr --no-log-file
 <p>The settings page in the dashboard provides a UI for:</p>
 <ul>
 <li><strong>GitHub token management</strong> — Add, remove, and reorder saved tokens before falling back to <code>GITHUB_TOKEN</code> or <code>gh auth</code>.</li>
-<li><strong>Agent selection</strong> — Choose whether autonomous runs use Claude Code or OpenAI Codex. If the default run fails and a code-owner fallback is launched, the fallback uses the same resolved agent; enabling <strong>Fallback to next coding agent</strong> lets oh-my-pr resolve that fallback to the other local CLI when needed.</li>
+<li><strong>Agent selection</strong> — Choose whether autonomous runs use Claude Code or OpenAI Codex. Enabling <strong>Fallback to next coding agent</strong> lets oh-my-pr switch to the other local CLI when the selected agent cannot start, cannot authenticate, or fails a health check; code-owner fallback runs use the same resolved agent.</li>
 <li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
 <li><strong>Runtime drain mode</strong> — Pause new background automation and manual agent-triggering actions while allowing in-flight work to finish. During drain mode, the dashboard disables Run now/apply, feedback retry, Ask Agent, manual Release, and release retry actions; matching API calls return <code>409</code> instead of queueing new agent work.</li>
 <li><strong>Ignored bots</strong> — Add or remove bot logins whose comments and reviews should be ignored.</li>
-<li><strong>PR comment branding</strong> — Toggle whether agent-authored GitHub PR comments link back to oh-my-pr and include the <code>Posted by oh-my-pr</code> footer.</li>
+<li><strong>PR comment branding</strong> — Customize the app name shown in agent-authored GitHub PR comments, or remove that signature entirely. Toggle whether the signature links back to oh-my-pr and includes the <code>Posted by oh-my-pr</code> footer.</li>
 <li><strong>GitHub progress replies</strong> — Toggle whether the babysitter posts public Accepted/running/completed status replies while working through review comments.</li>
 <li><strong>CI healing</strong> — Enable autonomous CI repair and tune retry/session limits.</li>
 <li><strong>Deployment healing</strong> — Not yet exposed in the dashboard; use <code>PATCH /api/config</code> for the deployment-healing keys listed below.</li>
 <li><strong>Theme</strong> — Toggle between light and dark mode.</li>
 </ul>
 <h3>Agent Health and Drain Mode</h3>
-<p>Drain mode is reserved for failures that need operator action. oh-my-pr enables it when the selected agent is deterministically unavailable, such as a missing CLI, auth failure, or unsupported agent setting.</p>
-<p>Transient agent health failures, including health-check timeouts, do not enable drain mode. Affected PRs log <code>Automation skipped</code>, leave existing queued or running feedback state intact, and can be retried on the next poll or manual run.</p>
+<p>Drain mode is reserved for failures that need operator action. oh-my-pr enables it when the selected agent is deterministically unavailable, such as a missing CLI, auth failure, or unsupported agent setting, and no enabled fallback agent can continue the run.</p>
+<p>When <strong>Fallback to next coding agent</strong> is enabled, oh-my-pr checks the alternate local CLI before draining or skipping. If that agent is healthy, the PR continues with it and the activity log records an <code>agent.health</code> warning with <code>failedAgent</code>, <code>fallbackAgent</code>, and <code>fallbackReason</code> metadata.</p>
+<p>Transient agent health failures, including health-check timeouts, do not enable drain mode. If fallback is disabled or the fallback agent is also unhealthy, affected PRs log <code>Automation skipped</code>, leave existing queued or running feedback state intact, and can be retried on the next poll or manual run.</p>
 <h2>Repository Watch Settings</h2>
 <p>Watched repositories also have repo-level settings exposed in the dashboard&#39;s repository list and through <code>GET /api/repos/settings</code> plus <code>PATCH /api/repos/settings</code>.</p>
 <table>
@@ -309,7 +310,7 @@ session or publishing a newer release makes the banner eligible to appear
 again. If the app is running a non-semver build such as <code>dev</code>, or if the
 release check fails, the banner stays hidden and the API falls back quietly.</p>
 <h2>PR Comment Branding</h2>
-<p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr. Each comment references the app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository.</p>
+<p>Agent-authored GitHub PR comments posted by the babysitter — follow-up replies on review threads, agent-command acknowledgements, status updates, and CI alerts — are branded as oh-my-pr by default. Each comment references the configured app name and, by default, appends a <code>Posted by [oh-my-pr](https://github.com/yungookim/oh-my-pr)</code> footer that links back to this repository. Set the GitHub reply signature to a different name to replace <code>oh-my-pr</code>, or leave it blank to remove the visible app signature from GitHub replies and footers.</p>
 <table>
 <thead>
 <tr>
@@ -319,9 +320,14 @@ release check fails, the banner stays hidden and the API falls back quietly.</p>
 </tr>
 </thead>
 <tbody><tr>
+<td><code>GitHub reply signature</code></td>
+<td><code>oh-my-pr</code></td>
+<td>App name shown in public GitHub replies and <code>Posted by ...</code> footers. Leave blank to remove the signature.</td>
+</tr>
+<tr>
 <td><code>Repository links in PR comments</code></td>
 <td><code>true</code></td>
-<td>When enabled, babysitter comments render the app name as a Markdown link to the oh-my-pr repo and append the <code>Posted by oh-my-pr</code> footer. When disabled, comments reference <code>oh-my-pr</code> as plain text and omit the footer.</td>
+<td>When enabled, babysitter comments render the configured app name as a Markdown link to the oh-my-pr repo and append the <code>Posted by ...</code> footer. When disabled, comments reference the configured app name as plain text and omit the footer.</td>
 </tr>
 <tr>
 <td><code>GitHub progress replies</code></td>
@@ -329,7 +335,7 @@ release check fails, the banner stays hidden and the API falls back quietly.</p>
 <td>When enabled, the babysitter posts public status replies on accepted review feedback as it moves from queued to running, completed, and resolved. When disabled, it still posts the final follow-up reply without intermediate public progress updates.</td>
 </tr>
 </tbody></table>
-<p>These toggles are available in the dashboard settings page and as <code>includeRepositoryLinksInGitHubComments</code> plus <code>postGitHubProgressReplies</code> (booleans) in <code>GET /api/config</code>, <code>PATCH /api/config</code>, and the MCP <code>update_config</code> tool. Turning repository links off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.</p>
+<p>These settings are available in the dashboard settings page and as <code>githubCommentAppName</code> (string), <code>includeRepositoryLinksInGitHubComments</code> (boolean), and <code>postGitHubProgressReplies</code> (boolean) in <code>GET /api/config</code>, <code>PATCH /api/config</code>, and the MCP <code>update_config</code> tool. Turning repository links off is useful for private forks or environments where operators do not want outgoing PR comments to link to the upstream oh-my-pr repository.</p>
 <h2>CI Healing Settings</h2>
 <p>oh-my-pr can track failing CI checks as first-class healing sessions and, when enabled, dispatch bounded repair attempts in isolated worktrees.</p>
 <table>

@@ -61,7 +61,7 @@ The dashboard also exposes a server log viewer at `/logs`. It shows recent struc
 The settings page in the dashboard provides a UI for:
 
 - **GitHub token management** — Add, remove, and reorder saved tokens before falling back to `GITHUB_TOKEN` or `gh auth`.
-- **Agent selection** — Choose whether autonomous runs use Claude Code or OpenAI Codex. If the default run fails and a code-owner fallback is launched, the fallback uses the same resolved agent; enabling **Fallback to next coding agent** lets oh-my-pr resolve that fallback to the other local CLI when needed.
+- **Agent selection** — Choose whether autonomous runs use Claude Code or OpenAI Codex. Enabling **Fallback to next coding agent** lets oh-my-pr switch to the other local CLI when the selected agent cannot start, cannot authenticate, or fails a health check; code-owner fallback runs use the same resolved agent.
 - **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
 - **Runtime drain mode** — Pause new background automation and manual agent-triggering actions while allowing in-flight work to finish. During drain mode, the dashboard disables Run now/apply, feedback retry, Ask Agent, manual Release, and release retry actions; matching API calls return `409` instead of queueing new agent work.
 - **Ignored bots** — Add or remove bot logins whose comments and reviews should be ignored.
@@ -73,9 +73,11 @@ The settings page in the dashboard provides a UI for:
 
 ### Agent Health and Drain Mode
 
-Drain mode is reserved for failures that need operator action. oh-my-pr enables it when the selected agent is deterministically unavailable, such as a missing CLI, auth failure, or unsupported agent setting.
+Drain mode is reserved for failures that need operator action. oh-my-pr enables it when the selected agent is deterministically unavailable, such as a missing CLI, auth failure, or unsupported agent setting, and no enabled fallback agent can continue the run.
 
-Transient agent health failures, including health-check timeouts, do not enable drain mode. Affected PRs log `Automation skipped`, leave existing queued or running feedback state intact, and can be retried on the next poll or manual run.
+When **Fallback to next coding agent** is enabled, oh-my-pr checks the alternate local CLI before draining or skipping. If that agent is healthy, the PR continues with it and the activity log records an `agent.health` warning with `failedAgent`, `fallbackAgent`, and `fallbackReason` metadata.
+
+Transient agent health failures, including health-check timeouts, do not enable drain mode. If fallback is disabled or the fallback agent is also unhealthy, affected PRs log `Automation skipped`, leave existing queued or running feedback state intact, and can be retried on the next poll or manual run.
 
 ## Repository Watch Settings
 
