@@ -848,6 +848,7 @@ test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fa
     baseSha: "base123",
   };
   let failFeedbackSync = false;
+  let nowMs = Date.parse("2026-06-02T10:00:00.000Z");
 
   const babysitter = new PRBabysitter(
     storage,
@@ -864,6 +865,7 @@ test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fa
     }),
     {
       resolveAgent: async () => "codex",
+      now: () => new Date(nowMs),
       ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
@@ -874,6 +876,7 @@ test("syncAndBabysitTrackedRepos queues unchanged PR heads when feedback sync fa
   );
 
   await babysitter.babysitPR(pr.id, "codex");
+  nowMs = Date.parse("2026-06-02T10:10:00.000Z");
   failFeedbackSync = true;
   await babysitter.syncAndBabysitTrackedRepos();
 
