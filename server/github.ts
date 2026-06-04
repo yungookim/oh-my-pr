@@ -7,6 +7,7 @@ import { childLogger } from "./logger";
 import { renderGitHubMarkdown } from "./markdown";
 
 const octokitLog = childLogger("octokit");
+const githubLog = childLogger("github");
 
 const octokitLogger = {
   debug: (msg: string, ...args: unknown[]) => octokitLog.debug({ args }, msg),
@@ -692,13 +693,28 @@ async function withGitHubErrorHandling<T>(
 ): Promise<T> {
   const maxAttempts = 2;
   let lastError: unknown = null;
+  const target = formatGitHubTarget(resource);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await request();
+      const result = await request();
+      if (attempt > 1) {
+        githubLog.info({ context, target, attempt }, "Recovered transient GitHub request failure");
+      }
+      return result;
     } catch (error) {
       lastError = error;
       if (attempt < maxAttempts && isTransientGitHubError(error)) {
+        githubLog.warn({
+          context,
+          target,
+          attempt,
+          nextAttempt: attempt + 1,
+          maxAttempts,
+          status: getGitHubErrorStatus(error),
+          code: getGitHubErrorCode(error),
+          err: error instanceof Error ? error.message : String(error),
+        }, "Retrying transient GitHub request failure");
         continue;
       }
       throw toGitHubIntegrationError(error, context, resource);
