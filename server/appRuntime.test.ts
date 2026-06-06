@@ -353,6 +353,39 @@ test("runtime reuses onboarding status within the cache window", async () => {
   assert.deepEqual(second, first);
 });
 
+test("runtime treats missing githubTokens as empty for onboarding status cache keys", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ watchedRepos: ["acme/widgets"] });
+  const getConfig = storage.getConfig.bind(storage);
+  storage.getConfig = async () => {
+    const config = await getConfig();
+    return { ...config, githubTokens: undefined as unknown as string[] };
+  };
+  let statusChecks = 0;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: false,
+    checkOnboardingStatusFn: async (_config, watchedRepos) => {
+      statusChecks += 1;
+      return {
+        githubConnected: true,
+        githubUser: "octo",
+        repos: watchedRepos.map((repo) => ({
+          repo,
+          accessible: true,
+          codeReviews: { claude: false, codex: true, gemini: false },
+        })),
+      };
+    },
+  });
+
+  const status = await runtime.getOnboardingStatus();
+
+  assert.equal(statusChecks, 1);
+  assert.equal(status.repos[0]?.repo, "acme/widgets");
+});
+
 test("runtime refreshes onboarding status after config changes", async () => {
   const storage = new MemStorage();
   await storage.updateConfig({ watchedRepos: ["acme/widgets"] });

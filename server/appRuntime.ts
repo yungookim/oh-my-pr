@@ -447,7 +447,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
   const buildOnboardingStatusCacheKey = (config: Config) => JSON.stringify({
     githubToken: fingerprintToken(config.githubToken),
-    githubTokens: config.githubTokens.map(fingerprintToken),
+    githubTokens: (config.githubTokens ?? []).map(fingerprintToken),
     watchedRepos: config.watchedRepos,
   });
 
