@@ -47,6 +47,7 @@ import {
   listReleasesForRepo,
   listUnreleasedMergedPulls,
   type MergedPRSummary,
+  type OnboardingStatus,
   parsePRUrl,
   parseRepoSlug,
   resolveNextSemverTag,
@@ -72,6 +73,7 @@ export type AppRuntimeDependencies = {
   watcherScheduler?: WatcherScheduler;
   startBackgroundServices?: boolean;
   startWatcher?: boolean;
+  checkOnboardingStatusFn?: typeof checkOnboardingStatus;
 };
 
 export type RuntimeSnapshot = RuntimeState & {
@@ -293,6 +295,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
   const storage = dependencies.storage ?? getDefaultStorage();
   const events = new EventEmitter();
   const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
+  const checkOnboardingStatusFn = dependencies.checkOnboardingStatusFn ?? checkOnboardingStatus;
   // eslint-disable-next-line prefer-const -- circular dep: closure references this before it can be initialized
   let backgroundJobDispatcher!: BackgroundJobDispatcher;
 
@@ -429,6 +432,89 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
   const startBackgroundServices = dependencies.startBackgroundServices ?? true;
   const startWatcher = dependencies.startWatcher ?? startBackgroundServices;
   let started = false;
+  let onboardingStatusCache: {
+    key: string;
+    value: OnboardingStatus;
+    refreshedAt: number;
+    expiresAt: number;
+  } | null = null;
+  let onboardingStatusInFlight: { key: string; promise: Promise<OnboardingStatus> } | null = null;
+  let onboardingStatusCacheGeneration = 0;
+
+  const fingerprintToken = (token: string | undefined) => token
+    ? `${token.length}:${token.slice(-4)}`
+    : "";
+
+  const buildOnboardingStatusCacheKey = (config: Config) => JSON.stringify({
+    githubToken: fingerprintToken(config.githubToken),
+    githubTokens: config.githubTokens.map(fingerprintToken),
+    watchedRepos: config.watchedRepos,
+  });
+
+  const invalidateOnboardingStatusCache = (reason: string) => {
+    if (!onboardingStatusCache && !onboardingStatusInFlight) {
+      return;
+    }
+
+    onboardingStatusCache = null;
+    onboardingStatusInFlight = null;
+    onboardingStatusCacheGeneration += 1;
+    log.debug({ reason }, "Onboarding status cache invalidated");
+  };
+
+  const getCachedOnboardingStatus = async (): Promise<OnboardingStatus> => {
+    const config = await storage.getConfig();
+    const key = buildOnboardingStatusCacheKey(config);
+    const now = Date.now();
+
+    if (onboardingStatusCache?.key === key && onboardingStatusCache.expiresAt > now) {
+      log.debug({
+        ageMs: now - onboardingStatusCache.refreshedAt,
+        cacheHit: true,
+        repoCount: config.watchedRepos.length,
+      }, "Onboarding status cache hit");
+      return onboardingStatusCache.value;
+    }
+
+    if (onboardingStatusInFlight?.key === key) {
+      log.debug({
+        cacheHit: true,
+        inFlight: true,
+        repoCount: config.watchedRepos.length,
+      }, "Onboarding status cache joined in-flight refresh");
+      return onboardingStatusInFlight.promise;
+    }
+
+    const startedAt = Date.now();
+    const cacheGeneration = onboardingStatusCacheGeneration;
+    const promise = checkOnboardingStatusFn(config, config.watchedRepos).then((status) => {
+      const refreshedAt = Date.now();
+      const stale = cacheGeneration !== onboardingStatusCacheGeneration;
+      if (!stale) {
+        onboardingStatusCache = {
+          key,
+          value: status,
+          refreshedAt,
+          expiresAt: refreshedAt + 10 * 60 * 1000,
+        };
+      }
+      log.debug({
+        cacheHit: false,
+        durationMs: refreshedAt - startedAt,
+        repoCount: config.watchedRepos.length,
+        stale,
+        ttlMs: 10 * 60 * 1000,
+      }, "Onboarding status cache refreshed");
+      return status;
+    }).finally(() => {
+      if (onboardingStatusInFlight?.promise === promise) {
+        onboardingStatusInFlight = null;
+      }
+    });
+
+    onboardingStatusInFlight = { key, promise };
+    return promise;
+  };
 
   const notifyChange = () => {
     events.emit("change");
@@ -883,6 +969,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
         await storage.updateConfig({
           watchedRepos: [...config.watchedRepos, canonical].sort((a, b) => a.localeCompare(b)),
         });
+        invalidateOnboardingStatusCache("watched repo added");
       }
 
       void runWatcher();
@@ -994,6 +1081,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
         await storage.updateConfig({
           watchedRepos: [...config.watchedRepos, repoSlug].sort((a, b) => a.localeCompare(b)),
         });
+        invalidateOnboardingStatusCache("pr repo added to watch list");
       }
 
       await queueBabysitWithAgent(pr, config.codingAgent);
@@ -1248,13 +1336,14 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
     },
 
     async getOnboardingStatus() {
-      const config = await storage.getConfig();
-      return checkOnboardingStatus(config, config.watchedRepos);
+      return getCachedOnboardingStatus();
     },
 
     async installReviewWorkflow(repo, tool) {
       const config = await storage.getConfig();
-      return installCodeReviewWorkflow(config, repo, tool);
+      const result = await installCodeReviewWorkflow(config, repo, tool);
+      invalidateOnboardingStatusCache("review workflow installed");
+      return result;
     },
 
     async listHealingSessions() {
@@ -1282,6 +1371,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
     async updateConfig(updates) {
       const updated = await storage.updateConfig(updates);
+      invalidateOnboardingStatusCache("config updated");
       if (startWatcher && started) {
         await refreshWatcherSchedule();
       }
