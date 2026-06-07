@@ -72,13 +72,14 @@ Then:
 - Pushes verified fixes back to the PR branch
 - Can automatically create a GitHub release when a merged PR is important enough to justify a version bump
 - Keeps logs, run history, and PR state on your machine
+- Shows anonymous local usage totals for app opens, tracked PRs, merged PRs, and fixes made
 - Exposes the same system through a dashboard, local API, and MCP server
 
 ## Technical Details
 
 ### Local-First
 
-oh-my-pr runs on your machine and works with your local agent CLI. Repository caches (`repos/`), worktrees (`worktrees/`), logs (`log/`), and app state (`state.sqlite`) live under `~/.oh-my-pr` by default. Set `OH_MY_PR_HOME` if you want a different location.
+oh-my-pr runs on your machine and works with your local agent CLI. Repository caches (`repos/`), worktrees (`worktrees/`), logs (`log/`), and app state (`state.sqlite`) live under `~/.oh-my-pr` by default. Set `OH_MY_PR_HOME` if you want a different location. Anonymous usage counters are stored in the same local app state and contain only dates and counts, not repo names, PR URLs, or user identity.
 
 ### Isolation
 
@@ -102,6 +103,7 @@ Watched repositories default to `My PRs only`. You can switch a repo to `My PRs 
 oh-my-pr can be used in a few ways:
 
 - web dashboard: `oh-my-pr`
+- usage dashboard: `http://localhost:5001/usage`
 - server logs page: `http://localhost:5001/logs`
 - MCP server: `oh-my-pr mcp`
 - local REST API: see [LOCAL_API.md](LOCAL_API.md)

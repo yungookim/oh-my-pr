@@ -22,6 +22,7 @@
    - [Feedback items](#feedback-items)
    - [PR Q&A](#pr-qa)
    - [Logs](#logs)
+   - [Usage](#usage)
    - [CI healing sessions](#ci-healing-sessions)
    - [Deployment healing sessions](#deployment-healing-sessions)
    - [Configuration](#configuration)
@@ -598,6 +599,50 @@ buffering.
 
 ---
 
+### Usage
+
+Usage endpoints expose anonymous local aggregate counters. They return only
+daily dates and counts for app opens, tracked PRs, merged PRs, and fixes made;
+they do not include repo names, PR URLs, GitHub users, feedback text, or an
+event stream. The dashboard uses the same data for the Settings usage panel and
+the `/usage` page.
+
+#### `GET /api/usage`
+
+Read the current usage summary.
+
+**Response** `200` — [UsageSummary object](#usagesummary)
+
+**Example** `200`
+```json
+{
+  "totals": {
+    "appOpenCount": 3,
+    "trackedPrCount": 5,
+    "mergedPrCount": 2,
+    "fixesMadeCount": 4
+  },
+  "daily": [
+    {
+      "date": "2026-06-07",
+      "appOpenCount": 3,
+      "trackedPrCount": 5,
+      "mergedPrCount": 2,
+      "fixesMadeCount": 4
+    }
+  ]
+}
+```
+
+#### `POST /api/usage/app-open`
+
+Increment the anonymous app-open counter for the current UTC date and return the
+updated usage summary. The dashboard calls this once when the app shell mounts.
+
+**Response** `200` — [UsageSummary object](#usagesummary)
+
+---
+
 ### CI healing sessions
 
 #### `GET /api/healing-sessions`
@@ -1002,6 +1047,26 @@ Install the oh-my-pr code-review GitHub Actions workflow on a repository.
   phase: string | null;
   message: string;
   metadata: Record<string, unknown> | null;
+}
+```
+
+### UsageSummary
+
+```typescript
+{
+  totals: {
+    appOpenCount: number;
+    trackedPrCount: number;
+    mergedPrCount: number;
+    fixesMadeCount: number;
+  };
+  daily: Array<{
+    date: string;              // UTC date, YYYY-MM-DD
+    appOpenCount: number;
+    trackedPrCount: number;
+    mergedPrCount: number;
+    fixesMadeCount: number;
+  }>;
 }
 ```
 

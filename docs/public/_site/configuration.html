@@ -227,6 +227,16 @@
 <pre><code>~/.oh-my-pr/state.sqlite
 </code></pre>
 <p>No external database is required. This is ideal for single-user setups.</p>
+<h2>Usage Tracking</h2>
+<p>oh-my-pr keeps a small anonymous usage summary locally so operators can understand how much the babysitter is being used. It records only daily counts for:</p>
+<ul>
+<li>app opens</li>
+<li>PRs tracked</li>
+<li>tracked PRs observed as merged</li>
+<li>fixes made by babysitter runs or deployment-healing fix PRs</li>
+</ul>
+<p>Usage tracking does not store repo names, PR URLs, GitHub users, feedback text, or an event stream. The counters are stored in the local app database, in the <code>usage_daily</code> table when using SQLite, and are not sent to GitHub or an external analytics service.</p>
+<p>View usage totals from the dashboard settings page or open <code>/usage</code> for totals and the last 30 recorded days. The local API also exposes <code>GET /api/usage</code>; the dashboard records an app open once per mounted app shell through <code>POST /api/usage/app-open</code>.</p>
 <h2>Activity Logs</h2>
 <p>oh-my-pr writes daily activity logs to:</p>
 <pre><code>~/.oh-my-pr/log/
@@ -247,6 +257,7 @@ oh-my-pr --no-log-file
 <ul>
 <li><strong>GitHub token management</strong> — Add, remove, and reorder saved tokens before falling back to <code>GITHUB_TOKEN</code> or <code>gh auth</code>.</li>
 <li><strong>Agent selection</strong> — Choose whether autonomous runs use Claude Code or OpenAI Codex. Enabling <strong>Fallback to next coding agent</strong> lets oh-my-pr switch to the other local CLI when the selected agent cannot start, cannot authenticate, or fails a health check; code-owner fallback runs use the same resolved agent.</li>
+<li><strong>Usage</strong> — Review anonymous local totals for app opens, tracked PRs, merged PRs, and fixes made, with a link to the <code>/usage</code> page for daily charts.</li>
 <li><strong>Babysitter tuning</strong> — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.</li>
 <li><strong>Runtime drain mode</strong> — Pause new background automation and manual agent-triggering actions while allowing in-flight work to finish. During drain mode, the dashboard disables Run now/apply, feedback retry, Ask Agent, manual Release, and release retry actions; matching API calls return <code>409</code> instead of queueing new agent work.</li>
 <li><strong>Ignored bots</strong> — Add or remove bot logins whose comments and reviews should be ignored.</li>
