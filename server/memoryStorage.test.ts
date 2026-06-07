@@ -150,6 +150,14 @@ describe("MemStorage", () => {
       assert.equal(pr.status, "watching");
       assert.equal(pr.watchEnabled, true);
     });
+
+    it("increments tracked PR usage when a PR is created", async () => {
+      await storage.addPR(makePRInput());
+
+      const usage = await storage.getUsageSummary();
+
+      assert.equal(usage.totals.trackedPrCount, 1);
+    });
   });
 
   describe("getPR", () => {
@@ -409,6 +417,43 @@ describe("MemStorage", () => {
       // getLogs returns the last 200 of those => indices 801..1000 => messages "Log 801".."Log 1000"
       assert.equal(logs[0].message, "Log 801");
       assert.equal(logs[199].message, "Log 1000");
+    });
+  });
+
+  // ── Usage ───────────────────────────────────────────────
+
+  describe("usage counters", () => {
+    it("increments anonymous totals and daily buckets by UTC date", async () => {
+      await storage.incrementUsageCounter("appOpenCount", 1, "2026-06-07T12:00:00.000Z");
+      await storage.incrementUsageCounter("appOpenCount", 2, "2026-06-07T23:59:59.000Z");
+      await storage.incrementUsageCounter("trackedPrCount", 1, "2026-06-07T14:00:00.000Z");
+      await storage.incrementUsageCounter("mergedPrCount", 1, "2026-06-08T00:00:00.000Z");
+      await storage.incrementUsageCounter("fixesMadeCount", 1, "2026-06-08T01:00:00.000Z");
+
+      const usage = await storage.getUsageSummary();
+
+      assert.deepEqual(usage.totals, {
+        appOpenCount: 3,
+        trackedPrCount: 1,
+        mergedPrCount: 1,
+        fixesMadeCount: 1,
+      });
+      assert.deepEqual(usage.daily, [
+        {
+          date: "2026-06-07",
+          appOpenCount: 3,
+          trackedPrCount: 1,
+          mergedPrCount: 0,
+          fixesMadeCount: 0,
+        },
+        {
+          date: "2026-06-08",
+          appOpenCount: 0,
+          trackedPrCount: 0,
+          mergedPrCount: 1,
+          fixesMadeCount: 1,
+        },
+      ]);
     });
   });
 

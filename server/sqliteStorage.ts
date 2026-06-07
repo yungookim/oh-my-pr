@@ -27,6 +27,10 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  UsageCounterKey,
+  UsageCounters,
+  UsageDailyBucket,
+  UsageSummary,
   WatchedRepo,
 } from "@shared/schema";
 import {
@@ -200,6 +204,14 @@ type RuntimeStateRow = {
   watcher_interval_ms: number | null;
 };
 
+type UsageDailyRow = {
+  date: string;
+  app_open_count: number;
+  tracked_pr_count: number;
+  merged_pr_count: number;
+  fixes_made_count: number;
+};
+
 type AgentRunRow = {
   id: string;
   pr_id: string;
@@ -365,6 +377,13 @@ type DeploymentHealingSessionRow = {
 };
 
 export class SqliteStorage implements IStorage {
+  private static readonly usageCounterKeys: UsageCounterKey[] = [
+    "appOpenCount",
+    "trackedPrCount",
+    "mergedPrCount",
+    "fixesMadeCount",
+  ];
+
   private db!: DatabaseSync;
   private readonly rootDir: string;
   private readonly logRootDir: string;
@@ -600,6 +619,14 @@ export class SqliteStorage implements IStorage {
         watcher_completed_at TEXT,
         watcher_last_error TEXT,
         watcher_interval_ms INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_daily (
+        date TEXT PRIMARY KEY,
+        app_open_count INTEGER NOT NULL DEFAULT 0,
+        tracked_pr_count INTEGER NOT NULL DEFAULT 0,
+        merged_pr_count INTEGER NOT NULL DEFAULT 0,
+        fixes_made_count INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS agent_runs (
@@ -1421,6 +1448,7 @@ export class SqliteStorage implements IStorage {
 
       this.replaceFeedbackItems(full.id, full.feedbackItems);
     });
+    await this.incrementUsageCounter("trackedPrCount", 1, full.addedAt);
     return full;
   }
 
@@ -1591,6 +1619,80 @@ export class SqliteStorage implements IStorage {
     }
 
     this.exec("DELETE FROM logs");
+  }
+
+  private createEmptyUsageCounters(): UsageCounters {
+    return {
+      appOpenCount: 0,
+      trackedPrCount: 0,
+      mergedPrCount: 0,
+      fixesMadeCount: 0,
+    };
+  }
+
+  private parseUsageDailyRow(row: UsageDailyRow): UsageDailyBucket {
+    return {
+      date: row.date,
+      appOpenCount: row.app_open_count,
+      trackedPrCount: row.tracked_pr_count,
+      mergedPrCount: row.merged_pr_count,
+      fixesMadeCount: row.fixes_made_count,
+    };
+  }
+
+  private usageCounterColumn(counter: UsageCounterKey): keyof Omit<UsageDailyRow, "date"> {
+    switch (counter) {
+      case "appOpenCount":
+        return "app_open_count";
+      case "trackedPrCount":
+        return "tracked_pr_count";
+      case "mergedPrCount":
+        return "merged_pr_count";
+      case "fixesMadeCount":
+        return "fixes_made_count";
+    }
+  }
+
+  async getUsageSummary(): Promise<UsageSummary> {
+    const rows = this.all<UsageDailyRow>(`
+      SELECT date, app_open_count, tracked_pr_count, merged_pr_count, fixes_made_count
+      FROM usage_daily
+      ORDER BY date ASC
+    `);
+    const totals = this.createEmptyUsageCounters();
+    const daily = rows.map((row) => this.parseUsageDailyRow(row));
+
+    for (const bucket of daily) {
+      for (const key of SqliteStorage.usageCounterKeys) {
+        totals[key] += bucket[key];
+      }
+    }
+
+    return {
+      totals,
+      daily,
+    };
+  }
+
+  async incrementUsageCounter(
+    counter: UsageCounterKey,
+    amount = 1,
+    occurredAt = new Date().toISOString(),
+  ): Promise<UsageSummary> {
+    const increment = Math.trunc(amount);
+    if (increment <= 0) {
+      return this.getUsageSummary();
+    }
+
+    const date = new Date(occurredAt).toISOString().slice(0, 10);
+    const column = this.usageCounterColumn(counter);
+    this.run(`
+      INSERT INTO usage_daily (date, ${column})
+      VALUES (?, ?)
+      ON CONFLICT(date) DO UPDATE SET ${column} = ${column} + excluded.${column}
+    `, date, increment);
+
+    return this.getUsageSummary();
   }
 
   async getConfig(): Promise<Config> {

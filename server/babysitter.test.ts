@@ -556,7 +556,9 @@ test("syncAndBabysitTrackedRepos queues release evaluation for merged archived P
 
   const updated = await storage.getPR(pr.id);
   const logs = await storage.getLogs(pr.id);
+  const usage = await storage.getUsageSummary();
   assert.equal(updated?.status, "archived");
+  assert.equal(usage.totals.mergedPrCount, 1);
   assert.equal(queued.length, 1);
   assert.equal(queued[0]?.triggerMergeSha, "merge123");
   assert.ok(logs.some((log) => log.message.includes("queued release evaluation")));
@@ -7555,6 +7557,8 @@ test("babysitPR marks a healing session healed when the repair push turns CI gre
   assert.equal(attempts[0]?.outputSha, "heal456");
 
   const updated = await storage.getPR(pr.id);
+  const usage = await storage.getUsageSummary();
+  assert.equal(usage.totals.fixesMadeCount, 1);
   assert.equal(updated?.testsPassed, true);
 });
 

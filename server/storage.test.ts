@@ -102,6 +102,10 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
     drainRequestedAt: "2026-03-18T10:00:00.000Z",
     drainReason: "planned update",
   });
+  await first.incrementUsageCounter("appOpenCount", 1, "2026-06-07T12:00:00.000Z");
+  await first.incrementUsageCounter("trackedPrCount", 2, "2026-06-07T13:00:00.000Z");
+  await first.incrementUsageCounter("mergedPrCount", 1, "2026-06-08T00:30:00.000Z");
+  await first.incrementUsageCounter("fixesMadeCount", 1, "2026-06-08T01:30:00.000Z");
 
   const pr = await first.addPR({
     number: 106,
@@ -207,6 +211,7 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   const runningRuns = await second.listAgentRuns({ status: "running" });
   const release = await second.getReleaseRun(releaseRun.id);
   const logs = await second.getLogs(pr.id);
+  const usage = await second.getUsageSummary();
 
   assert.equal(config.pollIntervalMs, 45000);
   assert.equal(config.fallbackToNextCodingAgent, true);
@@ -230,6 +235,45 @@ test("SqliteStorage reloads config and PR state from the same root", async () =>
   assert.equal(runtime.drainMode, true);
   assert.equal(runtime.drainRequestedAt, "2026-03-18T10:00:00.000Z");
   assert.equal(runtime.drainReason, "planned update");
+  const expectedUsageByDate = new Map([
+    ["2026-06-07", {
+      date: "2026-06-07",
+      appOpenCount: 1,
+      trackedPrCount: 2,
+      mergedPrCount: 0,
+      fixesMadeCount: 0,
+    }],
+    ["2026-06-08", {
+      date: "2026-06-08",
+      appOpenCount: 0,
+      trackedPrCount: 0,
+      mergedPrCount: 1,
+      fixesMadeCount: 1,
+    }],
+  ]);
+  const prUsageDate = pr.addedAt.slice(0, 10);
+  const prUsageBucket = expectedUsageByDate.get(prUsageDate) ?? {
+    date: prUsageDate,
+    appOpenCount: 0,
+    trackedPrCount: 0,
+    mergedPrCount: 0,
+    fixesMadeCount: 0,
+  };
+  expectedUsageByDate.set(prUsageDate, {
+    ...prUsageBucket,
+    trackedPrCount: prUsageBucket.trackedPrCount + 1,
+  });
+
+  assert.deepEqual(usage.totals, {
+    appOpenCount: 1,
+    trackedPrCount: 3,
+    mergedPrCount: 1,
+    fixesMadeCount: 1,
+  });
+  assert.deepEqual(
+    usage.daily,
+    Array.from(expectedUsageByDate.values()).sort((a, b) => a.date.localeCompare(b.date)),
+  );
   assert.equal(reloadedPr?.repo, "alex-morgan-o/lolodex");
   assert.equal(reloadedPr?.feedbackItems.length, 1);
   assert.equal(reloadedPr?.feedbackItems[0]?.bodyHtml, "<p>Please fix <code>thing</code></p>");

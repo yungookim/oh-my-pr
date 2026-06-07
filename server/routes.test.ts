@@ -217,6 +217,71 @@ test("PATCH /api/config accepts legacy single githubToken updates", async () => 
   }
 });
 
+test("GET /api/usage exposes only anonymous aggregate usage", async () => {
+  const harness = await createHarness();
+
+  try {
+    await harness.storage.incrementUsageCounter("appOpenCount", 1, "2026-06-07T12:00:00.000Z");
+    await harness.storage.incrementUsageCounter("trackedPrCount", 2, "2026-06-07T13:00:00.000Z");
+    await harness.storage.incrementUsageCounter("fixesMadeCount", 1, "2026-06-08T01:00:00.000Z");
+
+    const response = await fetch(`${harness.baseUrl}/api/usage`);
+    assert.equal(response.status, 200);
+
+    const usage = await response.json() as Record<string, unknown>;
+    assert.deepEqual(usage, {
+      totals: {
+        appOpenCount: 1,
+        trackedPrCount: 2,
+        mergedPrCount: 0,
+        fixesMadeCount: 1,
+      },
+      daily: [
+        {
+          date: "2026-06-07",
+          appOpenCount: 1,
+          trackedPrCount: 2,
+          mergedPrCount: 0,
+          fixesMadeCount: 0,
+        },
+        {
+          date: "2026-06-08",
+          appOpenCount: 0,
+          trackedPrCount: 0,
+          mergedPrCount: 0,
+          fixesMadeCount: 1,
+        },
+      ],
+    });
+    assert.equal("repo" in usage, false);
+    assert.equal("url" in usage, false);
+    assert.equal("userId" in usage, false);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("POST /api/usage/app-open increments anonymous app open usage", async () => {
+  const harness = await createHarness();
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/usage/app-open`, {
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    const usage = await response.json() as {
+      totals: { appOpenCount: number };
+      daily: Array<{ appOpenCount: number }>;
+    };
+    assert.equal(usage.totals.appOpenCount, 1);
+    assert.equal(usage.daily.length, 1);
+    assert.equal(usage.daily[0]?.appOpenCount, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("POST /api/prs/:id/questions enqueues a durable answer_pr_question job", async () => {
   const harness = await createHarness();
   const pr = await seedPR(harness.storage);

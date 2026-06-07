@@ -257,6 +257,7 @@ export function createBackgroundJobHandlers(params: {
             fixPrNumber: prResult.data.number,
             fixPrUrl: prResult.data.html_url,
           });
+          await storage.incrementUsageCounter("fixesMadeCount");
         } catch (error) {
           await manager.transitionTo(session.id, "escalated", {
             error: error instanceof Error ? error.message : String(error),
