@@ -21,6 +21,8 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  UsageCounterKey,
+  UsageSummary,
   WatchedRepo,
 } from "@shared/schema";
 export { MemStorage } from "./memoryStorage";
@@ -54,6 +56,10 @@ export interface IStorage {
     },
   ): Promise<LogEntry>;
   clearLogs(prId?: string): Promise<void>;
+
+  // Usage
+  getUsageSummary(): Promise<UsageSummary>;
+  incrementUsageCounter(counter: UsageCounterKey, amount?: number, occurredAt?: string): Promise<UsageSummary>;
 
   // Config
   getConfig(): Promise<Config>;

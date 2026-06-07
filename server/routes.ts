@@ -1,7 +1,7 @@
 import type { Express, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
-import { configSchema } from "@shared/schema";
+import { configSchema, usageSummarySchema } from "@shared/schema";
 import type { Config } from "@shared/schema";
 import {
   createAppRuntime,
@@ -452,6 +452,22 @@ export async function registerRoutes(
 
   app.get("/api/config", async (_req, res) => {
     res.json(maskConfig(await runtime.getConfig()));
+  });
+
+  app.get("/api/usage", async (_req, res) => {
+    try {
+      res.json(usageSummarySchema.parse(await runtime.getUsageSummary()));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
+  });
+
+  app.post("/api/usage/app-open", async (_req, res) => {
+    try {
+      res.json(usageSummarySchema.parse(await runtime.recordAppOpen()));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.get("/api/app-update", async (_req, res) => {

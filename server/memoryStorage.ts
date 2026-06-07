@@ -21,6 +21,10 @@ import type {
   ReleaseRunStatus,
   RuntimeState,
   SocialChangelog,
+  UsageCounterKey,
+  UsageCounters,
+  UsageDailyBucket,
+  UsageSummary,
   WatchedRepo,
 } from "@shared/schema";
 import {
@@ -51,6 +55,13 @@ import type { IStorage } from "./storage";
 import { DEFAULT_CONFIG } from "./defaultConfig";
 
 export class MemStorage implements IStorage {
+  private static readonly usageCounterKeys: UsageCounterKey[] = [
+    "appOpenCount",
+    "trackedPrCount",
+    "mergedPrCount",
+    "fixesMadeCount",
+  ];
+
   private prs: Map<string, PR> = new Map();
   private questions: Map<string, PRQuestion> = new Map();
   private logs: LogEntry[] = [];
@@ -75,6 +86,23 @@ export class MemStorage implements IStorage {
   private backgroundJobs: Map<string, BackgroundJob> = new Map();
   private deploymentHealingSessions: Map<string, DeploymentHealingSession> = new Map();
   private repoSettings: Map<string, WatchedRepo> = new Map();
+  private usageDailyBuckets: Map<string, UsageDailyBucket> = new Map();
+
+  private createEmptyUsageCounters(): UsageCounters {
+    return {
+      appOpenCount: 0,
+      trackedPrCount: 0,
+      mergedPrCount: 0,
+      fixesMadeCount: 0,
+    };
+  }
+
+  private createEmptyUsageDailyBucket(date: string): UsageDailyBucket {
+    return {
+      date,
+      ...this.createEmptyUsageCounters(),
+    };
+  }
 
   private cloneConfig(config: Config): Config {
     return structuredClone(config);
@@ -139,6 +167,7 @@ export class MemStorage implements IStorage {
   async addPR(pr: NewPR): Promise<PR> {
     const full = createPR(pr);
     this.prs.set(full.id, full);
+    await this.incrementUsageCounter("trackedPrCount", 1, full.addedAt);
     return full;
   }
 
@@ -206,6 +235,49 @@ export class MemStorage implements IStorage {
     }
 
     this.logs = [];
+  }
+
+  async getUsageSummary(): Promise<UsageSummary> {
+    const totals = this.createEmptyUsageCounters();
+    const daily = Array.from(this.usageDailyBuckets.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((bucket) => ({ ...bucket }));
+
+    for (const bucket of daily) {
+      for (const key of MemStorage.usageCounterKeys) {
+        totals[key] += bucket[key];
+      }
+    }
+
+    return {
+      totals,
+      daily,
+    };
+  }
+
+  async incrementUsageCounter(
+    counter: UsageCounterKey,
+    amount = 1,
+    occurredAt = new Date().toISOString(),
+  ): Promise<UsageSummary> {
+    const increment = Math.trunc(amount);
+    if (increment <= 0) {
+      return this.getUsageSummary();
+    }
+
+    let date: string;
+    try {
+      date = new Date(occurredAt).toISOString().slice(0, 10);
+    } catch {
+      date = new Date().toISOString().slice(0, 10);
+    }
+    const bucket = this.usageDailyBuckets.get(date) ?? this.createEmptyUsageDailyBucket(date);
+    this.usageDailyBuckets.set(date, {
+      ...bucket,
+      [counter]: bucket[counter] + increment,
+    });
+
+    return this.getUsageSummary();
   }
 
   async getConfig(): Promise<Config> {

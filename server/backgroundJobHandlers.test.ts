@@ -389,6 +389,74 @@ test("heal_deployment handler passes an authenticated clone URL to deployment re
   );
 });
 
+test("heal_deployment handler increments fixes made when a fix PR is submitted", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({
+    deploymentCheckDelayMs: 0,
+    deploymentCheckTimeoutMs: 1,
+    deploymentCheckPollIntervalMs: 0,
+  });
+
+  const queue = new BackgroundJobQueue(storage);
+  const job = await queue.enqueue(
+    "heal_deployment",
+    "acme/widgets:merge-sha",
+    "heal_deployment:acme/widgets:merge-sha",
+    {
+      repo: "acme/widgets",
+      platform: "railway",
+      mergeSha: "merge-sha",
+      triggerPrNumber: 42,
+      triggerPrTitle: "feat: add widget",
+      triggerPrUrl: "https://github.com/acme/widgets/pull/42",
+      baseBranch: "main",
+    },
+  );
+
+  const handlers = createBackgroundJobHandlers({
+    storage,
+    deploymentHealingManager: {
+      ensureSession: async () => ({ id: "session-1" }),
+      transitionTo: async (sessionId, state, updates) => ({ id: sessionId, state, ...updates }) as never,
+    } as unknown as DeploymentHealingManager,
+    deps: {
+      buildOctokitFn: async () => ({
+        pulls: {
+          create: async () => ({
+            data: {
+              number: 43,
+              html_url: "https://github.com/acme/widgets/pull/43",
+            },
+          }),
+        },
+      }) as never,
+      createAdapterFn: () => ({
+        platform: "railway",
+        getDeploymentStatus: async () => ({
+          state: "error",
+          deploymentId: "dep_123",
+          url: null,
+          error: "deployment failed",
+        }),
+        getDeploymentLogs: async () => "deployment failed",
+      }),
+      resolveGitHubAuthTokenFn: async () => null,
+      runDeploymentHealingRepairFn: async () => ({
+        accepted: true,
+        rejectionReason: null,
+        summary: "Fixed the deployment config",
+        fixBranch: "deploy-fix/railway-1",
+        agentResult: { code: 0, stdout: "", stderr: "" },
+      }),
+    },
+  });
+
+  await handlers.heal_deployment!(job);
+
+  const usage = await storage.getUsageSummary();
+  assert.equal(usage.totals.fixesMadeCount, 1);
+});
+
 test("process_release_run handler delegates to ReleaseManager for active rows", async () => {
   const storage = new MemStorage();
   const releaseRun = await storage.createReleaseRun({

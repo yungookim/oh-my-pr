@@ -13,6 +13,7 @@ import type {
   ReleaseRun,
   RuntimeState,
   SocialChangelog,
+  UsageSummary,
   WatchedRepo,
 } from "@shared/schema";
 import { z } from "zod";
@@ -121,6 +122,8 @@ export type AppRuntime = {
   getHealingSession(id: string): Promise<HealingSession>;
   listDeploymentHealingSessions(repo?: string): Promise<DeploymentHealingSession[]>;
   getDeploymentHealingSession(id: string): Promise<DeploymentHealingSession>;
+  getUsageSummary(): Promise<UsageSummary>;
+  recordAppOpen(): Promise<UsageSummary>;
   getConfig(): Promise<Config>;
   updateConfig(updates: Partial<Config>): Promise<Config>;
   listSocialChangelogs(): Promise<SocialChangelog[]>;
@@ -1274,6 +1277,14 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
         await storage.getDeploymentHealingSession(id),
         "Deployment healing session not found",
       );
+    },
+
+    async getUsageSummary() {
+      return storage.getUsageSummary();
+    },
+
+    async recordAppOpen() {
+      return storage.incrementUsageCounter("appOpenCount");
     },
 
     async getConfig() {

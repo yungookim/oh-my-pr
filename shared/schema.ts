@@ -441,6 +441,33 @@ export const deploymentHealingSessionSchema = z.object({
 });
 export type DeploymentHealingSession = z.infer<typeof deploymentHealingSessionSchema>;
 
+export const usageCounterKeyEnum = z.enum([
+  "appOpenCount",
+  "trackedPrCount",
+  "mergedPrCount",
+  "fixesMadeCount",
+]);
+export type UsageCounterKey = z.infer<typeof usageCounterKeyEnum>;
+
+export const usageCountersSchema = z.object({
+  appOpenCount: z.number().int().nonnegative(),
+  trackedPrCount: z.number().int().nonnegative(),
+  mergedPrCount: z.number().int().nonnegative(),
+  fixesMadeCount: z.number().int().nonnegative(),
+});
+export type UsageCounters = z.infer<typeof usageCountersSchema>;
+
+export const usageDailyBucketSchema = usageCountersSchema.extend({
+  date: z.string(),
+});
+export type UsageDailyBucket = z.infer<typeof usageDailyBucketSchema>;
+
+export const usageSummarySchema = z.object({
+  totals: usageCountersSchema,
+  daily: z.array(usageDailyBucketSchema),
+});
+export type UsageSummary = z.infer<typeof usageSummarySchema>;
+
 export const configSchema = z.object({
   githubTokens: z.array(z.string()),
   githubToken: z.string().optional(),

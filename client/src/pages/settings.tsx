@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Config, RuntimeState } from "@shared/schema";
+import type { Config, RuntimeState, UsageCounterKey, UsageSummary } from "@shared/schema";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -10,9 +10,23 @@ import {
   getDrainStatusView,
 } from "@/lib/runtimeDisplay";
 
+const USAGE_METRICS: Array<{ key: UsageCounterKey; label: string }> = [
+  { key: "appOpenCount", label: "app opens" },
+  { key: "trackedPrCount", label: "PRs tracked" },
+  { key: "mergedPrCount", label: "merged" },
+  { key: "fixesMadeCount", label: "fixes made" },
+];
+
+function formatUsageNumber(value: number | undefined): string {
+  return (value ?? 0).toLocaleString();
+}
+
 export default function Settings() {
   const { data: config } = useQuery<Config>({
     queryKey: ["/api/config"],
+  });
+  const { data: usage } = useQuery<UsageSummary>({
+    queryKey: ["/api/usage"],
   });
 
   const [newGithubToken, setNewGithubToken] = useState("");
@@ -97,6 +111,44 @@ export default function Settings() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto flex max-w-2xl flex-col gap-8">
+
+          {/* Usage */}
+          <section>
+            <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Usage
+            </h2>
+            <div
+              className="flex flex-col gap-4 rounded border border-border p-4"
+              data-testid="settings-usage-panel"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm">Anonymous local usage</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Counts only. No repo names, PR URLs, or user identity.
+                  </div>
+                </div>
+                <Link
+                  href="/usage"
+                  className="shrink-0 border border-border px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                >
+                  details
+                </Link>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {USAGE_METRICS.map((metric) => (
+                  <div key={metric.key} className="border border-border px-2 py-2">
+                    <div className="font-mono text-lg leading-none">
+                      {formatUsageNumber(usage?.totals[metric.key])}
+                    </div>
+                    <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {metric.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
 
           {/* Agent */}
           <section>

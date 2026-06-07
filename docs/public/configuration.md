@@ -31,6 +31,19 @@ By default, oh-my-pr stores all state in a local SQLite database:
 
 No external database is required. This is ideal for single-user setups.
 
+## Usage Tracking
+
+oh-my-pr keeps a small anonymous usage summary locally so operators can understand how much the babysitter is being used. It records only daily counts for:
+
+- app opens
+- PRs tracked
+- tracked PRs observed as merged
+- fixes made by babysitter runs or deployment-healing fix PRs
+
+Usage tracking does not store repo names, PR URLs, GitHub users, feedback text, or an event stream. The counters are stored in the local app database, in the `usage_daily` table when using SQLite, and are not sent to GitHub or an external analytics service.
+
+View usage totals from the dashboard settings page or open `/usage` for totals and the last 30 recorded days. The local API also exposes `GET /api/usage`; the dashboard records an app open once per mounted app shell through `POST /api/usage/app-open`.
+
 ## Activity Logs
 
 oh-my-pr writes daily activity logs to:
@@ -62,6 +75,7 @@ The settings page in the dashboard provides a UI for:
 
 - **GitHub token management** — Add, remove, and reorder saved tokens before falling back to `GITHUB_TOKEN` or `gh auth`.
 - **Agent selection** — Choose whether autonomous runs use Claude Code or OpenAI Codex. Enabling **Fallback to next coding agent** lets oh-my-pr switch to the other local CLI when the selected agent cannot start, cannot authenticate, or fails a health check; code-owner fallback runs use the same resolved agent.
+- **Usage** — Review anonymous local totals for app opens, tracked PRs, merged PRs, and fixes made, with a link to the `/usage` page for daily charts.
 - **Babysitter tuning** — Control polling, batching, merge-conflict handling, release automation, and automatic docs assessment.
 - **Runtime drain mode** — Pause new background automation and manual agent-triggering actions while allowing in-flight work to finish. During drain mode, the dashboard disables Run now/apply, feedback retry, Ask Agent, manual Release, and release retry actions; matching API calls return `409` instead of queueing new agent work.
 - **Ignored bots** — Add or remove bot logins whose comments and reviews should be ignored.

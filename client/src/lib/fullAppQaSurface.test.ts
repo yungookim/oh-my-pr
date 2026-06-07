@@ -263,8 +263,10 @@ test("full app QA route matrix is wired through the hash router", async () => {
     { label: "changelogs", path: "/changelogs", component: "Changelogs" },
     { label: "releases", path: "/releases", component: "Releases" },
     { label: "logs", path: "/logs", component: "Logs" },
+    { label: "usage", path: "/usage", component: "Usage" },
     { label: "not found fallback", component: "NotFound" },
   ]);
+  assertHasApiRequest(sourceFile, "app open usage mutation", "POST", "/api/usage/app-open");
 });
 
 test("dashboard keeps the QA-tested PR, repo, feedback, and side-panel workflows wired", async () => {
@@ -338,10 +340,13 @@ test("settings keeps the QA-tested configuration, token, and runtime controls wi
 
   assertHasQueryKey(sourceFile, "settings config query", "/api/config");
   assertHasQueryKey(sourceFile, "runtime query", "/api/runtime");
+  assertHasQueryKey(sourceFile, "usage query", "/api/usage");
   assertHasApiRequest(sourceFile, "config mutation", "PATCH", "/api/config");
   assertHasApiRequest(sourceFile, "drain mutation", "POST", "/api/runtime/drain");
 
   assertHasJsxAttribute(sourceFile, "id", "coding agent selector", "settings-coding-agent");
+  assertHasTestId(sourceFile, "usage panel", "settings-usage-panel");
+  assertHasJsxAttribute(sourceFile, "href", "usage details link", "/usage");
   for (const [label, testId] of [
     ["fallback toggle", "checkbox-fallback-to-next-coding-agent"],
     ["auto resolve conflicts toggle", "checkbox-auto-resolve-conflicts"],
@@ -353,6 +358,20 @@ test("settings keeps the QA-tested configuration, token, and runtime controls wi
     assertHasTestId(sourceFile, label, testId);
   }
   assertHasExpression(sourceFile, "ordered GitHub tokens", /\bgithubTokens\b/);
+});
+
+test("usage route keeps anonymous usage charts wired", async () => {
+  const { sourceFile } = await parseProjectFile("client/src/pages/usage.tsx");
+
+  assertHasQueryKey(sourceFile, "usage query", "/api/usage");
+  for (const [label, testId] of [
+    ["usage page", "usage-page"],
+    ["usage totals", "usage-totals"],
+    ["usage charts", "usage-charts"],
+  ] satisfies SourceExpectation[]) {
+    assertHasTestId(sourceFile, label, testId);
+  }
+  assertHasStringValue(sourceFile, "anonymous usage copy", "Anonymous. Stored locally.");
 });
 
 test("logs route keeps the QA-tested filtering, streaming, copy, and download surface wired", async () => {

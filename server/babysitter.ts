@@ -2050,6 +2050,14 @@ export class PRBabysitter {
           });
 
           const repoAutoCreateReleases = repoSettingsByRepo.get(repoSlug)?.autoCreateReleases ?? false;
+          if (closeState?.merged) {
+            await this.storage.incrementUsageCounter(
+              "mergedPrCount",
+              1,
+              closeState.mergedAt || closeState.closedAt || new Date().toISOString(),
+            );
+          }
+
           if (!automationBlocked && closeState?.merged && this.releaseManager && config.autoCreateReleases) {
             if (!repoAutoCreateReleases) {
               await this.storage.addLog(pr.id, "info", `PR #${pr.number} was merged, but auto-release is disabled for ${repoSlug}`, {
@@ -4335,6 +4343,9 @@ export class PRBabysitter {
           }
 
           branchMoved = remoteHeadSha !== pullSummary.headSha;
+          if (branchMoved) {
+            await this.storage.incrementUsageCounter("fixesMadeCount");
+          }
 
           if (statusTasks.length > 0 && !branchMoved) {
             throw new Error("Agent did not update the PR head branch for accepted failing status tasks");
@@ -4498,6 +4509,9 @@ export class PRBabysitter {
             latestFingerprint: healingAttemptResult.targetFingerprints[0] ?? healingSession.latestFingerprint,
           });
           branchMoved = healingAttemptResult.verification.pushedNewSha;
+          if (branchMoved) {
+            await this.storage.incrementUsageCounter("fixesMadeCount");
+          }
           headShaForFollowUp = healingAttemptResult.verification.remoteHeadSha;
           remoteNameForLogs = healingAttemptResult.remoteName;
         } else {
