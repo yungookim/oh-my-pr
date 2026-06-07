@@ -261,6 +261,25 @@ test("GET /api/usage exposes only anonymous aggregate usage", async () => {
   }
 });
 
+test("GET /api/usage returns an app-aware error when usage summary fails", async () => {
+  const harness = await createHarness();
+
+  try {
+    harness.storage.getUsageSummary = async () => {
+      throw new Error("usage summary unavailable");
+    };
+
+    const response = await fetch(`${harness.baseUrl}/api/usage`);
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), {
+      error: "usage summary unavailable",
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
 test("POST /api/usage/app-open increments anonymous app open usage", async () => {
   const harness = await createHarness();
 

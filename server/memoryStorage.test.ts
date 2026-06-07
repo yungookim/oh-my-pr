@@ -455,6 +455,25 @@ describe("MemStorage", () => {
         },
       ]);
     });
+
+    it("falls back to the current UTC date for invalid usage timestamps", async () => {
+      const validFallbackDates = new Set([
+        new Date().toISOString().slice(0, 10),
+      ]);
+
+      const usage = await storage.incrementUsageCounter("appOpenCount", 1, "not-a-date");
+      validFallbackDates.add(new Date().toISOString().slice(0, 10));
+
+      assert.deepEqual(usage.totals, {
+        appOpenCount: 1,
+        trackedPrCount: 0,
+        mergedPrCount: 0,
+        fixesMadeCount: 0,
+      });
+      assert.equal(usage.daily.length, 1);
+      assert.equal(validFallbackDates.has(usage.daily[0]?.date ?? ""), true);
+      assert.equal(usage.daily[0]?.appOpenCount, 1);
+    });
   });
 
   // ── Config ───────────────────────────────────────────────

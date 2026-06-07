@@ -1684,7 +1684,12 @@ export class SqliteStorage implements IStorage {
       return this.getUsageSummary();
     }
 
-    const date = new Date(occurredAt).toISOString().slice(0, 10);
+    let date: string;
+    try {
+      date = new Date(occurredAt).toISOString().slice(0, 10);
+    } catch {
+      date = new Date().toISOString().slice(0, 10);
+    }
     const column = this.usageCounterColumn(counter);
     this.run(`
       INSERT INTO usage_daily (date, ${column})

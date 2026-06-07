@@ -265,7 +265,12 @@ export class MemStorage implements IStorage {
       return this.getUsageSummary();
     }
 
-    const date = new Date(occurredAt).toISOString().slice(0, 10);
+    let date: string;
+    try {
+      date = new Date(occurredAt).toISOString().slice(0, 10);
+    } catch {
+      date = new Date().toISOString().slice(0, 10);
+    }
     const bucket = this.usageDailyBuckets.get(date) ?? this.createEmptyUsageDailyBucket(date);
     this.usageDailyBuckets.set(date, {
       ...bucket,

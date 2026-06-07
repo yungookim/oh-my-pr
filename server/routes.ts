@@ -455,7 +455,11 @@ export async function registerRoutes(
   });
 
   app.get("/api/usage", async (_req, res) => {
-    res.json(usageSummarySchema.parse(await runtime.getUsageSummary()));
+    try {
+      res.json(usageSummarySchema.parse(await runtime.getUsageSummary()));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
   });
 
   app.post("/api/usage/app-open", async (_req, res) => {
