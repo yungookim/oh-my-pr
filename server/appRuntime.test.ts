@@ -324,6 +324,141 @@ test("runtime updateConfig persists updates and exposes them through getConfig",
   assert.equal(config.postGitHubProgressReplies, true);
 });
 
+test("runtime reuses onboarding status within the cache window", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ watchedRepos: ["acme/widgets"] });
+  let statusChecks = 0;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: false,
+    checkOnboardingStatusFn: async (_config, watchedRepos) => {
+      statusChecks += 1;
+      return {
+        githubConnected: true,
+        githubUser: "octo",
+        repos: watchedRepos.map((repo) => ({
+          repo,
+          accessible: true,
+          codeReviews: { claude: false, codex: true, gemini: false },
+        })),
+      };
+    },
+  });
+
+  const first = await runtime.getOnboardingStatus();
+  const second = await runtime.getOnboardingStatus();
+
+  assert.equal(statusChecks, 1);
+  assert.deepEqual(second, first);
+});
+
+test("runtime treats missing githubTokens as empty for onboarding status cache keys", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ watchedRepos: ["acme/widgets"] });
+  const getConfig = storage.getConfig.bind(storage);
+  storage.getConfig = async () => {
+    const config = await getConfig();
+    return { ...config, githubTokens: undefined as unknown as string[] };
+  };
+  let statusChecks = 0;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: false,
+    checkOnboardingStatusFn: async (_config, watchedRepos) => {
+      statusChecks += 1;
+      return {
+        githubConnected: true,
+        githubUser: "octo",
+        repos: watchedRepos.map((repo) => ({
+          repo,
+          accessible: true,
+          codeReviews: { claude: false, codex: true, gemini: false },
+        })),
+      };
+    },
+  });
+
+  const status = await runtime.getOnboardingStatus();
+
+  assert.equal(statusChecks, 1);
+  assert.equal(status.repos[0]?.repo, "acme/widgets");
+});
+
+test("runtime refreshes onboarding status after config changes", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ watchedRepos: ["acme/widgets"] });
+  let statusChecks = 0;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: false,
+    checkOnboardingStatusFn: async (_config, watchedRepos) => {
+      statusChecks += 1;
+      return {
+        githubConnected: true,
+        githubUser: "octo",
+        repos: watchedRepos.map((repo) => ({
+          repo,
+          accessible: true,
+          codeReviews: { claude: false, codex: statusChecks > 1, gemini: false },
+        })),
+      };
+    },
+  });
+
+  const before = await runtime.getOnboardingStatus();
+  await runtime.updateConfig({ maxTurns: 25 });
+  const after = await runtime.getOnboardingStatus();
+
+  assert.equal(statusChecks, 2);
+  assert.notDeepEqual(after, before);
+});
+
+test("runtime does not cache stale in-flight onboarding status after config changes", async () => {
+  const storage = new MemStorage();
+  await storage.updateConfig({ watchedRepos: ["acme/widgets"] });
+  let statusChecks = 0;
+  let resolveFirst: (() => void) | null = null;
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: false,
+    checkOnboardingStatusFn: async (_config, watchedRepos) => {
+      statusChecks += 1;
+      const hasCodex = statusChecks > 1;
+      if (statusChecks === 1) {
+        await new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+
+      return {
+        githubConnected: true,
+        githubUser: "octo",
+        repos: watchedRepos.map((repo) => ({
+          repo,
+          accessible: true,
+          codeReviews: { claude: false, codex: hasCodex, gemini: false },
+        })),
+      };
+    },
+  });
+
+  const first = runtime.getOnboardingStatus();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(statusChecks, 1);
+
+  await runtime.updateConfig({ maxTurns: 25 });
+  resolveFirst?.();
+  await first;
+  const after = await runtime.getOnboardingStatus();
+
+  assert.equal(statusChecks, 2);
+  assert.equal(after.repos[0]?.codeReviews.codex, true);
+});
+
 test("runtime release adapter skips merged PRs without a merge commit SHA", () => {
   const summaries = mapMergedPullsToReleaseSummaries([
     {

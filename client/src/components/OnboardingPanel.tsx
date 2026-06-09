@@ -192,7 +192,12 @@ export function OnboardingPanel() {
 
   const { data: status, isLoading } = useQuery<OnboardingStatus>({
     queryKey: ["/api/onboarding/status"],
-    refetchInterval: 30000,
+    refetchInterval: (query) => {
+      const currentStatus = query.state.data as OnboardingStatus | undefined;
+      if (!currentStatus) return 120000;
+      return getOnboardingPanelState(currentStatus).hasIssues ? 120000 : false;
+    },
+    refetchOnWindowFocus: false,
   });
   const { data: config } = useQuery<Config>({
     queryKey: ["/api/config"],
