@@ -96,7 +96,7 @@ You can authenticate with:
 
 ### Watch Scope
 
-Watched repositories default to `My PRs only`. You can switch a repo to `My PRs + teammates`, or skip auto-discovery entirely and register a single PR by URL.
+Watched repositories default to `My PRs only`. You can switch a repo to `My PRs + teammates`, stop watching a repo when you no longer want auto-discovery for it, or skip auto-discovery entirely and register a single PR by URL. Stopping watch preserves existing PR records; remove individual PRs separately if you want them gone.
 
 ### Interfaces
 

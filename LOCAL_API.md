@@ -102,6 +102,11 @@ and authenticate the matching platform CLI on the same machine:
 # List watched repos
 curl http://localhost:5001/api/repos
 
+# Stop watching a repo without deleting existing PR records
+curl -X DELETE http://localhost:5001/api/repos \
+  -H "Content-Type: application/json" \
+  -d '{"repo":"owner/repo"}'
+
 # Add a PR
 curl -X POST http://localhost:5001/api/prs \
   -H "Content-Type: application/json" \
@@ -275,8 +280,9 @@ including release automation, CI healing, and deployment-healing keys.
 #### `GET /api/repos`
 
 Returns the union of explicitly watched repos and repos inferred from tracked PRs.
-Use `GET /api/repos/settings` when you need per-repo settings such as
-`ownPrsOnly`.
+Repos that are no longer watched can still appear here when existing PR records
+belong to them. Use `GET /api/repos/settings` when you need the active watch
+list and per-repo settings such as `ownPrsOnly`.
 
 **Response** `200`
 ```json
@@ -287,8 +293,7 @@ Use `GET /api/repos/settings` when you need per-repo settings such as
 
 #### `GET /api/repos/settings`
 
-Returns repo-level settings for explicitly watched repos plus any repos inferred
-from currently tracked PRs.
+Returns repo-level settings for explicitly watched repos.
 
 `ownPrsOnly: true` means the watcher auto-discovers only PRs authored by the
 authenticated GitHub user for that repo. `ownPrsOnly: false` enables team-wide
@@ -310,11 +315,35 @@ Accepts `"owner/repo"` slugs or full `https://github.com/owner/repo` URLs.
 
 New watched repos default to `ownPrsOnly: true` (`My PRs only`). To switch a
 repo to team-wide discovery, call `PATCH /api/repos/settings` after adding it.
+To stop watching the repo later, call `DELETE /api/repos`.
 
 **Response** `201`
 ```json
 { "repo": "owner/repo" }
 ```
+
+---
+
+#### `DELETE /api/repos`
+
+Remove a repository from the watch list.
+
+This stops repo-level auto-discovery and removes repo-level settings for the
+repository. Existing tracked or archived PR records are preserved; remove those
+separately with PR endpoints if you want them gone. After a repo is unwatched,
+old PR records do not cause the watcher to auto-register new PRs for that repo.
+
+**Body**
+```json
+{ "repo": "owner/repo" }
+```
+Accepts `"owner/repo"` slugs or full `https://github.com/owner/repo` URLs.
+
+**Response** `200`
+```json
+{ "repo": "owner/repo" }
+```
+**Response** `400` — invalid body or repository slug
 
 ---
 

@@ -280,6 +280,7 @@ test("dashboard keeps the QA-tested PR, repo, feedback, and side-panel workflows
     ["add PR submit", "button-add-pr"],
     ["watch repo input", "input-add-repo"],
     ["watch repo submit", "button-add-repo"],
+    ["unwatch repo action", /tracked-repo-unwatch-\$\{repo\.repo\.replace\(\s*["']\/["']\s*,\s*["']-["']\s*\)\}/],
     ["run-now action", "button-apply"],
     ["pause-resume watch action", "button-toggle-watch"],
     ["CI healing panel", "panel-ci-healing"],
@@ -310,6 +311,7 @@ test("dashboard keeps the QA-tested PR, repo, feedback, and side-panel workflows
 
   assertHasApiRequest(sourceFile, "add PR mutation", "POST", "/api/prs");
   assertHasApiRequest(sourceFile, "watch repo mutation", "POST", "/api/repos");
+  assertHasApiRequest(sourceFile, "unwatch repo mutation", "DELETE", "/api/repos");
   assertHasApiRequest(sourceFile, "sync repos mutation", "POST", "/api/repos/sync");
   assertHasApiRequest(sourceFile, "manual release mutation", "POST", "/api/repos/release");
   assertHasApiRequest(sourceFile, "failed activity clear mutation", "DELETE", "/api/activities/failed");
