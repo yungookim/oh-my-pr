@@ -1950,19 +1950,6 @@ export class PRBabysitter {
       ...config.watchedRepos,
     ]);
     const selectedAgent = config.codingAgent as CodingAgent;
-    let watcherAgent = selectedAgent;
-    const watchedPrIds = tracked
-      .filter((pr) => pr.watchEnabled !== false && pr.status !== "archived")
-      .map((pr) => pr.id);
-    if (!automationBlocked && repoCandidates.size > 0) {
-      try {
-        watcherAgent = (await this.ensureAgentHealthy(selectedAgent, watchedPrIds, {
-          allowFallback: config.fallbackToNextCodingAgent,
-        })).agent;
-      } catch {
-        return;
-      }
-    }
 
     const repoSettingsByRepo = new Map(
       (await this.storage.listRepoSettings()).map((repo) => [repo.repo, repo]),
@@ -2358,17 +2345,27 @@ export class PRBabysitter {
           }
         }
 
+        let runAgent: CodingAgent;
+        try {
+          runAgent = (await this.ensureAgentHealthy(selectedAgent, [local.id], {
+            allowFallback: config.fallbackToNextCodingAgent,
+          })).agent;
+        } catch {
+          continue;
+        }
+
         await this.storage.addLog(local.id, "info", "Watcher queued autonomous babysitter run", {
           phase: "watcher",
           metadata: { repo: repoSlug },
         });
+
         if (this.scheduleBackgroundJob) {
           await this.scheduleBackgroundJob(
             "babysit_pr",
             local.id,
             buildBackgroundJobDedupeKey("babysit_pr", local.id),
             {
-              preferredAgent: watcherAgent,
+              preferredAgent: runAgent,
               ...buildActivityPayload({
                 label: `Babysitting PR #${local.number}`,
                 detail: `${local.repo} - ${local.title}`,
@@ -2377,7 +2374,7 @@ export class PRBabysitter {
             },
           );
         } else {
-          await this.babysitPR(local.id, watcherAgent);
+          await this.babysitPR(local.id, runAgent);
         }
       }
     }

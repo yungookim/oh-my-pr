@@ -348,7 +348,7 @@ test("BackgroundJobDispatcher retries transient handler errors before completing
     const stored = await storage.getBackgroundJob(job.id);
     assert.equal(stored?.status, "completed");
     assert.equal(stored?.attemptCount, 2);
-    assert.equal(stored?.lastError, null);
+    assert.match(stored?.lastError ?? "", /temporary GitHub outage/);
   } finally {
     dispatcher.stop();
   }

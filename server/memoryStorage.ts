@@ -612,7 +612,6 @@ export class MemStorage implements IStorage {
       leaseToken: null,
       leaseExpiresAt: null,
       heartbeatAt: null,
-      lastError: null,
       completedAt,
     });
     this.backgroundJobs.set(id, updated);

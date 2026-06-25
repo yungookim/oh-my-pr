@@ -75,6 +75,7 @@ export type AppRuntimeDependencies = {
   startBackgroundServices?: boolean;
   startWatcher?: boolean;
   checkOnboardingStatusFn?: typeof checkOnboardingStatus;
+  now?: () => Date;
 };
 
 export type RuntimeSnapshot = RuntimeState & {
@@ -299,6 +300,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
   const events = new EventEmitter();
   const backgroundJobQueue = dependencies.backgroundJobQueue ?? new BackgroundJobQueue(storage);
   const checkOnboardingStatusFn = dependencies.checkOnboardingStatusFn ?? checkOnboardingStatus;
+  const now = dependencies.now ?? (() => new Date());
   // eslint-disable-next-line prefer-const -- circular dep: closure references this before it can be initialized
   let backgroundJobDispatcher!: BackgroundJobDispatcher;
 
@@ -410,6 +412,7 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
   let watcherTimer: NodeJS.Timeout | null = null;
   let watcherIntervalMs = 0;
+  let lastWatcherHeartbeatAtMs: number | null = null;
   const watcherScheduler = dependencies.watcherScheduler ?? createWatcherScheduler(
     async () => {
       await scheduleBackgroundJob(
@@ -739,7 +742,16 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
 
     watcherIntervalMs = interval;
     watcherTimer = setInterval(() => {
-      const heartbeatAt = new Date().toISOString();
+      const current = now();
+      if (lastWatcherHeartbeatAtMs !== null) {
+        const delayMs = current.getTime() - lastWatcherHeartbeatAtMs;
+        if (delayMs > watcherIntervalMs * 2) {
+          log.warn({ delayMs, pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat delayed");
+        }
+      }
+
+      lastWatcherHeartbeatAtMs = current.getTime();
+      const heartbeatAt = current.toISOString();
       void storage.updateRuntimeState({
         watcherHeartbeatAt: heartbeatAt,
         watcherIntervalMs,
@@ -749,7 +761,9 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       log.info({ pollIntervalMs: watcherIntervalMs }, "Repository watcher heartbeat");
       void runWatcher();
     }, interval);
-    const startedAt = new Date().toISOString();
+    const started = now();
+    lastWatcherHeartbeatAtMs = started.getTime();
+    const startedAt = started.toISOString();
     void storage.updateRuntimeState({
       watcherStartedAt: startedAt,
       watcherHeartbeatAt: startedAt,
