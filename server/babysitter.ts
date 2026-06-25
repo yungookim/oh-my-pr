@@ -1945,7 +1945,7 @@ export class PRBabysitter {
 
     const config = await this.storage.getConfig();
     const tracked = await this.storage.getPRs();
-    const explicitlyWatchedRepos = new Set(config.watchedRepos);
+    const explicitlyWatchedRepos = new Set(config.watchedRepos.map((repo) => repo.toLowerCase()));
     const repoCandidates = new Set<string>([
       ...tracked.map((pr) => pr.repo),
       ...config.watchedRepos,
@@ -1999,7 +1999,7 @@ export class PRBabysitter {
 
     for (const repo of repos) {
       const repoSlug = formatRepoSlug(repo);
-      const repoIsExplicitlyWatched = explicitlyWatchedRepos.has(repoSlug);
+      const repoIsExplicitlyWatched = explicitlyWatchedRepos.has(repoSlug.toLowerCase());
 
       let openPulls;
       try {
