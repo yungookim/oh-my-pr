@@ -99,6 +99,7 @@ export type AppRuntime = {
   listRepos(): Promise<string[]>;
   listRepoSettings(): Promise<WatchedRepo[]>;
   addRepo(repoInput: string): Promise<{ repo: string }>;
+  removeRepo(repoInput: string): Promise<{ repo: string }>;
   updateRepoSettings(repoInput: string, updates: Partial<Omit<WatchedRepo, "repo">>): Promise<WatchedRepo>;
   syncRepos(): Promise<{ ok: true }>;
   createManualRelease(repoInput: string): Promise<ReleaseRun>;
@@ -941,23 +942,8 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
     },
 
     async listRepoSettings() {
-      const [configuredRepos, prs] = await Promise.all([
-        storage.listRepoSettings(),
-        storage.getPRs(),
-      ]);
-      const byRepo = new Map(configuredRepos.map((repo) => [repo.repo, repo]));
-
-      for (const pr of prs) {
-        if (!byRepo.has(pr.repo)) {
-          byRepo.set(pr.repo, {
-            repo: pr.repo,
-            autoCreateReleases: false,
-            ownPrsOnly: true,
-          });
-        }
-      }
-
-      return Array.from(byRepo.values()).sort((a, b) => a.repo.localeCompare(b.repo));
+      const configuredRepos = await storage.listRepoSettings();
+      return configuredRepos.sort((a, b) => a.repo.localeCompare(b.repo));
     },
 
     async addRepo(repoInput) {
@@ -976,6 +962,25 @@ export function createAppRuntime(dependencies: AppRuntimeDependencies = {}): App
       }
 
       void runWatcher();
+      notifyChange();
+      return { repo: canonical };
+    },
+
+    async removeRepo(repoInput) {
+      const parsedRepo = parseRepoSlug(repoInput);
+      if (!parsedRepo) {
+        throw new AppRuntimeError(400, "Invalid repository. Use owner/repo or https://github.com/owner/repo");
+      }
+
+      const canonical = formatRepoSlug(parsedRepo);
+      const config = await storage.getConfig();
+      if (config.watchedRepos.includes(canonical)) {
+        await storage.updateConfig({
+          watchedRepos: config.watchedRepos.filter((repo) => repo !== canonical),
+        });
+        invalidateOnboardingStatusCache("watched repo removed");
+      }
+
       notifyChange();
       return { repo: canonical };
     },

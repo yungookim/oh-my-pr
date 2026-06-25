@@ -7116,6 +7116,61 @@ test("syncAndBabysitTrackedRepos auto-registers only the authenticated user's PR
   assert.deepEqual(queuedTargets, [prs[0]!.id]);
 });
 
+test("syncAndBabysitTrackedRepos does not auto-register new PRs for unwatched repos with old tracked PRs", async () => {
+  const storage = new MemStorage();
+  await storage.addPR({
+    number: 105,
+    title: "Old tracked PR",
+    repo: "alex-morgan-o/lolodex",
+    branch: "feature/old",
+    author: "octocat",
+    url: "https://github.com/alex-morgan-o/lolodex/pull/105",
+    status: "watching",
+    feedbackItems: [],
+    accepted: 0,
+    rejected: 0,
+    flagged: 0,
+    testsPassed: null,
+    lintPassed: null,
+    lastChecked: null,
+  });
+
+  const babysitter = new PRBabysitter(
+    storage,
+    makeWatcherGitHubService({
+      listOpenPullsForRepo: async () => {
+        return [
+          {
+            number: 105,
+            title: "Old tracked PR",
+            branch: "feature/old",
+            author: "octocat",
+            url: "https://github.com/alex-morgan-o/lolodex/pull/105",
+          },
+          {
+            number: 106,
+            title: "New PR from unwatched repo",
+            branch: "feature/new",
+            author: "octocat",
+            url: "https://github.com/alex-morgan-o/lolodex/pull/106",
+          },
+        ];
+      },
+    }),
+    {
+      resolveAgent: async () => "codex",
+      evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
+      applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
+      runCommand: async () => ({ code: 0, stdout: "", stderr: "" }),
+    },
+  );
+
+  await babysitter.syncAndBabysitTrackedRepos();
+
+  const prs = await storage.getPRs();
+  assert.deepEqual(prs.map((pr) => pr.number), [105]);
+});
+
 test("syncAndBabysitTrackedRepos can include teammate PRs when repo setting disables own-only filtering", async () => {
   const storage = new MemStorage();
   await storage.updateConfig({

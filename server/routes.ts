@@ -247,6 +247,15 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/repos", async (req, res) => {
+    try {
+      const { repo } = z.object({ repo: z.string().min(1) }).parse(req.body);
+      res.json(await runtime.removeRepo(repo));
+    } catch (error: unknown) {
+      sendAppAwareError(res, error);
+    }
+  });
+
   app.patch("/api/repos/settings", async (req, res) => {
     try {
       const payload = z.object({

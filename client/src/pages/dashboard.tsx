@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type MouseEvent } from "rea
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { Activity as ActivityIcon } from "lucide-react";
+import { Activity as ActivityIcon, Trash2 } from "lucide-react";
 import { queryClient, apiRequest, fetchJson } from "@/lib/queryClient";
 import { getRepoHref } from "@/lib/repoHref";
 import { getRepoAddControlsOpen } from "@/lib/repoAddControls";
@@ -1479,6 +1479,24 @@ export default function Dashboard() {
     },
   });
 
+  const removeRepoMutation = useMutation({
+    mutationFn: async (repo: string) => {
+      const res = await apiRequest("DELETE", "/api/repos", { repo });
+      return res.json() as Promise<{ repo: string }>;
+    },
+    onSuccess: ({ repo }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/repos/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/prs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/prs/archived"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+      toast({ description: `Stopped watching ${repo}.` });
+    },
+    onError: (error) => {
+      showMutationError("Could not unwatch repository", error);
+    },
+  });
+
   return (
     <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       <UpdateBanner />
@@ -1715,6 +1733,8 @@ export default function Dashboard() {
                       {repos.map((repo) => {
                         const manualReleasePending = manualReleaseMutation.isPending
                           && manualReleaseMutation.variables === repo.repo;
+                        const removeRepoPending = removeRepoMutation.isPending
+                          && removeRepoMutation.variables === repo.repo;
 
                         return (
                           <div
@@ -1776,6 +1796,29 @@ export default function Dashboard() {
                                 >
                                   {globalDrainMode ? DRAIN_PAUSED_LABEL : manualReleasePending ? "Releasing..." : "Release"}
                                 </button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeRepoMutation.mutate(repo.repo)}
+                                      disabled={removeRepoMutation.isPending}
+                                      title="Unwatch repository"
+                                      aria-label={`Unwatch ${repo.repo}`}
+                                      data-testid={`tracked-repo-unwatch-${repo.repo.replace("/", "-")}`}
+                                      className="flex h-6 w-6 items-center justify-center border border-border text-muted-foreground transition-colors hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:opacity-30"
+                                    >
+                                      <Trash2 className="h-3 w-3" aria-hidden="true" />
+                                      <span className="sr-only">
+                                        {removeRepoPending ? "Unwatching" : "Unwatch"}
+                                      </span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">
+                                      {removeRepoPending ? "Unwatching repository" : "Unwatch repository"}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
                               </div>
                             </div>
                           </div>

@@ -1287,6 +1287,49 @@ test("PATCH /api/repos/settings can update only ownPrsOnly", async () => {
   }
 });
 
+test("DELETE /api/repos unwatches a repository without deleting existing PRs", async () => {
+  const harness = await createHarness();
+  await harness.storage.updateConfig({
+    watchedRepos: ["acme/api", "acme/widgets"],
+  });
+  await harness.storage.updateRepoSettings("acme/widgets", {
+    autoCreateReleases: true,
+    ownPrsOnly: false,
+  });
+  const pr = await seedPR(harness.storage);
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/repos`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        repo: "https://github.com/acme/widgets",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      repo: "acme/widgets",
+    });
+
+    const config = await harness.storage.getConfig();
+    assert.deepEqual(config.watchedRepos, ["acme/api"]);
+
+    const settingsResponse = await fetch(`${harness.baseUrl}/api/repos/settings`);
+    assert.equal(settingsResponse.status, 200);
+    assert.deepEqual(await settingsResponse.json(), [{
+      repo: "acme/api",
+      autoCreateReleases: false,
+      ownPrsOnly: true,
+    }]);
+
+    assert.deepEqual(await harness.storage.getPR(pr.id), pr);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("GET /api/app-update exposes the app update check result", async () => {
   const originalVersion = process.env.APP_VERSION;
   process.env.APP_VERSION = "1.0.0";
