@@ -1177,13 +1177,14 @@ export class SqliteStorage implements IStorage {
         return undefined;
       }
 
-      const updated = applyBackgroundJobUpdate(this.parseBackgroundJobRow(current), {
+      const existing = this.parseBackgroundJobRow(current);
+      const updated = applyBackgroundJobUpdate(existing, {
         status,
         leaseOwner: null,
         leaseToken: null,
         leaseExpiresAt: null,
         heartbeatAt: null,
-        lastError: error,
+        lastError: status === "completed" ? existing.lastError : error,
         completedAt,
       });
 

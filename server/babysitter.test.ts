@@ -771,7 +771,9 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   };
   let feedbackFetches = 0;
   let failingStatusFetches = 0;
-  const nowMs = Date.parse("2026-06-02T10:00:00.000Z");
+  let healthChecks = 0;
+  let healthCheckHealthy = true;
+  let nowMs = Date.parse("2026-06-02T10:00:00.000Z");
 
   const babysitter = new PRBabysitter(
     storage,
@@ -790,6 +792,12 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
     {
       resolveAgent: async () => "codex",
       now: () => new Date(nowMs),
+      checkAgentHealth: async () => {
+        healthChecks += 1;
+        return healthCheckHealthy
+          ? { ok: true }
+          : { ok: false, reason: "codex health check failed: Command timed out after 30000ms" };
+      },
       ciPollIntervalMs: 0,
       evaluateFixNecessityWithAgent: async () => ({ needsFix: false, reason: "unused" }),
       applyFixesWithAgent: async () => ({ code: 0, stdout: "", stderr: "" }),
@@ -800,6 +808,8 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   );
 
   await babysitter.babysitPR(pr.id, "codex");
+  nowMs += 120_000;
+  healthCheckHealthy = false;
   await babysitter.syncAndBabysitTrackedRepos();
 
   const jobs = await storage.listBackgroundJobs({
@@ -808,6 +818,7 @@ test("syncAndBabysitTrackedRepos skips unchanged PR heads after a no-op babysitt
   });
   const logs = await storage.getLogs(pr.id);
   assert.equal(jobs.length, 0);
+  assert.equal(healthChecks, 1);
   assert.equal(feedbackFetches, 1);
   assert.equal(failingStatusFetches, 1);
   assert.ok(logs.some((log) =>
@@ -1816,9 +1827,16 @@ test("syncAndBabysitTrackedRepos pauses automation when the selected agent is un
   const babysitter = new PRBabysitter(
     storage,
     makeWatcherGitHubService({
-      listOpenPullsForRepo: async () => {
-        throw new Error("watcher should not fetch PRs when agent health fails");
-      },
+      listOpenPullsForRepo: async () => [{
+        number: 42,
+        title: "Needs watching",
+        branch: "feature/example",
+        author: "octocat",
+        url: "https://github.com/octo/example/pull/42",
+        headSha: "new-head",
+        baseRef: "main",
+        baseSha: "base123",
+      }],
     }) as never,
     {
       resolveAgent: async () => "claude",
@@ -1889,9 +1907,16 @@ test("syncAndBabysitTrackedRepos does not enter drain mode for transient agent h
   const babysitter = new PRBabysitter(
     storage,
     makeWatcherGitHubService({
-      listOpenPullsForRepo: async () => {
-        throw new Error("watcher should skip this cycle when agent health times out");
-      },
+      listOpenPullsForRepo: async () => [{
+        number: 42,
+        title: "Needs watching",
+        branch: "feature/example",
+        author: "octocat",
+        url: "https://github.com/octo/example/pull/42",
+        headSha: "new-head",
+        baseRef: "main",
+        baseSha: "base123",
+      }],
     }) as never,
     {
       resolveAgent: async () => "codex",

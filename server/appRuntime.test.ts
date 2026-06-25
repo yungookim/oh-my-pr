@@ -187,6 +187,49 @@ test("runtime persists watcher lifecycle freshness in runtime state", async () =
   assert.ok(stopped.watcherCompletedAt);
 });
 
+test("runtime warns when watcher heartbeat is delayed", async () => {
+  const storage = new MemStorage();
+  let heartbeat: (() => void) | null = null;
+  let nowMs = Date.parse("2026-06-25T10:00:00.000Z");
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const fakeTimer = {} as ReturnType<typeof globalThis.setInterval>;
+
+  globalThis.setInterval = ((callback: (...args: unknown[]) => void) => {
+    heartbeat = () => callback();
+    return fakeTimer;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = (() => undefined) as typeof globalThis.clearInterval;
+
+  const runtime = createAppRuntime({
+    storage,
+    startBackgroundServices: false,
+    startWatcher: true,
+    now: () => new Date(nowMs),
+    watcherScheduler: {
+      run: () => {},
+      runAndReportErrors: async () => {},
+    },
+  });
+
+  _resetRingBufferForTests();
+
+  try {
+    await runtime.start();
+    nowMs += 250_000;
+    heartbeat?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const ring = readRingBuffer().join("\n");
+    assert.match(ring, /Repository watcher heartbeat delayed/);
+    assert.match(ring, /delayMs/);
+  } finally {
+    runtime.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
 test("runtime logs watcher runtime state write failures", async () => {
   const storage = new MemStorage();
   const originalUpdateRuntimeState = storage.updateRuntimeState.bind(storage);
