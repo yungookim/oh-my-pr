@@ -12,6 +12,8 @@ When you add a repository to oh-my-pr, the babysitter begins polling for open pu
 - **My PRs + teammates** — team-wide mode. The watcher auto-discovers every open PR in the repository.
 - **Direct PR URLs** — PRs you add explicitly by URL stay tracked regardless of the repo's watch scope.
 
+You can stop watching a repository from the dashboard when you no longer want repo-level auto-discovery. Existing PR records are preserved, and old PRs do not cause the watcher to auto-register new PRs for that unwatched repository.
+
 For tracked PRs, the babysitter syncs:
 
 - New PRs opened against the repository.
@@ -119,6 +121,7 @@ When a PR branch falls behind the base branch, oh-my-pr can automatically:
 You can control babysitter behavior per repository:
 
 - **Repo watch scope** — Choose `My PRs only` (default) or `My PRs + teammates` for auto-discovery.
+- **Unwatch repository** — Stop repo-level auto-discovery while preserving existing PR records.
 - **Poll interval** — How often to check for new reviews (default: 60 seconds).
 - **Auto-dispatch** — Whether to automatically dispatch agents or require approval.
 - **Agent preference** — Choose the global coding agent, with CLI fallback when the preferred tool is not installed.

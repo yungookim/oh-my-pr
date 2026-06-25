@@ -105,7 +105,9 @@ Watched repositories also have repo-level settings exposed in the dashboard's re
 
 New watched repos default to **My PRs only** with automatic release publishing disabled. If you want team-wide tracking for a repository, switch it to **My PRs + teammates** in the dashboard or patch `ownPrsOnly: false` through `/api/repos/settings`.
 
-PRs added directly by URL stay tracked regardless of a repo's `ownPrsOnly` setting.
+Use the repository row's unwatch action, or `DELETE /api/repos`, to stop watching a repository. This removes repo-level auto-discovery and settings while preserving existing PR records; old PRs do not make the watcher discover new PRs for that repo after it is unwatched.
+
+PRs added directly by URL stay tracked regardless of a repo's `ownPrsOnly` setting or whether the repo is currently watched.
 
 ## Manual Repository Releases
 

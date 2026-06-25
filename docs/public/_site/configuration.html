@@ -298,7 +298,8 @@ oh-my-pr --no-log-file
 </tr>
 </tbody></table>
 <p>New watched repos default to <strong>My PRs only</strong> with automatic release publishing disabled. If you want team-wide tracking for a repository, switch it to <strong>My PRs + teammates</strong> in the dashboard or patch <code>ownPrsOnly: false</code> through <code>/api/repos/settings</code>.</p>
-<p>PRs added directly by URL stay tracked regardless of a repo&#39;s <code>ownPrsOnly</code> setting.</p>
+<p>Use the repository row&#39;s unwatch action, or <code>DELETE /api/repos</code>, to stop watching a repository. This removes repo-level auto-discovery and settings while preserving existing PR records; old PRs do not make the watcher discover new PRs for that repo after it is unwatched.</p>
+<p>PRs added directly by URL stay tracked regardless of a repo&#39;s <code>ownPrsOnly</code> setting or whether the repo is currently watched.</p>
 <h2>Manual Repository Releases</h2>
 <p>Each watched repository row in the dashboard includes a <strong>Release</strong> button. Pressing it queues a manual release run for the latest unreleased merged PR in that repository, using the same release evaluation, version bump, notes, and GitHub publishing flow as automatic release creation.</p>
 <p>Manual release runs are allowed even when <code>autoCreateReleases</code> is disabled, so you can keep automatic publishing off and still publish releases on demand. If the repository has no unreleased merged PRs, the API returns <code>409</code> and no release run is created.</p>
